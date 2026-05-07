@@ -1,0 +1,2 @@
+   0 {% for ds in ds_goals %} {{ ds }}{% endfor %}
+3600 {% for ds in ds_goals %} {{ ds }}{% endfor %}
