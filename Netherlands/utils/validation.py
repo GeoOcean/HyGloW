@@ -3,6 +3,7 @@ import datetime
 import cartopy.crs as ccrs
 import matplotlib.pyplot as plt
 import numpy as np
+import xarray as xr
 from bluemath_tk.core.plotting.base_plotting import DefaultStaticPlotting
 from bluemath_tk.core.plotting.old_scatter import validation_scatter
 from matplotlib.gridspec import GridSpec
@@ -196,6 +197,156 @@ def plot_all_buoy_validation_figures(
             dynamic_data=dynamic_data,
             era5_data=era5_data,
             buoy_idx=buoy_idx,
+            figsize=figsize,
+        )
+        figures.append(fig)
+
+    return figures
+
+
+def _get_data_array(dataset, var_name, selector=None):
+    """Return a 1D DataArray for plotting from a dataset and variable name."""
+    data = dataset[var_name]
+    if selector is not None:
+        data = data.isel(**selector)
+    return data
+
+
+def _theta_to_360(values):
+    """Normalize direction values to [0, 360)."""
+    return np.mod(values, 360.0)
+
+
+def plot_series_validation_hs_tp_thetam(
+    dataset_a,
+    dataset_b,
+    var_map_a,
+    var_map_b,
+    selector_a=None,
+    selector_b=None,
+    label_a="Dataset A",
+    label_b="Dataset B",
+    time_dim="time",
+    title=None,
+    figsize=(14, 7),
+):
+    """
+    Plot Hs, Tp and ThetaM time-series comparison for two datasets.
+
+    Parameters
+    ----------
+    dataset_a, dataset_b : xarray.Dataset
+        Datasets to compare.
+    var_map_a, var_map_b : dict
+        Variable mappings with keys: "Hs", "Tp", "ThetaM".
+        Example: {"Hs": "Hm0", "Tp": "Tp", "ThetaM": "ThetaM"}.
+    selector_a, selector_b : dict, optional
+        xarray .isel selectors to pick one point/station per dataset.
+    """
+    required_vars = ("Hs", "Tp", "ThetaM")
+    for key in required_vars:
+        if key not in var_map_a or key not in var_map_b:
+            raise ValueError(
+                f"Missing mapping for '{key}'. Required keys: {required_vars}"
+            )
+
+    series_a = {
+        key: _get_data_array(dataset_a, var_map_a[key], selector=selector_a)
+        for key in required_vars
+    }
+    series_b = {
+        key: _get_data_array(dataset_b, var_map_b[key], selector=selector_b)
+        for key in required_vars
+    }
+
+    if time_dim in series_a["Hs"].dims and time_dim in series_b["Hs"].dims:
+        aligned_a = xr.Dataset(series_a)
+        aligned_b = xr.Dataset(series_b)
+        aligned_a, aligned_b = xr.align(aligned_a, aligned_b, join="inner")
+        x_values = aligned_a[time_dim].values
+        values_a = {key: aligned_a[key].values for key in required_vars}
+        values_b = {key: aligned_b[key].values for key in required_vars}
+    else:
+        x_values = np.arange(series_a["Hs"].size)
+        values_a = {key: np.asarray(series_a[key].values) for key in required_vars}
+        values_b = {key: np.asarray(series_b[key].values) for key in required_vars}
+
+    values_a["ThetaM"] = _theta_to_360(values_a["ThetaM"])
+    values_b["ThetaM"] = _theta_to_360(values_b["ThetaM"])
+
+    fig, axes = plt.subplots(nrows=3, ncols=1, sharex=True, figsize=figsize)
+
+    plot_config = [
+        ("Hs", "Hs [m]"),
+        ("Tp", "Tp [s]"),
+        ("ThetaM", "ThetaM [deg]"),
+    ]
+
+    for ax, (var_key, ylabel) in zip(axes, plot_config):
+        ax.plot(x_values, values_a[var_key], color="blue", lw=0.8, label=label_a)
+        ax.plot(
+            x_values, values_b[var_key], color="red", lw=0.8, label=label_b, alpha=0.8
+        )
+        ax.set_ylabel(ylabel)
+        ax.grid(True, alpha=0.3)
+
+    axes[2].set_xlabel("Time" if time_dim in series_a["Hs"].dims else "Index")
+    axes[2].set_ylim(0, 360)
+    axes[2].set_yticks([0, 90, 180, 270, 360])
+    axes[2].set_yticklabels(["N", "E", "S", "W", "N"])
+    axes[0].legend(loc="upper right")
+
+    if title is not None:
+        axes[0].set_title(title)
+
+    fig.tight_layout()
+    return fig
+
+
+def plot_multi_point_series_validation(
+    dataset_a,
+    dataset_b,
+    var_map_a,
+    var_map_b,
+    points_a,
+    points_b=None,
+    point_dim_a="point",
+    point_dim_b="point",
+    label_a="Dataset A",
+    label_b="Dataset B",
+    time_dim="time",
+    figsize=(14, 7),
+):
+    """
+    Iterate over several points and create Hs/Tp/ThetaM validation figures.
+
+    Parameters
+    ----------
+    points_a : sequence of int
+        Indices for dataset_a points/stations.
+    points_b : sequence of int, optional
+        Indices for dataset_b. If None, points_a is reused.
+    """
+    if points_b is None:
+        points_b = points_a
+    if len(points_a) != len(points_b):
+        raise ValueError("points_a and points_b must have same length.")
+
+    figures = []
+    for idx_a, idx_b in zip(points_a, points_b):
+        selector_a = {point_dim_a: idx_a}
+        selector_b = {point_dim_b: idx_b}
+        fig = plot_series_validation_hs_tp_thetam(
+            dataset_a=dataset_a,
+            dataset_b=dataset_b,
+            var_map_a=var_map_a,
+            var_map_b=var_map_b,
+            selector_a=selector_a,
+            selector_b=selector_b,
+            label_a=label_a,
+            label_b=label_b,
+            time_dim=time_dim,
+            title=f"Validation point A:{idx_a} vs B:{idx_b}",
             figsize=figsize,
         )
         figures.append(fig)

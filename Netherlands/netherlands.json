@@ -1,0 +1,26 @@
+{
+    "name": "Netherlands",
+    "description": "Danos example case",
+    "offshore_waves": [
+        {
+            "source": "WHACS",
+            "coordinates": "inputs/WHACS/WHACS_coordinates.csv"
+        },
+        {
+            "source": "ERA5",
+            "coordinates": "inputs/ERA5/ERA5_coordinates.csv"
+        }
+    ],
+    "offshore_sealevel": [
+        {
+            "source": "CODEC",
+            "coordinates": "inputs/CODEC/CODEC_coordinates.csv"
+        }
+    ],
+    "onshore_waves": [
+        {
+            "source": "Buoys",
+            "coordinates": "inputs/JohanBuoys/Buoys_coordinates.csv"
+        }
+    ]
+}
