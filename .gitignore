@@ -178,12 +178,12 @@ cython_debug/
 *.dat
 *.sav
 *.pk
+*.xml
 
 # Data directories
 *logs/
 *cases/
 *CASES*/
-*inputs/
 *outputs/
 
 # MacOS
