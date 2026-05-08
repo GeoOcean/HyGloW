@@ -1,26 +1,39 @@
 {
     "name": "Netherlands",
     "description": "Danos example case",
+    "simulations": {
+        "num_cases_per_goal": 2000
+    },
     "offshore_waves": [
         {
-            "source": "WHACS",
-            "coordinates": "inputs/WHACS/WHACS_coordinates.csv"
+            "name": "WHACS",
+            "coordinates": "inputs/WHACS/WHACS_coordinates.csv",
+            "local_path": "inputs/WHACS/processed/WHACS_netherlands.zarr"
         },
         {
-            "source": "ERA5",
-            "coordinates": "inputs/ERA5/ERA5_coordinates.csv"
+            "name": "ERA5",
+            "coordinates": "inputs/ERA5/ERA5_coordinates.csv",
+            "local_path": "inputs/ERA5/processed/ERA5_netherlands.zarr"
         }
     ],
     "offshore_sealevel": [
         {
-            "source": "CODEC",
-            "coordinates": "inputs/CODEC/CODEC_coordinates.csv"
+            "name": "CODEC",
+            "coordinates": "inputs/CODEC/CODEC_coordinates.csv",
+            "local_path": "inputs/CODEC/processed/CODEC_netherlands.zarr"
         }
     ],
     "onshore_waves": [
         {
-            "source": "Buoys",
-            "coordinates": "inputs/JohanBuoys/Buoys_coordinates.csv"
+            "name": "Buoys",
+            "coordinates": "inputs/JohanBuoys/JohanBuoys_coordinates.csv",
+            "local_path": "inputs/JohanBuoys/processed/JohanBuoys_netherlands.nc"
         }
-    ]
+    ],
+    "metamodel": {
+        "num_mda_points": 500,
+        "paths": {
+            "models_root": "outputs/models"
+        }
+    }
 }

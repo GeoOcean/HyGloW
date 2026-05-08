@@ -1,4 +1,4 @@
-stations,longitude,latitude,goal
+stations,station_x_coordinate,station_y_coordinate,goal
 23778,6.987,54.009,1
 23711,6.489,54.009,2
 23651,5.991,54.009,3

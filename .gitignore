@@ -179,6 +179,7 @@ cython_debug/
 *.sav
 *.pk
 *.xml
+*.zarr
 
 # Data directories
 *logs/
