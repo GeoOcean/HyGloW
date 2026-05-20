@@ -1,8 +1,87 @@
 {
     "name": "Netherlands",
-    "description": "Danos example case",
-    "simulations": {
-        "num_cases_per_goal": 2000
+    "description": "Dano's full Netherlands case",
+    "goals": {
+        "1": {
+            "lon": 7.0,
+            "lat": 54.0,
+            "angles": [
+                -70,
+                180
+            ]
+        },
+        "2": {
+            "lon": 6.5,
+            "lat": 54.0,
+            "angles": [
+                0,
+                180
+            ]
+        },
+        "3": {
+            "lon": 6.0,
+            "lat": 54.0,
+            "angles": [
+                0,
+                180
+            ]
+        },
+        "4": {
+            "lon": 5.5,
+            "lat": 54.0,
+            "angles": [
+                0,
+                180
+            ]
+        },
+        "5": {
+            "lon": 5.0,
+            "lat": 54.0,
+            "angles": [
+                0,
+                225
+            ]
+        },
+        "6": {
+            "lon": 4.5,
+            "lat": 53.5,
+            "angles": [
+                45,
+                225
+            ]
+        },
+        "7": {
+            "lon": 4.0,
+            "lat": 53.0,
+            "angles": [
+                45,
+                225
+            ]
+        },
+        "8": {
+            "lon": 3.5,
+            "lat": 52.5,
+            "angles": [
+                45,
+                225
+            ]
+        },
+        "9": {
+            "lon": 3.0,
+            "lat": 52.0,
+            "angles": [
+                45,
+                225
+            ]
+        },
+        "10": {
+            "lon": 2.5,
+            "lat": 51.5,
+            "angles": [
+                45,
+                310
+            ]
+        }
     },
     "offshore_waves": [
         {
