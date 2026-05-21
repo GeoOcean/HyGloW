@@ -879,10 +879,31 @@ def plot_series_validation_with_map(
         (ax_tp, "Tm", "Tm [s]"),
         (ax_th, "ThetaM", "ThetaM [deg]"),
     ):
-        ax.plot(x_values, values_a[key], color=color_a, lw=0.9, label=label_a)
-        ax.plot(
-            x_values, values_b[key], color=color_b, lw=0.9, alpha=0.85, label=label_b
-        )
+        if key == "ThetaM":
+            ax.scatter(
+                x_values,
+                values_a[key],
+                color=color_a,
+                label=label_a,
+                s=1,
+            )
+            ax.scatter(
+                x_values,
+                values_b[key],
+                color=color_b,
+                label=label_b,
+                s=1,
+            )
+        else:
+            ax.plot(x_values, values_a[key], color=color_a, lw=0.9, label=label_a)
+            ax.plot(
+                x_values,
+                values_b[key],
+                color=color_b,
+                lw=0.9,
+                alpha=0.85,
+                label=label_b,
+            )
         ax.set_ylabel(ylabel)
         ax.grid(True, alpha=0.3)
 
