@@ -180,6 +180,7 @@ cython_debug/
 *.pk
 *.xml
 *.zarr
+*.tiff
 
 # Data directories
 *logs/
