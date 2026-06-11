@@ -187,6 +187,7 @@ cython_debug/
 *cases/
 *CASES*/
 *outputs/
+*JennBuoys/
 
 # MacOS
 *.DS_Store
