@@ -10,11 +10,11 @@ sector         = 180
 
 bndfile        = boundary.txt
 encfile        = enclosure.txt
-bhsfile        = ERA5_hs.txt
-btpfile        = ERA5_tp.txt
-bwdfile        = ERA5_wd.txt
-bdsfile        = ERA5_ds.txt
-bzsfile        = ERA5_zs.txt
+bhsfile        = hs.txt
+btpfile        = tp.txt
+bwdfile        = wd.txt
+bdsfile        = ds.txt
+bzsfile        = zs.txt
 
 gamma          = 0.7
 hmin           = 0.1
@@ -26,4 +26,3 @@ map_ee         = 1
 
 obsfile        = 10mDepthAndBuoysPoints.txt
 his_file       = 10mDepthAndBuoysPoints.nc
-map_file       = mesh.nc
