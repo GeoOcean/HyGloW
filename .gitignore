@@ -193,3 +193,6 @@ cython_debug/
 
 # Repo tmp files
 pymesh2d/
+
+# Arquetypes
+Cantabria/
