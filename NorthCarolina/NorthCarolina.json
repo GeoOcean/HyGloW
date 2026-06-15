@@ -1,0 +1,136 @@
+{
+    "name": "North Carolina",
+    "description": "North Carolina case",
+    "goals": {
+        "1": {
+            "lat": 36.5625,
+            "lon": -75.5,
+            "angles": [
+                -75,
+                175
+            ]
+        },
+        "2": {
+            "lat": 36.125,
+            "lon": -75.25,
+            "angles": [
+                -75,
+                125
+            ]
+        },
+        "3": {
+            "lat": 35.6875,
+            "lon": -75.0625,
+            "angles": [
+                -100,
+                115
+            ]
+        },
+        "4": {
+            "lat": 35.3125,
+            "lon": -75.0625,
+            "angles": [
+                -130,
+                105
+            ]
+        },
+        "5": {
+            "lat": 34.9375,
+            "lon": -75.375,
+            "angles": [
+                -150,
+                50
+            ]
+        },
+        "6": {
+            "lat": 34.75,
+            "lon": -75.75,
+            "angles": [
+                -150,
+                40
+            ]
+        },
+        "7": {
+            "lat": 34.5,
+            "lon": -76.0625,
+            "angles": [
+                -140,
+                45
+            ]
+        },
+        "8": {
+            "lat": 34.1875,
+            "lon": -76.4375,
+            "angles": [
+                -165,
+                45
+            ]
+        },
+        "9": {
+            "lat": 34.03125,
+            "lon": -76.96875,
+            "angles": [
+                -150,
+                30
+            ]
+        },
+        "10": {
+            "lat": 33.6875,
+            "lon": -77.4375,
+            "angles": [
+                -155,
+                45
+            ]
+        },
+        "11": {
+            "lat": 33.40625,
+            "lon": -77.84375,
+            "angles": [
+                -160,
+                45
+            ]
+        },
+        "12": {
+            "lat": 33.1875,
+            "lon": -78.25,
+            "angles": [
+                -160,
+                45
+            ]
+        },
+        "13": {
+            "lat": 33,
+            "lon": -78.625,
+            "angles": [
+                -160,
+                45
+            ]
+        },
+        "14": {
+            "lat": 32.875,
+            "lon": -79,
+            "angles": [
+                -240,
+                35
+            ]
+        }
+    },
+    "offshore_waves": [
+        {
+            "name": "WHACS",
+            "data_path": "inputs/WHACS/processed/WHACS_NorthCarolina.zarr"
+        }
+    ],
+    "onshore_waves": [
+        {
+            "name": "Buoys",
+            "config_path": "NorthCarolina/inputs/JennBuoys/JennBuoys_coordinates.json"
+        }
+    ],
+    "metamodel": {
+        "num_mda_points": 200,
+        "paths": {
+            "models_root": "outputs/models"
+        }
+    }
+}
