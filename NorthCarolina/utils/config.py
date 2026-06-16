@@ -4,10 +4,21 @@ Reads ``NorthCarolina.json`` once when the module is imported and exposes
 its sections as module-level variables that can be used directly from a
 notebook::
 
-    from utils.config import NAME, GOALS, OFFSHORE_WAVES, METAMODEL
+    from utils.config import CONFIG, PATHS, GOALS, SIMULATIONS, METAMODEL
 
-Also provides :func:`get_buoy_coordinates` to read buoy coordinates from
-``inputs/JennBuoys/JennBuoys_coordinates.json`` filtered by institution.
+Helpers
+-------
+:func:`resolve`
+    Resolve a path against the case directory.
+:func:`get_buoy_coordinates`
+    Read buoy GeoJSON, applying the ``buoys.roles_override`` from the
+    main JSON on top of the per-feature ``role``/``type`` defaults.
+:func:`list_institutions`
+    Unique buoy institutions in order of first appearance.
+:func:`write_buoy_coordinates_txt`
+    Dump ``lon lat`` pairs to a SnapWave-style text file.
+:func:`reload`
+    Re-read the JSON from disk (useful from a running notebook kernel).
 """
 
 from __future__ import annotations
@@ -21,48 +32,96 @@ CASE_DIR: Path = UTILS_DIR.parent
 REPO_ROOT: Path = CASE_DIR.parent
 
 CASE_CONFIG_PATH: Path = CASE_DIR / "NorthCarolina.json"
-BUOYS_COORDINATES_PATH: Path = (
-    CASE_DIR / "inputs" / "JennBuoys" / "JennBuoys_coordinates.json"
-)
 
 
 def _load_json(path: Path) -> dict[str, Any]:
-    if not path.is_file():
+    if not Path(path).is_file():
         raise FileNotFoundError(f"Configuration file not found: {path}")
-    with path.open("r", encoding="utf-8") as f:
+    with Path(path).open("r", encoding="utf-8") as f:
         return json.load(f)
 
+
+def resolve(path: str | Path) -> Path:
+    """Return an absolute path; relative inputs are resolved against ``CASE_DIR``."""
+
+    p = Path(path)
+    return p if p.is_absolute() else (CASE_DIR / p)
+
+
+# ---------------------------------------------------------------------------
+# Module-level config snapshot
+# ---------------------------------------------------------------------------
 
 CONFIG: dict[str, Any] = _load_json(CASE_CONFIG_PATH)
 
 NAME: str = CONFIG.get("name", "")
 DESCRIPTION: str = CONFIG.get("description", "")
-GOALS: dict[str, dict[str, Any]] = CONFIG.get("goals", {})
-OFFSHORE_WAVES: list[dict[str, Any]] = CONFIG.get("offshore_waves", [])
-ONSHORE_WAVES: list[dict[str, Any]] = CONFIG.get("onshore_waves", [])
+PATHS: dict[str, Any] = CONFIG.get("paths", {})
+PERIODS: dict[str, Any] = CONFIG.get("periods", {})
+GOALS: dict[str, Any] = CONFIG.get("goals", {})
+OFFSHORE_WAVES: list[dict] = CONFIG.get("offshore_waves", [])
+ONSHORE_WAVES: list[dict] = CONFIG.get("onshore_waves", [])
+BUOYS: dict[str, Any] = CONFIG.get("buoys", {})
+SIMULATIONS: dict[str, Any] = CONFIG.get("simulations", {})
+CALIBRATION: dict[str, Any] = CONFIG.get("calibration", {})
 METAMODEL: dict[str, Any] = CONFIG.get("metamodel", {})
 
 
 def reload() -> dict[str, Any]:
-    """Re-read ``NorthCarolina.json`` from disk and refresh module globals.
+    """Re-read ``NorthCarolina.json`` from disk and refresh module globals."""
 
-    Useful from an already-running notebook kernel after editing the JSON
-    without restarting the kernel.
-    """
-
-    global CONFIG, NAME, DESCRIPTION, GOALS, OFFSHORE_WAVES, ONSHORE_WAVES, METAMODEL
+    global CONFIG, NAME, DESCRIPTION, PATHS, PERIODS, GOALS
+    global OFFSHORE_WAVES, ONSHORE_WAVES, BUOYS
+    global SIMULATIONS, CALIBRATION, METAMODEL
 
     CONFIG = _load_json(CASE_CONFIG_PATH)
     NAME = CONFIG.get("name", "")
     DESCRIPTION = CONFIG.get("description", "")
+    PATHS = CONFIG.get("paths", {})
+    PERIODS = CONFIG.get("periods", {})
     GOALS = CONFIG.get("goals", {})
     OFFSHORE_WAVES = CONFIG.get("offshore_waves", [])
     ONSHORE_WAVES = CONFIG.get("onshore_waves", [])
+    BUOYS = CONFIG.get("buoys", {})
+    SIMULATIONS = CONFIG.get("simulations", {})
+    CALIBRATION = CONFIG.get("calibration", {})
     METAMODEL = CONFIG.get("metamodel", {})
     return CONFIG
 
 
+# ---------------------------------------------------------------------------
+# Buoys
+# ---------------------------------------------------------------------------
+
+
+def _buoys_geojson_path() -> Path:
+    """Locate the buoys GeoJSON via the ``Buoys`` entry in ``onshore_waves``."""
+
+    for entry in ONSHORE_WAVES:
+        if entry.get("name") == "Buoys" and entry.get("config_path"):
+            return resolve(entry["config_path"])
+    raise FileNotFoundError(
+        "No 'Buoys' entry with a 'config_path' field found in onshore_waves."
+    )
+
+
+def _build_role_map(features: list[dict]) -> dict[str, str]:
+    """Per-feature default role: ``properties.role`` first, then ``properties.type``."""
+
+    role_map: dict[str, str] = {}
+    for feat in features:
+        props = feat.get("properties") or {}
+        iid = props.get("instrument_id")
+        if iid is None:
+            continue
+        default = props.get("role") or props.get("type")
+        if isinstance(default, str):
+            role_map[str(iid)] = default.strip().lower()
+    return role_map
+
+
 def get_buoy_coordinates(
+    role: str | None = None,
     institution: str | None = None,
     *,
     coordinates_path: Path | str | None = None,
@@ -71,51 +130,70 @@ def get_buoy_coordinates(
 
     Parameters
     ----------
-    institution : str, optional
-        Filter features by ``properties.institution`` (case-insensitive,
-        whitespace-trimmed). If ``None`` (default), buoys from every
-        institution are returned.
-    coordinates_path : Path | str, optional
-        Override the GeoJSON path. Defaults to
-        :data:`BUOYS_COORDINATES_PATH`.
+    role
+        Filter by buoy role (``"calibration"``, ``"validation"``, ``"ignore"``,
+        ...). Defaults come from the per-feature ``role``/``type`` GeoJSON
+        properties and are then overridden by
+        ``CONFIG["buoys"]["roles_override"][role]`` if set. ``None`` returns
+        every buoy regardless of role.
+    institution
+        Case-insensitive filter on ``properties.institution`` (e.g. ``"NDBC"``).
+    coordinates_path
+        Override the GeoJSON path (defaults to the ``Buoys`` entry in
+        ``onshore_waves``).
 
     Returns
     -------
     dict[str, dict[str, Any]]
-        Mapping ``instrument_id -> {"lon", "lat", "institution", "type",
-        "recording", "depth", "name"}``. When several features share the
-        same ``instrument_id``, the last one in the file wins.
+        ``instrument_id -> {"lon", "lat", "role", "institution", "type",
+        "recording", "depth", "name"}``.
     """
 
     path = (
         Path(coordinates_path)
         if coordinates_path is not None
-        else BUOYS_COORDINATES_PATH
+        else _buoys_geojson_path()
     )
-    feature_collection = _load_json(path)
+    fc = _load_json(path)
+    features = fc.get("features", []) or []
 
-    requested = institution.strip().lower() if isinstance(institution, str) else None
+    role_map = _build_role_map(features)
+    overrides = (BUOYS or {}).get("roles_override", {}) or {}
+    for r, ids in overrides.items():
+        for iid in ids or []:
+            role_map[str(iid)] = str(r).strip().lower()
+
+    requested_role = role.strip().lower() if isinstance(role, str) else None
+    requested_inst = (
+        institution.strip().lower() if isinstance(institution, str) else None
+    )
 
     buoys: dict[str, dict[str, Any]] = {}
-    for feature in feature_collection.get("features", []):
-        props = feature.get("properties") or {}
-        geom = feature.get("geometry") or {}
+    for feat in features:
+        props = feat.get("properties") or {}
+        geom = feat.get("geometry") or {}
         coords = geom.get("coordinates") or []
         if len(coords) < 2:
             continue
 
-        feat_institution = props.get("institution", "") or ""
-        if requested is not None and feat_institution.strip().lower() != requested:
+        iid = props.get("instrument_id")
+        if iid is None:
+            continue
+        iid = str(iid)
+
+        feat_role = role_map.get(iid)
+        feat_inst = props.get("institution", "") or ""
+
+        if requested_role is not None and feat_role != requested_role:
+            continue
+        if requested_inst is not None and feat_inst.strip().lower() != requested_inst:
             continue
 
-        instrument_id = props.get("instrument_id")
-        if instrument_id is None:
-            continue
-
-        buoys[str(instrument_id)] = {
+        buoys[iid] = {
             "lon": float(coords[0]),
             "lat": float(coords[1]),
-            "institution": feat_institution,
+            "role": feat_role,
+            "institution": feat_inst,
             "type": props.get("type"),
             "recording": props.get("recording"),
             "depth": props.get("depth"),
@@ -125,6 +203,34 @@ def get_buoy_coordinates(
     return buoys
 
 
+def get_buoy_aliases() -> dict[str, str]:
+    """Return ``alias_id -> canonical_id`` mapping from ``CONFIG.buoys.aliases``."""
+
+    return dict((BUOYS or {}).get("aliases", {}) or {})
+
+
+def list_institutions(
+    coordinates_path: Path | str | None = None,
+) -> list[str]:
+    """Unique institution names in the buoys GeoJSON, first-appearance order."""
+
+    path = (
+        Path(coordinates_path)
+        if coordinates_path is not None
+        else _buoys_geojson_path()
+    )
+    fc = _load_json(path)
+
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for feature in fc.get("features", []):
+        inst = (feature.get("properties") or {}).get("institution")
+        if isinstance(inst, str) and inst not in seen:
+            seen.add(inst)
+            ordered.append(inst)
+    return ordered
+
+
 def write_buoy_coordinates_txt(
     buoys: Mapping[str, Mapping[str, Any]] | Iterable[tuple[float, float]],
     output_path: Path | str,
@@ -132,31 +238,11 @@ def write_buoy_coordinates_txt(
     precision: int = 6,
     overwrite: bool = True,
 ) -> Path:
-    """Write buoy coordinates to a plain ``lon lat`` text file (one buoy per line).
+    """Write buoy coordinates to a plain ``lon lat`` text file (SnapWave format).
 
-    The output format is the one expected by SnapWave: each line contains
-    ``<lon> <lat>`` separated by a single space, with no header.
-
-    Parameters
-    ----------
-    buoys : mapping or iterable
-        Either the dict returned by :func:`get_buoy_coordinates` (mapping
-        ``instrument_id -> {"lon", "lat", ...}``) or any iterable of
-        ``(lon, lat)`` pairs.
-    output_path : Path | str
-        Destination ``.txt`` file. Relative paths are resolved against
-        :data:`CASE_DIR`.
-    precision : int, default 6
-        Number of decimal places written for each coordinate (~0.1 m at
-        these latitudes).
-    overwrite : bool, default True
-        If ``False`` and ``output_path`` already exists, raise
-        ``FileExistsError``.
-
-    Returns
-    -------
-    Path
-        The resolved path of the file that was written.
+    ``buoys`` may be either a mapping like the one returned by
+    :func:`get_buoy_coordinates` or any iterable of ``(lon, lat)`` pairs.
+    Relative ``output_path`` is resolved against :data:`CASE_DIR`.
     """
 
     if isinstance(buoys, Mapping):
@@ -168,10 +254,7 @@ def write_buoy_coordinates_txt(
     else:
         pairs = [(float(lon), float(lat)) for lon, lat in buoys]
 
-    path = Path(output_path)
-    if not path.is_absolute():
-        path = CASE_DIR / path
-
+    path = resolve(output_path)
     if path.exists() and not overwrite:
         raise FileExistsError(f"Output file already exists: {path}")
 
@@ -184,45 +267,27 @@ def write_buoy_coordinates_txt(
     return path
 
 
-def list_institutions(
-    coordinates_path: Path | str | None = None,
-) -> list[str]:
-    """Return the unique institution names present in the buoys GeoJSON,
-    preserving first-appearance order.
-    """
-
-    path = (
-        Path(coordinates_path)
-        if coordinates_path is not None
-        else BUOYS_COORDINATES_PATH
-    )
-    feature_collection = _load_json(path)
-
-    seen: set[str] = set()
-    ordered: list[str] = []
-    for feature in feature_collection.get("features", []):
-        inst = (feature.get("properties") or {}).get("institution")
-        if isinstance(inst, str) and inst not in seen:
-            seen.add(inst)
-            ordered.append(inst)
-    return ordered
-
-
 __all__ = [
     "UTILS_DIR",
     "CASE_DIR",
     "REPO_ROOT",
     "CASE_CONFIG_PATH",
-    "BUOYS_COORDINATES_PATH",
     "CONFIG",
     "NAME",
     "DESCRIPTION",
+    "PATHS",
+    "PERIODS",
     "GOALS",
     "OFFSHORE_WAVES",
     "ONSHORE_WAVES",
+    "BUOYS",
+    "SIMULATIONS",
+    "CALIBRATION",
     "METAMODEL",
+    "resolve",
+    "reload",
     "get_buoy_coordinates",
+    "get_buoy_aliases",
     "list_institutions",
     "write_buoy_coordinates_txt",
-    "reload",
 ]

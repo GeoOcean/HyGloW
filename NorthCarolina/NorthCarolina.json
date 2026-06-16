@@ -1,30 +1,44 @@
 {
     "name": "North Carolina",
-    "description": "North Carolina case",
+    "description": "North Carolina hybrid wave-downscaling case (SnapWave + GPR metamodel)",
+    "paths": {
+        "mesh_file": "inputs/GRID/NorthCarolina_mesh.nc",
+        "aoi_file": "inputs/AoI_Polygons/AoI_NorthCarolina.shp",
+        "isobath_file": "utils/isobath_10m.txt",
+        "obs_points_file": "templates-dynamic/10mDepthAndBuoysPoints.txt",
+        "templates_static": "templates-metamodel",
+        "templates_dynamic": "templates-dynamic",
+        "cases_static_dir": "SnapWave_CASES_METAMODEL",
+        "cases_dynamic_dir": "SnapWave_CASES_Dynamic",
+        "outputs_root": "outputs"
+    },
     "goals": {
         "1": {
             "lat": 36.5625,
             "lon": -75.5,
             "angles": [
-                -75,
-                175
-            ]
+                -60,
+                190
+            ],
+            "seapoint": 1904482
         },
         "2": {
             "lat": 36.125,
             "lon": -75.25,
             "angles": [
-                -75,
-                125
-            ]
+                -90,
+                135.5
+            ],
+            "seapoint": 1904397
         },
         "3": {
             "lat": 35.6875,
             "lon": -75.0625,
             "angles": [
-                -100,
-                115
-            ]
+                -110,
+                120
+            ],
+            "seapoint": 1904324
         },
         "4": {
             "lat": 35.3125,
@@ -32,105 +46,235 @@
             "angles": [
                 -130,
                 105
-            ]
+            ],
+            "seapoint": 1904228
         },
         "5": {
             "lat": 34.9375,
             "lon": -75.375,
             "angles": [
-                -150,
-                50
-            ]
+                -160,
+                55
+            ],
+            "seapoint": 1904092
         },
         "6": {
             "lat": 34.75,
             "lon": -75.75,
             "angles": [
-                -150,
-                40
-            ]
+                -160.3,
+                41.1
+            ],
+            "seapoint": 1904039
         },
         "7": {
             "lat": 34.5,
             "lon": -76.0625,
             "angles": [
-                -140,
-                45
-            ]
+                -139.8,
+                56.6
+            ],
+            "seapoint": 1903945
         },
         "8": {
             "lat": 34.1875,
             "lon": -76.4375,
             "angles": [
-                -165,
-                45
-            ]
+                -166.4,
+                40
+            ],
+            "seapoint": 1903794
         },
         "9": {
             "lat": 34.03125,
             "lon": -76.96875,
             "angles": [
-                -150,
-                30
-            ]
+                -166.4,
+                27.8
+            ],
+            "seapoint": 1910981
         },
         "10": {
             "lat": 33.6875,
             "lon": -77.4375,
             "angles": [
-                -155,
-                45
-            ]
+                -142.3,
+                42.5
+            ],
+            "seapoint": 1903542
         },
         "11": {
             "lat": 33.40625,
             "lon": -77.84375,
             "angles": [
-                -160,
-                45
-            ]
+                -179.3,
+                61.5
+            ],
+            "seapoint": 1910920
         },
         "12": {
             "lat": 33.1875,
             "lon": -78.25,
             "angles": [
-                -160,
-                45
-            ]
+                -179.3,
+                61.5
+            ],
+            "seapoint": 1903229
         },
         "13": {
-            "lat": 33,
+            "lat": 33.0,
             "lon": -78.625,
             "angles": [
-                -160,
-                45
-            ]
+                -179.3,
+                61.5
+            ],
+            "seapoint": 1903124
         },
         "14": {
             "lat": 32.875,
-            "lon": -79,
+            "lon": -79.0,
             "angles": [
-                -240,
-                35
-            ]
+                -225,
+                30
+            ],
+            "seapoint": 1903044
         }
     },
     "offshore_waves": [
         {
             "name": "WHACS",
-            "data_path": "inputs/WHACS/processed/WHACS_NorthCarolina.zarr"
+            "description": "WHACS reanalysis from D. Gutierrez Barcelo (USGS)",
+            "remote_url": null,
+            "data_path": "inputs/WHACS/processed/WHACS_NorthCarolina.zarr",
+            "coordinates_path": "inputs/WHACS/NorthCarolina_whacs.gpkg",
+            "partition_map": {
+                "bulk": {
+                    "hs": "hs",
+                    "tp_inv": "fp",
+                    "wd": "dp",
+                    "ds": "spr"
+                },
+                "sea": {
+                    "hs": "phs0",
+                    "tp": "ptp0",
+                    "wd": "pdp0",
+                    "ds": "pspr0"
+                },
+                "swell1": {
+                    "hs": "phs1",
+                    "tp": "ptp1",
+                    "wd": "pdp1",
+                    "ds": "pspr1"
+                },
+                "swell2": {
+                    "hs": "phs2",
+                    "tp": "ptp2",
+                    "wd": "pdp2",
+                    "ds": "pspr2"
+                },
+                "swell3": {
+                    "hs": "phs3",
+                    "tp": "ptp3",
+                    "wd": "pdp3",
+                    "ds": "pspr3"
+                }
+            }
         }
     ],
     "onshore_waves": [
         {
             "name": "Buoys",
-            "config_path": "NorthCarolina/inputs/JennBuoys/JennBuoys_coordinates.json"
+            "config_path": "inputs/JennBuoys/JennBuoys_coordinates.json"
         }
     ],
+    "buoys": {
+        "roles_override": {
+            "calibration": [
+                "41007"
+            ],
+            "ignore": []
+        },
+        "aliases": {
+            "41159": "41036",
+            "41109": "41035",
+            "41119": "ssbn7",
+            "8651370": "DUCN7"
+        }
+    },
+    "simulations": {
+        "num_samples_per_goal": 250,
+        "bounds": {
+            "tp": [
+                1,
+                15
+            ],
+            "ds": [
+                1,
+                45
+            ],
+            "zs": [
+                -3.5,
+                3.5
+            ]
+        },
+        "physical_filter": {
+            "kh_max": 1.0,
+            "tp_min": 7.0
+        }
+    },
+    "calibration": {
+        "reference_seapoint": 1903794,
+        "satellite": {
+            "name": "IMOS",
+            "data_path": "inputs/IMOS/processed/satellite_dataset_carolinas.nc",
+            "distance_threshold": 0.15,
+            "depth_threshold": -30,
+            "max_time_diff": 1
+        }
+    },
     "metamodel": {
         "num_mda_points": 200,
+        "pca_variance": 0.95,
+        "directional_variables": [
+            "wd"
+        ],
+        "vars_to_stack": [
+            "point_hm0",
+            "point_tp",
+            "point_wavdir_u",
+            "point_wavdir_v"
+        ],
+        "stations": {
+            "file": "templates-dynamic/10mDepthAndBuoysPoints.txt",
+            "n": 338
+        },
+        "spectral_reconstruction": {
+            "freq": {
+                "start": 0.035,
+                "stop": 0.5,
+                "n": 29,
+                "spacing": "log"
+            },
+            "dir": {
+                "start": 0,
+                "stop": 360,
+                "step": 5
+            },
+            "freq_name": "jonswap",
+            "dir_name": "cartwright",
+            "partitions_used": [
+                "sea",
+                "swell1",
+                "swell2",
+                "swell3"
+            ]
+        },
         "paths": {
-            "models_root": "outputs/models"
+            "models_root": "outputs/models",
+            "mda_dir": "outputs/mda_{num_mda_points}",
+            "pca_dir": "outputs/pca_{num_mda_points}",
+            "gp_dir": "outputs/gp_{num_mda_points}",
+            "bulk_output": "outputs/bulk_metamodel.nc"
         }
     }
 }

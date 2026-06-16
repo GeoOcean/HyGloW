@@ -188,6 +188,7 @@ cython_debug/
 *CASES*/
 *outputs/
 *JennBuoys/
+NorthCarolina/assets/
 
 # MacOS
 *.DS_Store
