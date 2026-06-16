@@ -4,11 +4,9 @@
     "paths": {
         "mesh_file": "inputs/GRID/NorthCarolina_mesh.nc",
         "aoi_file": "inputs/AoI_Polygons/AoI_NorthCarolina.shp",
-        "isobath_file": "utils/isobath_10m.txt",
-        "obs_points_file": "templates-dynamic/10mDepthAndBuoysPoints.txt",
         "templates_static": "templates-metamodel",
         "templates_dynamic": "templates-dynamic",
-        "cases_static_dir": "SnapWave_CASES_METAMODEL",
+        "cases_static_dir": "SnapWave_CASES_Metamodel",
         "cases_dynamic_dir": "SnapWave_CASES_Dynamic",
         "outputs_root": "outputs"
     },
@@ -187,20 +185,6 @@
             "config_path": "inputs/JennBuoys/JennBuoys_coordinates.json"
         }
     ],
-    "buoys": {
-        "roles_override": {
-            "calibration": [
-                "41007"
-            ],
-            "ignore": []
-        },
-        "aliases": {
-            "41159": "41036",
-            "41109": "41035",
-            "41119": "ssbn7",
-            "8651370": "DUCN7"
-        }
-    },
     "simulations": {
         "num_samples_per_goal": 250,
         "bounds": {
@@ -222,16 +206,6 @@
             "tp_min": 7.0
         }
     },
-    "calibration": {
-        "reference_seapoint": 1903794,
-        "satellite": {
-            "name": "IMOS",
-            "data_path": "inputs/IMOS/processed/satellite_dataset_carolinas.nc",
-            "distance_threshold": 0.15,
-            "depth_threshold": -30,
-            "max_time_diff": 1
-        }
-    },
     "metamodel": {
         "num_mda_points": 200,
         "pca_variance": 0.95,
@@ -244,10 +218,6 @@
             "point_wavdir_u",
             "point_wavdir_v"
         ],
-        "stations": {
-            "file": "templates-dynamic/10mDepthAndBuoysPoints.txt",
-            "n": 338
-        },
         "spectral_reconstruction": {
             "freq": {
                 "start": 0.035,
