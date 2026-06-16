@@ -62,6 +62,7 @@ GOALS: dict[str, Any] = CONFIG.get("goals", {})
 OFFSHORE_WAVES: list[dict] = CONFIG.get("offshore_waves", [])
 ONSHORE_WAVES: list[dict] = CONFIG.get("onshore_waves", [])
 BUOYS: dict[str, Any] = CONFIG.get("buoys", {})
+OUTPUT_SITES: dict[str, Any] = CONFIG.get("output_sites", {})
 SIMULATIONS: dict[str, Any] = CONFIG.get("simulations", {})
 CALIBRATION: dict[str, Any] = CONFIG.get("calibration", {})
 METAMODEL: dict[str, Any] = CONFIG.get("metamodel", {})
@@ -71,7 +72,7 @@ def reload() -> dict[str, Any]:
     """Re-read ``NorthCarolina.json`` from disk and refresh module globals."""
 
     global CONFIG, NAME, DESCRIPTION, PATHS, PERIODS, GOALS
-    global OFFSHORE_WAVES, ONSHORE_WAVES, BUOYS
+    global OFFSHORE_WAVES, ONSHORE_WAVES, BUOYS, OUTPUT_SITES
     global SIMULATIONS, CALIBRATION, METAMODEL
 
     CONFIG = _load_json(CASE_CONFIG_PATH)
@@ -83,6 +84,7 @@ def reload() -> dict[str, Any]:
     OFFSHORE_WAVES = CONFIG.get("offshore_waves", [])
     ONSHORE_WAVES = CONFIG.get("onshore_waves", [])
     BUOYS = CONFIG.get("buoys", {})
+    OUTPUT_SITES = CONFIG.get("output_sites", {})
     SIMULATIONS = CONFIG.get("simulations", {})
     CALIBRATION = CONFIG.get("calibration", {})
     METAMODEL = CONFIG.get("metamodel", {})
@@ -281,6 +283,7 @@ __all__ = [
     "OFFSHORE_WAVES",
     "ONSHORE_WAVES",
     "BUOYS",
+    "OUTPUT_SITES",
     "SIMULATIONS",
     "CALIBRATION",
     "METAMODEL",

@@ -24,5 +24,5 @@ uuupwindfile   =
 niter          = 40
 map_ee         = 1
 
-obsfile        = 10mDepthAndBuoysPoints.txt
-his_file       = 10mDepthAndBuoysPoints.nc
+obsfile        = output_sites.txt
+his_file       = output_sites.nc

@@ -185,6 +185,20 @@
             "config_path": "inputs/JennBuoys/JennBuoys_coordinates.json"
         }
     ],
+    "output_sites": {
+        "topobathy_file": "inputs/NOAA/raw/exportImage.tiff",
+        "filename": "output_sites.txt",
+        "isobaths": [
+            {
+                "name": "10m",
+                "level": -10.0,
+                "spacing": 0.05,
+                "longest_only": true
+            }
+        ],
+        "include_buoys": true,
+        "buoy_role": null
+    },
     "simulations": {
         "num_samples_per_goal": 250,
         "bounds": {
