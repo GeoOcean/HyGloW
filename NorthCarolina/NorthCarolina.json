@@ -188,11 +188,24 @@
     "output_sites": {
         "topobathy_file": "inputs/NOAA/raw/exportImage.tiff",
         "filename": "output_sites.txt",
+        "clip_to_aoi": true,
         "isobaths": [
+            {
+                "name": "5m",
+                "level": -5.0,
+                "spacing": 0.2,
+                "longest_only": true
+            },
             {
                 "name": "10m",
                 "level": -10.0,
-                "spacing": 0.05,
+                "spacing": 0.2,
+                "longest_only": true
+            },
+            {
+                "name": "15m",
+                "level": -15.0,
+                "spacing": 0.2,
                 "longest_only": true
             }
         ],

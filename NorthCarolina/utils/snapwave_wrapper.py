@@ -30,6 +30,7 @@ import geopandas as gpd
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import shapely
 import xarray as xr
 from bluemath_tk.wrappers._base_wrappers import BaseModelWrapper
 from bluemath_tk.wrappers._utils_wrappers import write_array_in_file
@@ -134,14 +135,37 @@ def _buoy_rows(role: str | None = None) -> list[dict]:
     return rows
 
 
+def _filter_inside_aoi(
+    df: pd.DataFrame,
+    aoi_polygon: Polygon | MultiPolygon,
+) -> pd.DataFrame:
+    """Return the subset of ``df`` whose ``(lon, lat)`` lies inside ``aoi_polygon``."""
+
+    mask = shapely.contains_xy(
+        aoi_polygon, df["lon"].to_numpy(float), df["lat"].to_numpy(float)
+    )
+    return df.loc[mask].reset_index(drop=True)
+
+
 def compute_output_sites(
     config: Mapping[str, Any] | None = None,
     topobathy: xr.DataArray | None = None,
+    aoi_polygon: Polygon | MultiPolygon | None = None,
 ) -> pd.DataFrame:
     """Build the SnapWave output-sites DataFrame from the ``output_sites`` config.
 
     Returns columns ``[lon, lat, source, source_id, source_label, depth, name]``.
     Isobath samples first (grouped by isobath, in raster order), buoys after.
+
+    Parameters
+    ----------
+    config, topobathy
+        Standard config / pre-loaded topobathy overrides.
+    aoi_polygon
+        Polygon used to drop sites that fall outside the model domain.
+        If ``None`` and ``config['clip_to_aoi']`` is true (the default),
+        the polygon is loaded from ``paths.aoi_file``. Pass an explicit
+        polygon (e.g. from the wrapper) to avoid reloading.
     """
 
     cfg_dict = dict(config or cfg.OUTPUT_SITES or {})
@@ -166,7 +190,21 @@ def compute_output_sites(
 
     if not rows:
         raise ValueError("No output-site points produced.")
-    return pd.DataFrame(rows).reset_index(drop=True)
+    df = pd.DataFrame(rows).reset_index(drop=True)
+
+    if bool(cfg_dict.get("clip_to_aoi", True)):
+        if aoi_polygon is None:
+            aoi_path = (cfg.PATHS or {}).get("aoi_file")
+            if not aoi_path:
+                raise ValueError(
+                    "`clip_to_aoi` is true but no `paths.aoi_file` in config."
+                )
+            _, aoi_polygon = read_polygon_from_shp_file(cfg.resolve(aoi_path))
+        df = _filter_inside_aoi(df, aoi_polygon)
+        if df.empty:
+            raise ValueError("All output-site points were clipped by the AoI.")
+
+    return df
 
 
 def write_output_sites(
@@ -278,7 +316,7 @@ class SnapWaveModelWrapper(BaseModelWrapper):
         )
 
         if output_sites_df is None:
-            output_sites_df = compute_output_sites()
+            output_sites_df = compute_output_sites(aoi_polygon=self.aoi_polygon)
         self.output_sites_df = output_sites_df.reset_index(drop=True)
         self._sites_txt = (cfg.OUTPUT_SITES or {}).get("filename") or "output_sites.txt"
 
