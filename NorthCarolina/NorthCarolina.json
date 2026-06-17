@@ -234,7 +234,7 @@
         }
     },
     "metamodel": {
-        "num_mda_points": 200,
+        "num_mda_points": 500,
         "pca_variance": 0.95,
         "directional_variables": [
             "wd"
@@ -267,11 +267,10 @@
             ]
         },
         "paths": {
-            "models_root": "outputs/models",
             "mda_dir": "outputs/mda_{num_mda_points}",
             "pca_dir": "outputs/pca_{num_mda_points}",
             "gp_dir": "outputs/gp_{num_mda_points}",
-            "bulk_output": "outputs/bulk_metamodel.nc"
+            "spectral_output": "outputs/spectral_metamodel.nc"
         }
     }
 }
