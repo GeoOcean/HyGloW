@@ -47,9 +47,9 @@ _SITE_COORD_RENAMES = {
     "station_source": "site_source",
     "station_label": "site_label",
     "station_depth": "site_depth",
-    "station_x": "site_x",
-    "station_y": "site_y",
 }
+
+_DROP_SITE_COORDS = ("station_x", "station_y", "site_x", "site_y", "station_name")
 
 
 def normalize_site_dims(ds: xr.Dataset) -> xr.Dataset:
@@ -62,7 +62,7 @@ def normalize_site_dims(ds: xr.Dataset) -> xr.Dataset:
     if "station_name" in ds.coords and "sites" not in ds.coords:
         ds = ds.assign_coords(sites=ds["station_name"].values)
     ds = ds.rename({k: v for k, v in _SITE_COORD_RENAMES.items() if k in ds.coords})
-    return ds.drop_vars(["station_name"], errors="ignore")
+    return ds.drop_vars(list(_DROP_SITE_COORDS), errors="ignore")
 
 
 # ---------------------------------------------------------------------------
@@ -283,11 +283,7 @@ def relabel_output_sites(
                 pd.to_numeric(sites_df["depth"], errors="coerce").to_numpy(float),
             ),
         }
-    ).drop_vars(["station_name"], errors="ignore")
-
-
-# Backward-compatible alias (deprecated)
-relabel_output_stations = relabel_output_sites
+    ).drop_vars(list(_DROP_SITE_COORDS), errors="ignore")
 
 
 # ---------------------------------------------------------------------------
@@ -454,8 +450,6 @@ class SnapWaveMetaModelWrapper(SnapWaveModelWrapper):
         ds = ds.assign_coords(
             {
                 "goal": (("case_num",), [int(case_context["goal"])]),
-                "site_x": (("stations",), ds.station_x.values),
-                "site_y": (("stations",), ds.station_y.values),
                 "point_zb": (("stations",), ds.point_zb.values),
             }
         )
@@ -497,13 +491,7 @@ class SnapWaveDynamicModelWrapper(SnapWaveModelWrapper):
             .drop_dims(["runtime"])
             .drop_vars(["crs", "station_id"], errors="ignore")
         )
-        ds = ds.assign_coords(
-            {
-                "site_x": (("stations",), ds.station_x.values),
-                "site_y": (("stations",), ds.station_y.values),
-                "point_zb": (("stations",), ds.point_zb.values),
-            }
-        )
+        ds = ds.assign_coords({"point_zb": (("stations",), ds.point_zb.values)})
         return relabel_output_sites(ds, self.output_sites_df)
 
     def join_postprocessed_files(

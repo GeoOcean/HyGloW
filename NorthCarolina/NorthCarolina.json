@@ -212,6 +212,35 @@
         "include_buoys": true,
         "buoy_role": null
     },
+    "variables": {
+        "snapwave": {
+            "hs": "point_hm0",
+            "tp": "point_tp",
+            "dm": "point_wavdir"
+        },
+        "bulk": [
+            "hs",
+            "tp",
+            "wd",
+            "ds"
+        ],
+        "spectral": [
+            "hs",
+            "tp",
+            "tm01",
+            "dm"
+        ],
+        "forcing": [
+            "hs",
+            "tp",
+            "wd",
+            "ds",
+            "zs"
+        ]
+    },
+    "validation": {
+        "period_var": "tp"
+    },
     "simulations": {
         "num_samples_per_goal": 250,
         "bounds": {
@@ -238,6 +267,12 @@
         "pca_variance": 0.95,
         "directional_variables": [
             "wd"
+        ],
+        "mda_inputs": [
+            "tp",
+            "wd",
+            "ds",
+            "zs"
         ],
         "vars_to_stack": [
             "point_hm0",
@@ -266,26 +301,11 @@
                 "swell3"
             ]
         },
-        "site_qc": {
-            "active_min": 0.0001,
-            "hs": {
-                "max": 10.0,
-                "min_mean": 0.005
-            },
-            "tp": {
-                "max": 20.0,
-                "min_mean": 0.25
-            },
-            "dm": {
-                "max": 360.0
-            }
-        },
         "paths": {
             "mda_dir": "outputs/mda_{num_mda_points}",
             "pca_dir": "outputs/pca_{num_mda_points}",
             "gp_dir": "outputs/gp_{num_mda_points}",
-            "spectral_output": "outputs/spectral_metamodel.nc",
-            "excluded_sites": "outputs/excluded_sites.json"
+            "spectral_output": "outputs/spectral_metamodel.nc"
         }
     }
 }

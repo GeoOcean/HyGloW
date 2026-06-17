@@ -66,6 +66,38 @@ OUTPUT_SITES: dict[str, Any] = CONFIG.get("output_sites", {})
 SIMULATIONS: dict[str, Any] = CONFIG.get("simulations", {})
 CALIBRATION: dict[str, Any] = CONFIG.get("calibration", {})
 METAMODEL: dict[str, Any] = CONFIG.get("metamodel", {})
+VARIABLES: dict[str, Any] = CONFIG.get("variables", {})
+VALIDATION: dict[str, Any] = CONFIG.get("validation", {})
+
+
+def snapwave_var_map() -> dict[str, str]:
+    """Canonical parameter → SnapWave variable name."""
+    return dict(VARIABLES.get("snapwave", {}))
+
+
+def bulk_vars() -> list[str]:
+    """Canonical bulk variable names (GPR reconstruction output)."""
+    return list(VARIABLES.get("bulk", ["hs", "tp", "wd", "ds"]))
+
+
+def spectral_vars() -> list[str]:
+    """Canonical spectral product variable names."""
+    return list(VARIABLES.get("spectral", ["hs", "tp", "tm01", "dm"]))
+
+
+def forcing_vars() -> list[str]:
+    """WHACS forcing / MDA input variable names."""
+    return list(VARIABLES.get("forcing", ["hs", "tp", "wd", "ds", "zs"]))
+
+
+def mda_inputs() -> list[str]:
+    """Case variables used as MDA/GP subset inputs."""
+    return list(METAMODEL.get("mda_inputs", ["tp", "wd", "ds", "zs"]))
+
+
+def validation_period_var() -> str:
+    """Period variable used for validation comparisons (``tp`` or ``tm01``)."""
+    return str(VALIDATION.get("period_var", "tm01"))
 
 
 def reload() -> dict[str, Any]:
@@ -73,7 +105,7 @@ def reload() -> dict[str, Any]:
 
     global CONFIG, NAME, DESCRIPTION, PATHS, PERIODS, GOALS
     global OFFSHORE_WAVES, ONSHORE_WAVES, BUOYS, OUTPUT_SITES
-    global SIMULATIONS, CALIBRATION, METAMODEL
+    global SIMULATIONS, CALIBRATION, METAMODEL, VARIABLES, VALIDATION
 
     CONFIG = _load_json(CASE_CONFIG_PATH)
     NAME = CONFIG.get("name", "")
@@ -88,6 +120,8 @@ def reload() -> dict[str, Any]:
     SIMULATIONS = CONFIG.get("simulations", {})
     CALIBRATION = CONFIG.get("calibration", {})
     METAMODEL = CONFIG.get("metamodel", {})
+    VARIABLES = CONFIG.get("variables", {})
+    VALIDATION = CONFIG.get("validation", {})
     return CONFIG
 
 
@@ -287,8 +321,16 @@ __all__ = [
     "SIMULATIONS",
     "CALIBRATION",
     "METAMODEL",
+    "VARIABLES",
+    "VALIDATION",
+    "bulk_vars",
+    "forcing_vars",
+    "mda_inputs",
     "resolve",
     "reload",
+    "snapwave_var_map",
+    "spectral_vars",
+    "validation_period_var",
     "get_buoy_coordinates",
     "get_buoy_aliases",
     "list_institutions",
