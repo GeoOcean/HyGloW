@@ -6,17 +6,17 @@ The file bundles three things:
 1. Small **I/O helpers** (``read_polygon_from_shp_file``,
    ``write_polygon_vertices_to_txt``).
 2. **Output-sites helpers** (``compute_output_sites``, ``write_output_sites``,
-   ``relabel_output_stations``) that turn the ``output_sites`` section of
+   ``relabel_output_sites``) that turn the ``output_sites`` section of
    ``NorthCarolina.json`` into a SnapWave ``obsfile`` and tag the resulting
-   stations as ``10m_0``, ``20m_65``, ``buoy_41013``, etc.
+   sites as ``10m_0``, ``20m_65``, ``buoy_41013``, etc.
 3. The actual **SnapWave wrappers** —
    :class:`SnapWaveModelWrapper`, :class:`SnapWaveMetaModelWrapper` and
    :class:`SnapWaveDynamicModelWrapper` — inheriting directly from
    :class:`bluemath_tk.wrappers._base_wrappers.BaseModelWrapper`. Each
    ``build_case`` writes ``boundary.txt``, ``enclosure.txt`` and
    ``output_sites.txt``; each ``postprocess_case`` opens
-   ``output_sites.nc`` and re-labels the stations via
-   :func:`relabel_output_stations`.
+   ``output_sites.nc`` and re-labels sites via
+   :func:`relabel_output_sites`.
 """
 
 from __future__ import annotations
@@ -41,6 +41,32 @@ from .contours import get_isobath_points
 
 # ---------------------------------------------------------------------------
 # Geometry I/O helpers (carried over from the toolkit version)
+# ---------------------------------------------------------------------------
+
+_SITE_COORD_RENAMES = {
+    "station_source": "site_source",
+    "station_label": "site_label",
+    "station_depth": "site_depth",
+    "station_x": "site_x",
+    "station_y": "site_y",
+}
+
+
+def normalize_site_dims(ds: xr.Dataset) -> xr.Dataset:
+    """Rename SnapWave ``stations`` dim/coords to ``sites`` (idempotent)."""
+
+    if "stations" in ds.dims and "sites" not in ds.dims:
+        ds = ds.rename({"stations": "sites"})
+    if "site" in ds.dims and "sites" not in ds.dims:
+        ds = ds.rename({"site": "sites"})
+    if "station_name" in ds.coords and "sites" not in ds.coords:
+        ds = ds.assign_coords(sites=ds["station_name"].values)
+    ds = ds.rename({k: v for k, v in _SITE_COORD_RENAMES.items() if k in ds.coords})
+    return ds.drop_vars(["station_name"], errors="ignore")
+
+
+# ---------------------------------------------------------------------------
+# Output-sites helpers
 # ---------------------------------------------------------------------------
 
 
@@ -86,11 +112,6 @@ def write_polygon_vertices_to_txt(
 
     out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return out_path
-
-
-# ---------------------------------------------------------------------------
-# Output-sites helpers
-# ---------------------------------------------------------------------------
 
 
 def _isobath_rows(da: xr.DataArray, specs: list[dict]) -> list[dict]:
@@ -221,39 +242,52 @@ def write_output_sites(
     return txt_path
 
 
-def relabel_output_stations(
+def relabel_output_sites(
     ds: xr.Dataset,
     sites_df: pd.DataFrame,
-    dim: str = "stations",
+    *,
+    snapwave_dim: str = "stations",
 ) -> xr.Dataset:
-    """Override ``station_name`` and add provenance coords on a SnapWave history.
+    """Label the ``sites`` dimension on a SnapWave history NetCDF.
 
-    Row order in ``sites_df`` must match the SnapWave ``stations`` dimension.
-    Adds/overwrites:
+    SnapWave writes the site index as ``stations``; this renames it to ``sites``
+    and adds provenance coordinates. Row order in ``sites_df`` must match the
+    original SnapWave site order.
 
-    * ``station_name``   — ``source_id`` (e.g. ``10m_0``, ``buoy_41013``)
-    * ``station_source`` — ``"isobath"`` or ``"buoy"``
-    * ``station_label``  — ``source_label`` (isobath name or buoy role)
-    * ``station_depth``  — ``depth`` (NaN where missing)
+    Coordinates added on ``sites``:
+
+    * ``sites``       — site id (e.g. ``10m_0``, ``buoy_41013``)
+    * ``site_source`` — ``"isobath"`` or ``"buoy"``
+    * ``site_label``  — isobath name or buoy role
+    * ``site_depth``  — depth (NaN where missing)
     """
 
-    n_ds = ds.sizes.get(dim)
+    n_ds = ds.sizes.get(snapwave_dim)
     if n_ds != len(sites_df):
         raise ValueError(
-            f"size mismatch: dataset has {n_ds} {dim!r} but sites_df has "
+            f"size mismatch: dataset has {n_ds} {snapwave_dim!r} but sites_df has "
             f"{len(sites_df)} rows"
         )
+
+    if snapwave_dim != "sites":
+        ds = ds.rename({snapwave_dim: "sites"})
+    ds = ds.rename({k: v for k, v in _SITE_COORD_RENAMES.items() if k in ds.coords})
+
     return ds.assign_coords(
         {
-            "station_name": ((dim,), sites_df["source_id"].to_numpy()),
-            "station_source": ((dim,), sites_df["source"].to_numpy()),
-            "station_label": ((dim,), sites_df["source_label"].to_numpy()),
-            "station_depth": (
-                (dim,),
+            "sites": sites_df["source_id"].to_numpy(),
+            "site_source": (("sites",), sites_df["source"].to_numpy()),
+            "site_label": (("sites",), sites_df["source_label"].to_numpy()),
+            "site_depth": (
+                ("sites",),
                 pd.to_numeric(sites_df["depth"], errors="coerce").to_numpy(float),
             ),
         }
-    )
+    ).drop_vars(["station_name"], errors="ignore")
+
+
+# Backward-compatible alias (deprecated)
+relabel_output_stations = relabel_output_sites
 
 
 # ---------------------------------------------------------------------------
@@ -270,7 +304,7 @@ class SnapWaveModelWrapper(BaseModelWrapper):
     drops ``boundary.txt``, ``enclosure.txt`` and ``output_sites.txt`` into
     the case directory; postprocess subclasses then read
     ``output_sites.nc`` (filename derived from the configured ``output_sites.filename``
-    with the extension swapped to ``.nc``) and relabel its stations.
+    with the extension swapped to ``.nc``) and relabel its sites.
     """
 
     default_parameters: dict = {}
@@ -420,12 +454,12 @@ class SnapWaveMetaModelWrapper(SnapWaveModelWrapper):
         ds = ds.assign_coords(
             {
                 "goal": (("case_num",), [int(case_context["goal"])]),
-                "station_x": (("stations",), ds.station_x.values),
-                "station_y": (("stations",), ds.station_y.values),
+                "site_x": (("stations",), ds.station_x.values),
+                "site_y": (("stations",), ds.station_y.values),
                 "point_zb": (("stations",), ds.point_zb.values),
             }
         )
-        return relabel_output_stations(ds, self.output_sites_df)
+        return relabel_output_sites(ds, self.output_sites_df)
 
     def join_postprocessed_files(self, postprocessed_files: list[xr.Dataset]) -> str:
         """Merge cases per goal and write one NetCDF per goal to ``output_dir``."""
@@ -465,12 +499,12 @@ class SnapWaveDynamicModelWrapper(SnapWaveModelWrapper):
         )
         ds = ds.assign_coords(
             {
-                "station_x": (("stations",), ds.station_x.values),
-                "station_y": (("stations",), ds.station_y.values),
+                "site_x": (("stations",), ds.station_x.values),
+                "site_y": (("stations",), ds.station_y.values),
                 "point_zb": (("stations",), ds.point_zb.values),
             }
         )
-        return relabel_output_stations(ds, self.output_sites_df)
+        return relabel_output_sites(ds, self.output_sites_df)
 
     def join_postprocessed_files(
         self, postprocessed_files: list[xr.Dataset]
