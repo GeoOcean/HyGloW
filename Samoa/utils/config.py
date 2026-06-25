@@ -30,8 +30,9 @@ OFFSHORE_WAVES: list[dict] = CONFIG.get("offshore_waves", [])
 ONSHORE_WAVES: str = CONFIG["onshore_waves"]
 OUTPUT_SITES: dict[str, Any] = CONFIG.get(
     "output_sites", {}
-)  # optional; unused in current Samoa.json
+)  # legacy; unused — see OUTPUT_SITES_CONFIG
 SIMULATIONS: dict[str, Any] = CONFIG.get("simulations", {})
+OUTPUT_SITES_CONFIG: dict[str, Any] = SIMULATIONS.get("output_sites_config", {})
 METAMODEL: dict[str, Any] = CONFIG.get("metamodel", {})
 
 
@@ -45,6 +46,7 @@ def reload() -> dict[str, Any]:
         ONSHORE_WAVES, \
         OUTPUT_SITES, \
         SIMULATIONS, \
+        OUTPUT_SITES_CONFIG, \
         METAMODEL
 
     CONFIG = _load()
@@ -53,6 +55,7 @@ def reload() -> dict[str, Any]:
     ONSHORE_WAVES = CONFIG["onshore_waves"]
     OUTPUT_SITES = CONFIG.get("output_sites", {})
     SIMULATIONS = CONFIG.get("simulations", {})
+    OUTPUT_SITES_CONFIG = SIMULATIONS.get("output_sites_config", {})
     METAMODEL = CONFIG.get("metamodel", {})
     return CONFIG
 

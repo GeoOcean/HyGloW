@@ -13,19 +13,10 @@ import shapely
 import xarray as xr
 from shapely.geometry import MultiPolygon, Polygon
 from utils import observations as obs
-from utils.config import PATHS, resolve
+from utils.config import OUTPUT_SITES_CONFIG, PATHS, resolve
 
 _X_NAMES = ("x", "lon", "longitude")
 _Y_NAMES = ("y", "lat", "latitude")
-
-DEFAULT_OUTPUT_SITES: dict[str, Any] = {
-    "isobaths": [
-        {"name": "10m", "level": -10.0, "spacing": 0.003, "longest_only": True},
-        {"name": "20m", "level": -20.0, "spacing": 0.003, "longest_only": True},
-    ],
-    "include_buoys": True,
-    "clip_to_aoi": True,
-}
 
 
 def _xy_names(da: xr.DataArray) -> tuple[str, str]:
@@ -39,14 +30,39 @@ def _xy_names(da: xr.DataArray) -> tuple[str, str]:
     return x, y
 
 
+def _resample_polyline(pts: np.ndarray, spacing: float) -> np.ndarray:
+    seg = np.diff(pts, axis=0)
+    seg_len = np.linalg.norm(seg, axis=1)
+    total = float(seg_len.sum())
+    if total <= 0.0:
+        return np.empty((0, 2), dtype=float)
+
+    cum = np.concatenate(([0.0], np.cumsum(seg_len)))
+    ds = np.arange(0.0, total, float(spacing))
+    if ds.size == 0 or (total - ds[-1]) > 0.25 * spacing:
+        ds = np.append(ds, total)
+
+    out = np.empty((ds.size, 2), dtype=float)
+    for k, d in enumerate(ds):
+        i = int(np.searchsorted(cum, d, side="right") - 1)
+        i = max(0, min(i, len(seg_len) - 1))
+        t = 0.0 if seg_len[i] == 0 else (d - cum[i]) / seg_len[i]
+        out[k] = pts[i] * (1.0 - t) + pts[i + 1] * t
+    return out
+
+
 def get_isobath_points(
     da: xr.DataArray,
     level: float,
     *,
     spacing: float | None = None,
-    longest_only: bool = False,
+    aoi_polygon: Polygon | MultiPolygon | None = None,
 ) -> np.ndarray:
-    """Return ``(N, 2)`` array of ``(x, y)`` points along an isobath."""
+    """Return ``(N, 2)`` array of ``(lon, lat)`` points along an isobath.
+
+    When ``aoi_polygon`` is given, only contour segments with at least one
+    point inside the AoI are kept (multi-island areas keep every island).
+    """
 
     xname, yname = _xy_names(da)
     x = da[xname].values
@@ -67,8 +83,12 @@ def get_isobath_points(
     if not segments:
         return np.empty((0, 2), dtype=float)
 
-    if longest_only:
-        segments = [max(segments, key=_polyline_length)]
+    if aoi_polygon is not None:
+        segments = [
+            s
+            for s in segments
+            if shapely.contains_xy(aoi_polygon, s[:, 0], s[:, 1]).any()
+        ]
 
     if spacing is not None and spacing > 0:
         segments = [_resample_polyline(s, spacing) for s in segments]
@@ -85,8 +105,11 @@ def compute_output_sites(
 ) -> pd.DataFrame:
     """Build output sites from isobaths (topobathy) and onshore observation buoys."""
 
-    cfg = {**DEFAULT_OUTPUT_SITES, **dict(config or {})}
+    cfg = {**OUTPUT_SITES_CONFIG, **dict(config or {})}
     rows: list[dict[str, Any]] = []
+
+    if bool(cfg.get("clip_to_aoi", True)) and aoi_polygon is None:
+        aoi_polygon = gpd.read_file(resolve(PATHS["aoi_file"])).geometry.iloc[0]
 
     iso_specs = cfg.get("isobaths") or []
     if iso_specs:
@@ -100,7 +123,7 @@ def compute_output_sites(
                 topobathy,
                 level=float(spec["level"]),
                 spacing=spec.get("spacing"),
-                longest_only=bool(spec.get("longest_only", False)),
+                aoi_polygon=aoi_polygon,
             )
             for i, (lon, lat) in enumerate(pts):
                 rows.append(
@@ -157,28 +180,3 @@ def write_output_sites(
     path = resolve(out_dir) / filename
     path.parent.mkdir(parents=True, exist_ok=True)
     np.savetxt(path, df[["lon", "lat"]].to_numpy(float), fmt="%.8f")
-
-
-def _polyline_length(pts: np.ndarray) -> float:
-    return float(np.sum(np.linalg.norm(np.diff(pts, axis=0), axis=1)))
-
-
-def _resample_polyline(pts: np.ndarray, spacing: float) -> np.ndarray:
-    seg = np.diff(pts, axis=0)
-    seg_len = np.linalg.norm(seg, axis=1)
-    total = float(seg_len.sum())
-    if total <= 0.0:
-        return np.empty((0, 2), dtype=float)
-
-    cum = np.concatenate(([0.0], np.cumsum(seg_len)))
-    ds = np.arange(0.0, total, float(spacing))
-    if ds.size == 0 or (total - ds[-1]) > 0.25 * spacing:
-        ds = np.append(ds, total)
-
-    out = np.empty((ds.size, 2), dtype=float)
-    for k, d in enumerate(ds):
-        i = int(np.searchsorted(cum, d, side="right") - 1)
-        i = max(0, min(i, len(seg_len) - 1))
-        t = 0.0 if seg_len[i] == 0 else (d - cum[i]) / seg_len[i]
-        out[k] = pts[i] * (1.0 - t) + pts[i + 1] * t
-    return out

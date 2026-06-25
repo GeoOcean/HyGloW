@@ -16,12 +16,32 @@ from bluemath_tk.wrappers._utils_wrappers import write_array_in_file
 from shapely.geometry import MultiPolygon, Polygon
 from utils.contours import compute_output_sites, write_output_sites
 
-_SITE_COORD_RENAMES = {
+# SnapWave outputs → HyGloW variable names
+POINT_VARS = {
+    "point_hm0": "hs",
+    "point_tp": "tp",
+    "point_wavdir": "dir",
+}
+
+# LHS parameters (see utils.simulations) → stored as ``{name}_forcing``
+FORCING_VARS = ("tp", "dir", "spr", "wl")
+
+# sites_df column → coordinate on the ``sites`` dimension
+SITE_COORDS = {
+    "sites": "source_id",
+    "site_source": "source",
+    "site_label": "source_label",
+    "site_depth": "depth",
+    "site_longitude": "lon",
+    "site_latitude": "lat",
+}
+
+_STATION_RENAMES = {
     "station_source": "site_source",
     "station_label": "site_label",
     "station_depth": "site_depth",
 }
-_DROP_SITE_COORDS = ("station_x", "station_y", "site_x", "site_y", "station_name")
+_DROP_NATIVE = ("station_x", "station_y", "station_name", "point_zb", "goal")
 
 
 def read_polygon_from_shp_file(
@@ -60,34 +80,52 @@ def write_polygon_vertices_to_txt(
     return out_path
 
 
-def relabel_output_sites(
-    ds: xr.Dataset,
-    sites_df: pd.DataFrame,
-    *,
-    snapwave_dim: str = "stations",
-) -> xr.Dataset:
-    n_ds = ds.sizes.get(snapwave_dim)
-    if n_ds != len(sites_df):
+def _site_coord_values(sites_df: pd.DataFrame, col: str) -> np.ndarray:
+    if col == "depth":
+        return pd.to_numeric(sites_df[col], errors="coerce").to_numpy(float)
+    return sites_df[col].to_numpy()
+
+
+def _label_sites(ds: xr.Dataset, sites_df: pd.DataFrame) -> xr.Dataset:
+    dim = "stations" if "stations" in ds.dims else "sites"
+    if ds.sizes[dim] != len(sites_df):
         raise ValueError(
-            f"size mismatch: dataset has {n_ds} {snapwave_dim!r} but sites_df has "
-            f"{len(sites_df)} rows"
+            f"size mismatch: dataset has {ds.sizes[dim]} {dim!r} "
+            f"but sites_df has {len(sites_df)} rows"
         )
 
-    if snapwave_dim != "sites":
-        ds = ds.rename({snapwave_dim: "sites"})
-    ds = ds.rename({k: v for k, v in _SITE_COORD_RENAMES.items() if k in ds.coords})
+    if dim != "sites":
+        ds = ds.rename({dim: "sites"})
+    ds = ds.rename({k: v for k, v in _STATION_RENAMES.items() if k in ds.coords})
 
-    return ds.assign_coords(
-        {
-            "sites": sites_df["source_id"].to_numpy(),
-            "site_source": (("sites",), sites_df["source"].to_numpy()),
-            "site_label": (("sites",), sites_df["source_label"].to_numpy()),
-            "site_depth": (
-                ("sites",),
-                pd.to_numeric(sites_df["depth"], errors="coerce").to_numpy(float),
-            ),
-        }
-    ).drop_vars(list(_DROP_SITE_COORDS), errors="ignore")
+    coords = {
+        name: (("sites",), _site_coord_values(sites_df, col))
+        for name, col in SITE_COORDS.items()
+    }
+    return ds.assign_coords(coords).drop_vars(list(_DROP_NATIVE), errors="ignore")
+
+
+def _standardize_postprocessed(
+    ds: xr.Dataset,
+    case_context: dict,
+    sites_df: pd.DataFrame,
+) -> xr.Dataset:
+    """Outputs, site metadata, and LHS forcing only."""
+
+    ds = _label_sites(ds, sites_df)
+    ds = ds.rename({k: v for k, v in POINT_VARS.items() if k in ds.data_vars})
+
+    keep_vars = set(POINT_VARS.values()) | {f"{k}_forcing" for k in FORCING_VARS}
+    drop_vars = [v for v in ds.data_vars if v not in keep_vars]
+    ds = ds.drop_vars(drop_vars, errors="ignore")
+
+    for key in FORCING_VARS:
+        if key in case_context:
+            ds[f"{key}_forcing"] = (("case_num",), [float(case_context[key])])
+
+    keep_coords = set(SITE_COORDS) | {"case_num"}
+    ds = ds.drop_vars([c for c in ds.coords if c not in keep_coords], errors="ignore")
+    return ds
 
 
 class SnapWaveMetaModelWrapper(BaseModelWrapper):
@@ -208,6 +246,7 @@ class SnapWaveMetaModelWrapper(BaseModelWrapper):
                 cases_status[os.path.basename(case_dir)] = "RUNNING"
             else:
                 cases_status[os.path.basename(case_dir)] = "FINISHED"
+
         return super().monitor_cases(
             cases_status=cases_status, value_counts=value_counts
         )
@@ -223,31 +262,19 @@ class SnapWaveMetaModelWrapper(BaseModelWrapper):
             .rename({"time": "case_num"})
         )
         ds["case_num"] = [case_num]
-        ds = ds.assign_coords(
-            {
-                "goal": (("case_num",), [int(case_context["goal"])]),
-                "point_zb": (("stations",), ds.point_zb.values),
-            }
-        )
-        return relabel_output_sites(ds, self.output_sites_df)
+        return _standardize_postprocessed(ds, case_context, self.output_sites_df)
 
     def join_postprocessed_files(self, postprocessed_files: list[xr.Dataset]) -> str:
         self.logger.info("Joining postprocessed files.")
 
         n_goals = len(self.goals_config)
         n_per_goal = len(postprocessed_files) // n_goals
-        params = self.metamodel_parameters
         out_stem = Path(self._sites_txt).stem
 
         for goal in range(n_goals):
             sl = slice(goal * n_per_goal, (goal + 1) * n_per_goal)
-            merged = xr.merge(postprocessed_files[sl]).assign_coords(
-                {
-                    name: (("case_num",), params[name][sl])
-                    for name in ("tp", "wd", "ds", "zs")
-                    if name in params
-                }
+            xr.merge(postprocessed_files[sl]).to_netcdf(
+                os.path.join(self.output_dir, f"{out_stem}_{goal + 1}.nc")
             )
-            merged.to_netcdf(os.path.join(self.output_dir, f"{out_stem}_{goal + 1}.nc"))
 
         return "Done"

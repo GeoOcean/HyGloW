@@ -36,6 +36,32 @@
                 -3.5,
                 3.5
             ]
+        },
+        "output_sites_config": {
+            "isobaths": [
+                {
+                    "name": "5m",
+                    "level": -5.0,
+                    "spacing": 0.1
+                },
+                {
+                    "name": "10m",
+                    "level": -10.0,
+                    "spacing": 0.1
+                },
+                {
+                    "name": "20m",
+                    "level": -20.0,
+                    "spacing": 0.1
+                },
+                {
+                    "name": "50m",
+                    "level": -50.0,
+                    "spacing": 0.1
+                }
+            ],
+            "include_buoys": true,
+            "clip_to_aoi": true
         }
     },
     "metamodel": {
