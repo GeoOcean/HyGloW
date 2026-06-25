@@ -55,3 +55,26 @@ def reload() -> dict[str, Any]:
     SIMULATIONS = CONFIG.get("simulations", {})
     METAMODEL = CONFIG.get("metamodel", {})
     return CONFIG
+
+
+def load_goals(path: str | Path | None = None) -> dict[str, dict[str, Any]]:
+    """Return the ``goals`` mapping from ``simulations.goals_file``."""
+
+    goals_path = resolve(path or SIMULATIONS["goals_file"])
+    with goals_path.open(encoding="utf-8") as f:
+        return json.load(f)["goals"]
+
+
+def goals_for_snapwave(
+    goals: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """``{id: {lon, lat, angles}}`` for :class:`SnapWaveMetaModelWrapper`."""
+
+    return {
+        key: {
+            "lon": goal["target"]["longitude"],
+            "lat": goal["target"]["latitude"],
+            "angles": goal["angles"],
+        }
+        for key, goal in goals.items()
+    }

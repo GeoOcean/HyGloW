@@ -17,6 +17,7 @@
     ],
     "onshore_waves": "inputs/LauriBuoys/LauriBuoys_coordinates.json",
     "simulations": {
+        "goals_file": "inputs/goals/Samoa_goals.json",
         "metamodel_templates": "templates-metamodel",
         "dynamic_templates": "templates-dynamic",
         "metamodel_cases": "SnapWave_CASES_Metamodel",
