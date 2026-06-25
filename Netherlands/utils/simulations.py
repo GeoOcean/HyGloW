@@ -63,4 +63,4 @@ def generate_cases(goals_config: dict, num_samples_per_goal: int = 100) -> pd.Da
         .reset_index()
         .rename(columns={"level_0": "goal"})
         .drop(columns=["level_1"])
-    )
+    ), lhs
