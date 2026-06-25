@@ -1,0 +1,41 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "SPC",
+        "recording": "2015-2024",
+        "depth": -93.0,
+        "name": "Savaii closest buoy",
+        "instrument_id": "SAMOA_BUOY_01"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -172.20444,
+          -13.87919
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "SPC",
+        "recording": "2018-2024",
+        "depth": -70.0,
+        "name": "Ameican Samoa east buoy",
+        "instrument_id": "SAMOA_WAVE_01"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -170.51404,
+          -14.25357
+        ]
+      }
+    }
+  ]
+}

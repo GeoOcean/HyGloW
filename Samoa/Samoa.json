@@ -1,0 +1,50 @@
+{
+    "name": "Samoa",
+    "description": "Samoa hybrid wave-downscaling case (SnapWave + GPR metamodel)",
+    "paths": {
+        "aoi_file": "inputs/AoI_Polygons/Samoa_AoI.shp",
+        "topobathy_file": "inputs/GRID/Samoa_300m.tif",
+        "mesh_file": "inputs/GRID/Samoa_mesh.nc"
+    },
+    "offshore_waves": [
+        {
+            "name": "WHACS",
+            "description": "WHACS reanalysis from D. Gutierrez Barcelo (USGS) for Samoa",
+            "remote_url": null,
+            "data_path": "inputs/WHACS/processed/WHACS_Samoa.zarr",
+            "coordinates_path": "inputs/WHACS/Samoa_whacs.gpkg"
+        }
+    ],
+    "onshore_waves": "inputs/LauriBuoys/LauriBuoys_coordinates.json",
+    "simulations": {
+        "metamodel_templates": "templates-metamodel",
+        "dynamic_templates": "templates-dynamic",
+        "metamodel_cases": "SnapWave_CASES_Metamodel",
+        "dynamic_cases": "SnapWave_CASES_Dynamic",
+        "num_samples_per_goal": 500,
+        "bounds": {
+            "tp": [
+                1,
+                15
+            ],
+            "spr": [
+                1,
+                45
+            ],
+            "wl": [
+                -3.5,
+                3.5
+            ]
+        }
+    },
+    "metamodel": {
+        "num_mda_points": 450,
+        "pca_variance": 0.95,
+        "paths": {
+            "mda_dir": "outputs/mda_{num_mda_points}",
+            "pca_dir": "outputs/pca_{num_mda_points}",
+            "gp_dir": "outputs/gp_{num_mda_points}",
+            "spectral_output": "outputs/spectral_metamodel.nc"
+        }
+    }
+}
