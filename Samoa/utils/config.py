@@ -36,30 +36,6 @@ OUTPUT_SITES_CONFIG: dict[str, Any] = SIMULATIONS.get("output_sites_config", {})
 METAMODEL: dict[str, Any] = CONFIG.get("metamodel", {})
 
 
-def reload() -> dict[str, Any]:
-    """Re-read ``Samoa.json`` and refresh module globals."""
-
-    global \
-        CONFIG, \
-        PATHS, \
-        OFFSHORE_WAVES, \
-        ONSHORE_WAVES, \
-        OUTPUT_SITES, \
-        SIMULATIONS, \
-        OUTPUT_SITES_CONFIG, \
-        METAMODEL
-
-    CONFIG = _load()
-    PATHS = CONFIG["paths"]
-    OFFSHORE_WAVES = CONFIG.get("offshore_waves", [])
-    ONSHORE_WAVES = CONFIG["onshore_waves"]
-    OUTPUT_SITES = CONFIG.get("output_sites", {})
-    SIMULATIONS = CONFIG.get("simulations", {})
-    OUTPUT_SITES_CONFIG = SIMULATIONS.get("output_sites_config", {})
-    METAMODEL = CONFIG.get("metamodel", {})
-    return CONFIG
-
-
 def load_goals(path: str | Path | None = None) -> dict[str, dict[str, Any]]:
     """Return the ``goals`` mapping from ``simulations.goals_file``."""
 
@@ -81,3 +57,41 @@ def goals_for_snapwave(
         }
         for key, goal in goals.items()
     }
+
+
+def mda_max_points() -> int:
+    """Largest MDA candidate size (= number of train cases used at full fit)."""
+    candidates = METAMODEL.get("mda_candidates", [])
+    if not candidates:
+        raise ValueError("metamodel.mda_candidates is empty in Samoa.json")
+    return int(candidates[-1])
+
+
+def forcing_columns() -> dict[str, str]:
+    """Map MDA input names to SnapWave case NetCDF forcing variables."""
+    return {name: f"{name}_forcing" for name in METAMODEL["mda_inputs"]}
+
+
+def reload() -> dict[str, Any]:
+    """Re-read ``Samoa.json`` and refresh module globals."""
+
+    global \
+        CONFIG, \
+        PATHS, \
+        OFFSHORE_WAVES, \
+        ONSHORE_WAVES, \
+        OUTPUT_SITES, \
+        SIMULATIONS, \
+        OUTPUT_SITES_CONFIG, \
+        METAMODEL
+
+    CONFIG = _load()
+    PATHS = CONFIG["paths"]
+    OFFSHORE_WAVES = CONFIG.get("offshore_waves", [])
+    ONSHORE_WAVES = CONFIG["onshore_waves"]
+    OUTPUT_SITES = CONFIG.get("output_sites", {})
+    SIMULATIONS = CONFIG.get("simulations", {})
+    OUTPUT_SITES_CONFIG = SIMULATIONS.get("output_sites_config", {})
+    METAMODEL = CONFIG.get("metamodel", {})
+
+    return CONFIG

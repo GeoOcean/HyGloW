@@ -73,11 +73,15 @@
     },
     "metamodel": {
         "mda_candidates": [
+            25,
             50,
-            75,
-            125,
+            100,
+            150,
             200,
+            250,
             300,
+            350,
+            400,
             450
         ],
         "pca_variance": 0.95,
@@ -96,6 +100,9 @@
             "dir_u",
             "dir_v"
         ],
+        "site_filter": {
+            "hs_max": 10.0
+        },
         "validation": {
             "metrics_variables": [
                 "hs",

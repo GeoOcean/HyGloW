@@ -6,6 +6,7 @@ from typing import Any
 
 import geopandas as gpd
 import matplotlib.pyplot as plt
+import numpy as np
 import rioxarray
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
@@ -33,6 +34,20 @@ TYPE_COLORS = {
     "calibration": "#ff7f0e",
     "levels": "#2ca02c",
     "ignore": "#7f7f7f",
+}
+ISOBATH_COLORS = {
+    "5m": "#8dd3c7",
+    "10m": "#1f78b4",
+    "20m": "#33a02c",
+    "50m": "#e31a1c",
+}
+MESH_COLORS = {
+    "Apia": "#9467bd",
+}
+SITE_SOURCE_MARKERS = {
+    "isobath": "o",
+    "mesh": ".",
+    "buoy": "s",
 }
 POINT_MARKERSIZE, POINT_EDGE_WIDTH = 70, 0.6
 POINT_EDGE_COLOR = "white"
@@ -203,3 +218,75 @@ def plot_case_map(
         )
     fig.tight_layout()
     return fig, ax
+
+
+def _site_color(source: str, label: str) -> str:
+    if source == "isobath":
+        return ISOBATH_COLORS.get(str(label), DEFAULT_POINT_COLOR)
+    if source == "mesh":
+        return MESH_COLORS.get(str(label), "#9467bd")
+    if source == "buoy":
+        return TYPE_COLORS.get("validation", DEFAULT_POINT_COLOR)
+    return DEFAULT_POINT_COLOR
+
+
+def plot_validation_sites(
+    lon: np.ndarray,
+    lat: np.ndarray,
+    sources: np.ndarray,
+    labels: np.ndarray,
+    ax: Axes,
+    *,
+    site_ids: np.ndarray | None = None,
+    annotate_buoys: bool = True,
+    markersize_scale: float = 1.0,
+) -> None:
+    """Plot validation output sites on an existing map axes."""
+
+    sources = np.asarray(sources, dtype=str)
+    labels = np.asarray(labels, dtype=str)
+    lon = np.asarray(lon, dtype=float)
+    lat = np.asarray(lat, dtype=float)
+
+    drawn: set[tuple[str, str]] = set()
+    for i in range(len(lon)):
+        source, label = sources[i], labels[i]
+        color = _site_color(source, label)
+        marker = SITE_SOURCE_MARKERS.get(source, "o")
+        size = POINT_MARKERSIZE * (0.35 if source == "mesh" else 1.0) * markersize_scale
+        legend_key = (source, label) if source != "buoy" else ("buoy", "buoy")
+        show_label = legend_key not in drawn
+        if show_label:
+            drawn.add(legend_key)
+        legend = (
+            label
+            if source == "isobath"
+            else ("mesh" if source == "mesh" else "buoy")
+        )
+        ax.scatter(
+            lon[i],
+            lat[i],
+            c=color,
+            marker=marker,
+            s=size,
+            edgecolors=POINT_EDGE_COLOR,
+            linewidths=POINT_EDGE_WIDTH,
+            label=legend if show_label else None,
+            zorder=6 if source == "buoy" else 5,
+        )
+
+    if annotate_buoys and site_ids is not None:
+        for i, site_id in enumerate(np.asarray(site_ids, dtype=str)):
+            if sources[i] != "buoy":
+                continue
+            name = site_id.removeprefix("buoy_")
+            ax.annotate(
+                name,
+                (lon[i], lat[i]),
+                xytext=ANNOTATE_OFFSET,
+                textcoords="offset points",
+                fontsize=ANNOTATE_FONTSIZE,
+                zorder=7,
+            )
+
+    ax.legend(loc="lower left", fontsize=8, framealpha=0.9)
