@@ -12,6 +12,10 @@ Typical notebook flow::
     result = val.validate("1", n=125)   # one size, with data for plotting
     result.plot("10m")                  # one isobath depth
     result.plot_all(variables=["hs"])   # every group
+
+    metrics = val.sweep("1")
+    val.plot_sweep(metrics, by="bulk")           # all sites, all metrics
+    val.plot_sweep_suite(metrics)                # bulk + source + group + …
 """
 
 from __future__ import annotations
@@ -640,6 +644,247 @@ def plot_all_groups(
     ]
 
 
+# ---------------------------------------------------------------------------
+# MDA sweep summary plots
+# ---------------------------------------------------------------------------
+
+SWEEP_STATS = ("bias", "rmse", "r2")
+SWEEP_BY = ("bulk", "source", "group", "label", "buoy")
+
+
+def load_sweep_metrics(goal: str | int) -> pd.DataFrame:
+    """Load ``validation_metrics.csv`` written by :func:`sweep`."""
+    path = validation_metrics_path(goal)
+    if not path.exists():
+        raise FileNotFoundError(f"No sweep metrics at {path}. Run sweep() first.")
+    df = pd.read_csv(path)
+    df["goal"] = df["goal"].astype(str)
+    return df
+
+
+def _filter_sweep(
+    metrics: pd.DataFrame,
+    *,
+    goals: Iterable[str] | None = None,
+    variables: Iterable[str] | None = None,
+) -> pd.DataFrame:
+    df = metrics.copy()
+    df["goal"] = df["goal"].astype(str)
+    if goals is not None:
+        wanted = {str(g) for g in goals}
+        df = df[df["goal"].isin(wanted)]
+    vars_ = _metrics_variables(variables)
+    return df[df["variable"].isin(vars_)].copy()
+
+
+def _weighted_stats(group: pd.DataFrame) -> pd.Series:
+    w = group["n"].to_numpy(dtype=float)
+    if w.sum() <= 0:
+        return pd.Series({s: np.nan for s in SWEEP_STATS} | {"n": 0})
+    return pd.Series(
+        {
+            "bias": float(np.average(group["bias"], weights=w)),
+            "rmse": float(np.average(group["rmse"], weights=w)),
+            "r2": float(np.average(group["r2"], weights=w)),
+            "n": int(w.sum()),
+        }
+    )
+
+
+def aggregate_sweep(
+    metrics: pd.DataFrame,
+    *,
+    by: str = "bulk",
+    goals: Iterable[str] | None = None,
+    variables: Iterable[str] | None = None,
+) -> pd.DataFrame:
+    """Collapse sweep rows for line plots.
+
+    ``by`` options:
+
+    - ``bulk`` — n-weighted mean over all groups
+    - ``source`` — per ``site_source`` (isobath / mesh / buoy)
+    - ``group`` — per validation group (``5m``, ``10m``, ``Apia``, buoy id, …)
+    - ``label`` — per ``site_label``
+    - ``buoy`` — buoy groups only (same granularity as ``group``)
+    """
+    if by not in SWEEP_BY:
+        raise ValueError(f"by must be one of {SWEEP_BY}, got {by!r}")
+
+    df = _filter_sweep(metrics, goals=goals, variables=variables)
+    if df.empty:
+        return df
+
+    if by in ("group", "buoy"):
+        out = df.copy()
+        if by == "buoy":
+            out = out[out["site_source"] == "buoy"]
+        return out.sort_values(["goal", "group", "variable", "mda_candidate"])
+
+    key_cols = {
+        "bulk": ["goal", "mda_candidate", "variable"],
+        "source": ["goal", "mda_candidate", "site_source", "variable"],
+        "label": ["goal", "mda_candidate", "site_label", "variable"],
+    }[by]
+
+    rows: list[dict[str, Any]] = []
+    for keys, group in df.groupby(key_cols, sort=False):
+        keys = keys if isinstance(keys, tuple) else (keys,)
+        row = dict(zip(key_cols, keys, strict=True))
+        row.update(_weighted_stats(group).to_dict())
+        rows.append(row)
+    return pd.DataFrame(rows).sort_values(key_cols)
+
+
+def _sweep_line_color(name: str, source: str = "") -> str:
+    from utils.plotting import DEFAULT_POINT_COLOR, ISOBATH_COLORS, MESH_COLORS
+
+    if name in ISOBATH_COLORS:
+        return ISOBATH_COLORS[name]
+    if name in MESH_COLORS:
+        return MESH_COLORS[name]
+    if source == "buoy" or str(name).startswith("buoy_"):
+        return plt.cm.tab10(abs(hash(name)) % 10)
+    return DEFAULT_POINT_COLOR
+
+
+def _sweep_series_key(row: pd.Series, by: str) -> str:
+    if by == "bulk":
+        return "all sites"
+    if by == "source":
+        return str(row["site_source"])
+    if by == "label":
+        return str(row["site_label"])
+    return str(row["group"])
+
+
+def _sweep_line_label(row: pd.Series, by: str, *, multi_goal: bool) -> str:
+    if by == "bulk":
+        return f"goal {row['goal']}" if multi_goal else "all sites"
+    name = _sweep_series_key(row, by)
+    return f"{name} (goal {row['goal']})" if multi_goal else name
+
+
+def plot_sweep(
+    metrics: pd.DataFrame,
+    *,
+    by: str = "bulk",
+    goals: Iterable[str] | None = None,
+    variables: Iterable[str] | None = None,
+    figsize: tuple[float, float] | None = None,
+    title: str | None = None,
+) -> Figure:
+    """Line plots of bias / RMSE / R² vs MDA size.
+
+    Rows = metrics, columns = variables (hs, tp, dir). One line per series
+    defined by ``by`` (bulk, source, group, label, or buoy).
+    """
+    vars_ = _metrics_variables(variables)
+    agg = aggregate_sweep(metrics, by=by, goals=goals, variables=vars_)
+    if agg.empty:
+        raise ValueError("No sweep data to plot after filtering.")
+
+    multi_goal = agg["goal"].nunique() > 1
+    nrows, ncols = len(SWEEP_STATS), len(vars_)
+    if figsize is None:
+        figsize = (4.2 * ncols, 3.2 * nrows)
+
+    fig, axes = plt.subplots(nrows, ncols, figsize=figsize, sharex=True)
+    if nrows == 1 and ncols == 1:
+        axes = np.array([[axes]])
+    elif nrows == 1:
+        axes = axes.reshape(1, -1)
+    elif ncols == 1:
+        axes = axes.reshape(-1, 1)
+
+    series_cols = {
+        "bulk": ["goal"],
+        "source": ["goal", "site_source"],
+        "label": ["goal", "site_label"],
+        "group": ["goal", "group", "site_source"],
+        "buoy": ["goal", "group"],
+    }[by]
+
+    for i, stat in enumerate(SWEEP_STATS):
+        for j, var in enumerate(vars_):
+            ax = axes[i, j]
+            sub = agg[agg["variable"] == var]
+            for key, grp in sub.groupby(series_cols, sort=False):
+                grp = grp.sort_values("mda_candidate")
+                row0 = grp.iloc[0]
+                label = _sweep_line_label(row0, by, multi_goal=multi_goal)
+                source = str(row0.get("site_source", ""))
+                color = _sweep_line_color(_sweep_series_key(row0, by), source)
+                ax.plot(
+                    grp["mda_candidate"],
+                    grp[stat],
+                    "o-",
+                    lw=1.5,
+                    ms=4,
+                    label=label,
+                    color=color,
+                )
+
+            spec = PARAMETERS[var]
+            if i == 0:
+                ax.set_title(spec["label"])
+            ylab = "R²" if stat == "r2" else f"{stat.upper()} [{spec['units']}]"
+            ax.set_ylabel(ylab)
+            if i == nrows - 1:
+                ax.set_xlabel("MDA train cases")
+
+            if stat == "r2":
+                ax.set_ylim(0, 1.05)
+            ax.grid(True, alpha=0.3)
+
+    handles, labels = axes[0, -1].get_legend_handles_labels()
+    if not handles:
+        for ax in axes[0]:
+            h, lab = ax.get_legend_handles_labels()
+            if h:
+                handles, labels = h, lab
+                break
+    if handles:
+        fig.legend(
+            handles,
+            labels,
+            loc="upper center",
+            ncol=min(4, len(labels)),
+            bbox_to_anchor=(0.5, 1.04),
+            fontsize=8,
+        )
+
+    by_title = {
+        "bulk": "all sites",
+        "source": "by site source",
+        "group": "by group",
+        "label": "by site label",
+        "buoy": "by buoy",
+    }[by]
+    goal_txt = ", ".join(sorted(agg["goal"].unique()))
+    fig.suptitle(
+        title or f"MDA sweep — {by_title} — goal(s) {goal_txt}",
+        fontsize=12,
+    )
+    fig.tight_layout(rect=(0, 0, 1, 0.96))
+    return fig
+
+
+def plot_sweep_suite(
+    metrics: pd.DataFrame,
+    *,
+    goals: Iterable[str] | None = None,
+    variables: Iterable[str] | None = None,
+    by: Iterable[str] | None = None,
+) -> dict[str, Figure]:
+    """One :func:`plot_sweep` figure per grouping mode."""
+    modes = list(by or SWEEP_BY)
+    return {
+        mode: plot_sweep(metrics, by=mode, goals=goals, variables=variables)
+        for mode in modes
+    }
+
+
 __all__ = [
     "LOGGER_NAME",
     "ValidationResult",
@@ -647,12 +892,18 @@ __all__ = [
     "logger",
     "metric_groups",
     "metrics_table",
+    "aggregate_sweep",
+    "load_sweep_metrics",
     "plot_all_groups",
     "plot_group",
     "plot_map",
     "plot_scatter",
+    "plot_sweep",
+    "plot_sweep_suite",
     "sweep",
     "sweep_all",
     "validate",
     "validation_metrics_path",
+    "SWEEP_BY",
+    "SWEEP_STATS",
 ]
