@@ -60,6 +60,13 @@
                     "spacing": 0.1
                 }
             ],
+            "polygons": [
+                {
+                    "name": "Apia",
+                    "file": "inputs/AoI_Polygons/Apia_AoI.shp",
+                    "wet_only": true
+                }
+            ],
             "include_buoys": true,
             "clip_to_aoi": true
         }

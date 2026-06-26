@@ -6,16 +6,16 @@
       "properties": {
         "type": "waves",
         "institution": "SPC",
-        "recording": "2015-2024",
-        "depth": -93.0,
-        "name": "Savaii closest buoy",
-        "instrument_id": "SAMOA_BUOY_01"
+        "recording": "1989-1990",
+        "depth": -80.0,
+        "name": "Savaii - Upolu middle buoy",
+        "instrument_id": "Apolima_Buoy"
       },
       "geometry": {
         "type": "Point",
         "coordinates": [
-          -172.20444,
-          -13.87919
+          -171.22,
+          -14.415
         ]
       }
     },
@@ -24,16 +24,52 @@
       "properties": {
         "type": "waves",
         "institution": "SPC",
-        "recording": "2018-2024",
-        "depth": -70.0,
-        "name": "Ameican Samoa east buoy",
-        "instrument_id": "SAMOA_WAVE_01"
+        "recording": "1989-1990",
+        "depth": -80.0,
+        "name": "Savaii - Upolu middle buoy",
+        "instrument_id": "Apolima_Javi_Buoy"
       },
       "geometry": {
         "type": "Point",
         "coordinates": [
-          -170.51404,
-          -14.25357
+          -172.24003,
+          -13.91735
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "SPC",
+        "recording": "2014-2018",
+        "depth": -75.0,
+        "name": "Ameican Samoa east buoy (Period 1)",
+        "instrument_id": "American_Samoa_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -170.493,
+          -14.265
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "SPC",
+        "recording": "2018-Present",
+        "depth": -70.0,
+        "name": "Ameican Samoa east buoy (Period 2)",
+        "instrument_id": "Aunuu_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -170.5005,
+          -14.2732
         ]
       }
     }

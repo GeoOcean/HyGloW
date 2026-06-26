@@ -97,13 +97,44 @@ def get_isobath_points(
     return np.vstack(segments) if segments else np.empty((0, 2), dtype=float)
 
 
+def get_mesh_nodes_in_polygon(
+    polygon: Polygon | MultiPolygon,
+    mesh: xr.Dataset,
+    *,
+    wet_only: bool = False,
+) -> list[dict[str, Any]]:
+    """Mesh nodes inside ``polygon`` using exact ``mesh2d_node_x/y`` coordinates."""
+
+    lon = mesh["mesh2d_node_x"].values
+    lat = mesh["mesh2d_node_y"].values
+    z = mesh["mesh2d_node_z"].values
+
+    mask = shapely.contains_xy(polygon, lon, lat)
+    if wet_only:
+        mask &= z < 0.0
+
+    idx = np.flatnonzero(mask)
+    return [
+        {
+            "lon": float(lon[i]),
+            "lat": float(lat[i]),
+            "depth": float(z[i]),
+            "node_index": int(i),
+        }
+        for i in idx
+    ]
+
+
 def compute_output_sites(
     *,
     config: Mapping[str, Any] | None = None,
     topobathy: xr.DataArray | None = None,
     aoi_polygon: Polygon | MultiPolygon | None = None,
 ) -> pd.DataFrame:
-    """Build output sites from isobaths (topobathy) and onshore observation buoys."""
+    """Build output sites from isobaths, mesh polygons, and buoys.
+
+    Row order (SnapWave matches by position): isobaths → polygons → buoys.
+    """
 
     cfg = {**OUTPUT_SITES_CONFIG, **dict(config or {})}
     rows: list[dict[str, Any]] = []
@@ -137,6 +168,41 @@ def compute_output_sites(
                         "name": None,
                     }
                 )
+
+    poly_specs = cfg.get("polygons") or []
+    if poly_specs:
+        mesh = xr.open_dataset(resolve(PATHS["mesh_file"]))
+        try:
+            for spec in poly_specs:
+                name = spec.get("name")
+                if not name:
+                    raise ValueError("Each entry in `polygons` must have a `name`.")
+                poly_path = spec.get("file")
+                if not poly_path:
+                    raise ValueError(
+                        f"Polygon {name!r} is missing `file` in output_sites_config."
+                    )
+                polygon = gpd.read_file(resolve(poly_path)).geometry.iloc[0]
+                nodes = get_mesh_nodes_in_polygon(
+                    polygon,
+                    mesh,
+                    wet_only=bool(spec.get("wet_only", False)),
+                )
+                for node in nodes:
+                    i = node["node_index"]
+                    rows.append(
+                        {
+                            "lon": node["lon"],
+                            "lat": node["lat"],
+                            "source": "mesh",
+                            "source_id": f"{name}_{i}",
+                            "source_label": name,
+                            "depth": node["depth"],
+                            "name": None,
+                        }
+                    )
+        finally:
+            mesh.close()
 
     if cfg.get("include_buoys", True):
         for iid, site in obs.get_coordinates(role=cfg.get("buoy_role")).items():
