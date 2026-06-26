@@ -72,13 +72,41 @@
         }
     },
     "metamodel": {
-        "num_mda_points": 450,
+        "mda_candidates": [
+            50,
+            75,
+            125,
+            200,
+            300,
+            450
+        ],
         "pca_variance": 0.95,
+        "mda_inputs": [
+            "tp",
+            "dir",
+            "spr",
+            "wl"
+        ],
+        "directional_variables": [
+            "dir"
+        ],
+        "vars_to_stack": [
+            "hs",
+            "tp",
+            "dir_u",
+            "dir_v"
+        ],
+        "validation": {
+            "metrics_variables": [
+                "hs",
+                "tp",
+                "dir"
+            ]
+        },
         "paths": {
-            "mda_dir": "outputs/mda_{num_mda_points}",
-            "pca_dir": "outputs/pca_{num_mda_points}",
-            "gp_dir": "outputs/gp_{num_mda_points}",
-            "spectral_output": "outputs/spectral_metamodel.nc"
+            "mda_dir": "outputs/{goal}/mda_{mda_candidate}",
+            "pca_dir": "outputs/{goal}/pca_{mda_candidate}",
+            "gp_dir": "outputs/{goal}/gp_{mda_candidate}"
         }
     }
 }
