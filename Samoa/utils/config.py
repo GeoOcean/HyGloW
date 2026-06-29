@@ -72,6 +72,43 @@ def forcing_columns() -> dict[str, str]:
     return {name: f"{name}_forcing" for name in METAMODEL["mda_inputs"]}
 
 
+def get_offshore_wave(name: str | None = None) -> dict[str, Any]:
+    """Return one ``offshore_waves`` entry (first if ``name`` is omitted)."""
+
+    if not OFFSHORE_WAVES:
+        raise ValueError("offshore_waves is empty in Samoa.json")
+    if name is None:
+        return OFFSHORE_WAVES[0]
+    key = name.casefold()
+    for entry in OFFSHORE_WAVES:
+        if entry.get("name", "").casefold() == key:
+            return entry
+    names = [e.get("name") for e in OFFSHORE_WAVES]
+    raise KeyError(f"Unknown offshore wave {name!r}; available: {names}")
+
+
+def offshore_catalog_key(entry: dict[str, Any]) -> str:
+    """Goals hindcast key for a processed offshore-waves entry (e.g. ``whacs``)."""
+
+    return str(entry["name"]).casefold()
+
+
+def open_offshore_waves(
+    name: str | None = None,
+    *,
+    entry: dict[str, Any] | None = None,
+) -> "xr.Dataset":
+    """Open the processed offshore-waves zarr for ``name`` (or ``entry``)."""
+
+    import xarray as xr
+
+    spec = entry or get_offshore_wave(name)
+    path = spec.get("data_path")
+    if not path:
+        raise ValueError(f"offshore wave {spec.get('name')!r} has no data_path")
+    return xr.open_zarr(resolve(path))
+
+
 def reload() -> dict[str, Any]:
     """Re-read ``Samoa.json`` and refresh module globals."""
 

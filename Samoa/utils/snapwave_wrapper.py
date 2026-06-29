@@ -1,4 +1,4 @@
-"""SnapWave metamodel wrapper for the Samoa case."""
+"""SnapWave wrappers for the Samoa case."""
 
 from __future__ import annotations
 
@@ -110,7 +110,7 @@ def _standardize_postprocessed(
     case_context: dict,
     sites_df: pd.DataFrame,
 ) -> xr.Dataset:
-    """Outputs, site metadata, and LHS forcing only."""
+    """Outputs, site metadata, and optional forcing scalars."""
 
     ds = _label_sites(ds, sites_df)
     ds = ds.rename({k: v for k, v in POINT_VARS.items() if k in ds.data_vars})
@@ -119,13 +119,55 @@ def _standardize_postprocessed(
     drop_vars = [v for v in ds.data_vars if v not in keep_vars]
     ds = ds.drop_vars(drop_vars, errors="ignore")
 
+    row_dim = "time" if "time" in ds.dims else "case_num"
     for key in FORCING_VARS:
         if key in case_context:
-            ds[f"{key}_forcing"] = (("case_num",), [float(case_context[key])])
+            ds[f"{key}_forcing"] = ((row_dim,), [float(case_context[key])])
 
-    keep_coords = set(SITE_COORDS) | {"case_num"}
+    keep_coords = set(SITE_COORDS) | {row_dim}
     ds = ds.drop_vars([c for c in ds.coords if c not in keep_coords], errors="ignore")
     return ds
+
+
+OFFSHORE_GOAL_DIM = "goal"
+_OFFSHORE_BOUNDARY_VARS = ("hs", "tp", "dir", "spr")
+
+
+def _ensure_offshore_tp(ds: xr.Dataset) -> xr.Dataset:
+    if "tp" not in ds and "fp" in ds:
+        return ds.assign(tp=1.0 / ds["fp"])
+    return ds
+
+
+def offshore_boundary_parameters(offshore: xr.Dataset) -> dict[str, list]:
+    """Processed offshore waves → SnapWave dynamic template inputs.
+
+    Expects a goal-aligned zarr (dims ``time`` × ``goal``) with bulk variables
+    ``hs``, ``tp``, ``dir``, ``spr``. The ``goal`` index must match SnapWave
+    goal ids (1…N); ``seapoint`` may be present as metadata only.
+    """
+
+    offshore = _ensure_offshore_tp(offshore)
+    if OFFSHORE_GOAL_DIM not in offshore.dims:
+        raise ValueError(
+            f"offshore waves must have a {OFFSHORE_GOAL_DIM!r} dimension; "
+            f"got dims {dict(offshore.sizes)}"
+        )
+    missing = [v for v in _OFFSHORE_BOUNDARY_VARS if v not in offshore]
+    if missing:
+        raise ValueError(f"offshore waves missing variables: {missing}")
+
+    goal_ids = sorted(int(g) for g in offshore[OFFSHORE_GOAL_DIM].values)
+    offshore = offshore.sel({OFFSHORE_GOAL_DIM: goal_ids})
+
+    n_time = offshore.sizes["time"]
+    return {
+        "hs_goals": [offshore.hs.isel(time=i).values.tolist() for i in range(n_time)],
+        "tp_goals": [offshore.tp.isel(time=i).values.tolist() for i in range(n_time)],
+        "wd_goals": [offshore.dir.isel(time=i).values.tolist() for i in range(n_time)],
+        "ds_goals": [offshore.spr.isel(time=i).values.tolist() for i in range(n_time)],
+        "tref": pd.to_datetime(offshore.time.values).strftime("%Y%m%d %H%M%S").tolist(),
+    }
 
 
 class SnapWaveMetaModelWrapper(BaseModelWrapper):
@@ -278,3 +320,26 @@ class SnapWaveMetaModelWrapper(BaseModelWrapper):
             )
 
         return "Done"
+
+
+class SnapWaveDynamicModelWrapper(SnapWaveMetaModelWrapper):
+    """SnapWave dynamic cases — one run per offshore-waves timestep."""
+
+    def postprocess_case(
+        self, case_num: int, case_dir: str, case_context: dict
+    ) -> xr.Dataset:
+        self.logger.info(f"[{case_num}]: Postprocessing case {case_num} in {case_dir}.")
+        ds = (
+            xr.open_dataset(os.path.join(case_dir, self._sites_nc))
+            .drop_dims(["runtime"])
+            .drop_vars(["crs", "station_id"], errors="ignore")
+        )
+
+        return _standardize_postprocessed(ds, case_context, self.output_sites_df)
+
+    def join_postprocessed_files(
+        self, postprocessed_files: list[xr.Dataset]
+    ) -> xr.Dataset:
+        self.logger.info("Joining postprocessed files along time.")
+
+        return xr.concat(postprocessed_files, dim="time")
