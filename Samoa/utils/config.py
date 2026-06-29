@@ -28,9 +28,7 @@ CONFIG = _load()
 PATHS: dict[str, Any] = CONFIG["paths"]
 OFFSHORE_WAVES: list[dict] = CONFIG.get("offshore_waves", [])
 ONSHORE_WAVES: str = CONFIG["onshore_waves"]
-OUTPUT_SITES: dict[str, Any] = CONFIG.get(
-    "output_sites", {}
-)  # legacy; unused — see OUTPUT_SITES_CONFIG
+OUTPUT_SITES: dict[str, Any] = CONFIG.get("output_sites", {})
 SIMULATIONS: dict[str, Any] = CONFIG.get("simulations", {})
 OUTPUT_SITES_CONFIG: dict[str, Any] = SIMULATIONS.get("output_sites_config", {})
 METAMODEL: dict[str, Any] = CONFIG.get("metamodel", {})

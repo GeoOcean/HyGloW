@@ -1,4 +1,13 @@
-"""SnapWave wrappers for the Samoa case."""
+"""SnapWave case wrappers for Samoa.
+
+:class:`SnapWaveMetaModelWrapper` — LHS propagation cases (``case_num`` dim,
+one NetCDF per goal).
+
+:class:`SnapWaveDynamicModelWrapper` — offshore-waves forcing (``time`` dim,
+concatenated time series).
+
+Both produce site-labelled outputs ``hs``, ``tp``, ``dir`` on ``sites``.
+"""
 
 from __future__ import annotations
 
@@ -16,17 +25,16 @@ from bluemath_tk.wrappers._utils_wrappers import write_array_in_file
 from shapely.geometry import MultiPolygon, Polygon
 from utils.contours import compute_output_sites, write_output_sites
 
-# SnapWave outputs → HyGloW variable names
+# SnapWave history NetCDF → HyGloW names
 POINT_VARS = {
     "point_hm0": "hs",
     "point_tp": "tp",
     "point_wavdir": "dir",
 }
 
-# LHS parameters (see utils.simulations) → stored as ``{name}_forcing``
+# Metamodel LHS forcing stored as ``{name}_forcing`` on postprocessed output
 FORCING_VARS = ("tp", "dir", "spr", "wl")
 
-# sites_df column → coordinate on the ``sites`` dimension
 SITE_COORDS = {
     "sites": "source_id",
     "site_source": "source",
@@ -109,17 +117,17 @@ def _standardize_postprocessed(
     ds: xr.Dataset,
     case_context: dict,
     sites_df: pd.DataFrame,
+    *,
+    row_dim: str,
 ) -> xr.Dataset:
-    """Outputs, site metadata, and optional forcing scalars."""
+    """Site labels, HyGloW variable names, optional scalar forcing."""
 
     ds = _label_sites(ds, sites_df)
     ds = ds.rename({k: v for k, v in POINT_VARS.items() if k in ds.data_vars})
 
     keep_vars = set(POINT_VARS.values()) | {f"{k}_forcing" for k in FORCING_VARS}
-    drop_vars = [v for v in ds.data_vars if v not in keep_vars]
-    ds = ds.drop_vars(drop_vars, errors="ignore")
+    ds = ds.drop_vars([v for v in ds.data_vars if v not in keep_vars], errors="ignore")
 
-    row_dim = "time" if "time" in ds.dims else "case_num"
     for key in FORCING_VARS:
         if key in case_context:
             ds[f"{key}_forcing"] = ((row_dim,), [float(case_context[key])])
@@ -129,49 +137,16 @@ def _standardize_postprocessed(
     return ds
 
 
-OFFSHORE_GOAL_DIM = "goal"
-_OFFSHORE_BOUNDARY_VARS = ("hs", "tp", "dir", "spr")
+def _read_sites_nc(case_dir: str, sites_nc: str) -> xr.Dataset:
+    return (
+        xr.open_dataset(os.path.join(case_dir, sites_nc))
+        .drop_dims(["runtime"])
+        .drop_vars(["crs", "station_id"], errors="ignore")
+    )
 
 
-def _ensure_offshore_tp(ds: xr.Dataset) -> xr.Dataset:
-    if "tp" not in ds and "fp" in ds:
-        return ds.assign(tp=1.0 / ds["fp"])
-    return ds
-
-
-def offshore_boundary_parameters(offshore: xr.Dataset) -> dict[str, list]:
-    """Processed offshore waves → SnapWave dynamic template inputs.
-
-    Expects a goal-aligned zarr (dims ``time`` × ``goal``) with bulk variables
-    ``hs``, ``tp``, ``dir``, ``spr``. The ``goal`` index must match SnapWave
-    goal ids (1…N); ``seapoint`` may be present as metadata only.
-    """
-
-    offshore = _ensure_offshore_tp(offshore)
-    if OFFSHORE_GOAL_DIM not in offshore.dims:
-        raise ValueError(
-            f"offshore waves must have a {OFFSHORE_GOAL_DIM!r} dimension; "
-            f"got dims {dict(offshore.sizes)}"
-        )
-    missing = [v for v in _OFFSHORE_BOUNDARY_VARS if v not in offshore]
-    if missing:
-        raise ValueError(f"offshore waves missing variables: {missing}")
-
-    goal_ids = sorted(int(g) for g in offshore[OFFSHORE_GOAL_DIM].values)
-    offshore = offshore.sel({OFFSHORE_GOAL_DIM: goal_ids})
-
-    n_time = offshore.sizes["time"]
-    return {
-        "hs_goals": [offshore.hs.isel(time=i).values.tolist() for i in range(n_time)],
-        "tp_goals": [offshore.tp.isel(time=i).values.tolist() for i in range(n_time)],
-        "wd_goals": [offshore.dir.isel(time=i).values.tolist() for i in range(n_time)],
-        "ds_goals": [offshore.spr.isel(time=i).values.tolist() for i in range(n_time)],
-        "tref": pd.to_datetime(offshore.time.values).strftime("%Y%m%d %H%M%S").tolist(),
-    }
-
-
-class SnapWaveMetaModelWrapper(BaseModelWrapper):
-    """LHS-driven SnapWave metamodel cases."""
+class SnapWaveModelWrapper(BaseModelWrapper):
+    """Shared SnapWave setup: AoI, goals, output sites, case I/O."""
 
     default_parameters: dict = {}
     available_launchers = {
@@ -293,21 +268,22 @@ class SnapWaveMetaModelWrapper(BaseModelWrapper):
             cases_status=cases_status, value_counts=value_counts
         )
 
+
+class SnapWaveMetaModelWrapper(SnapWaveModelWrapper):
+    """LHS SnapWave cases — postprocess to ``case_num``, one NetCDF per goal."""
+
     def postprocess_case(
         self, case_num: int, case_dir: str, case_context: dict
     ) -> xr.Dataset:
         self.logger.info(f"[{case_num}]: Postprocessing case {case_num} in {case_dir}.")
-        ds = (
-            xr.open_dataset(os.path.join(case_dir, self._sites_nc))
-            .drop_dims(["runtime"])
-            .drop_vars(["crs", "station_id"], errors="ignore")
-            .rename({"time": "case_num"})
-        )
+        ds = _read_sites_nc(case_dir, self._sites_nc).rename({"time": "case_num"})
         ds["case_num"] = [case_num]
-        return _standardize_postprocessed(ds, case_context, self.output_sites_df)
+        return _standardize_postprocessed(
+            ds, case_context, self.output_sites_df, row_dim="case_num"
+        )
 
     def join_postprocessed_files(self, postprocessed_files: list[xr.Dataset]) -> str:
-        self.logger.info("Joining postprocessed files.")
+        self.logger.info("Joining postprocessed files per goal.")
 
         n_goals = len(self.goals_config)
         n_per_goal = len(postprocessed_files) // n_goals
@@ -322,24 +298,20 @@ class SnapWaveMetaModelWrapper(BaseModelWrapper):
         return "Done"
 
 
-class SnapWaveDynamicModelWrapper(SnapWaveMetaModelWrapper):
-    """SnapWave dynamic cases — one run per offshore-waves timestep."""
+class SnapWaveDynamicModelWrapper(SnapWaveModelWrapper):
+    """Offshore-forced SnapWave cases — postprocess with ``time``, concat on time."""
 
     def postprocess_case(
         self, case_num: int, case_dir: str, case_context: dict
     ) -> xr.Dataset:
         self.logger.info(f"[{case_num}]: Postprocessing case {case_num} in {case_dir}.")
-        ds = (
-            xr.open_dataset(os.path.join(case_dir, self._sites_nc))
-            .drop_dims(["runtime"])
-            .drop_vars(["crs", "station_id"], errors="ignore")
+        ds = _read_sites_nc(case_dir, self._sites_nc)
+        return _standardize_postprocessed(
+            ds, case_context, self.output_sites_df, row_dim="time"
         )
-
-        return _standardize_postprocessed(ds, case_context, self.output_sites_df)
 
     def join_postprocessed_files(
         self, postprocessed_files: list[xr.Dataset]
     ) -> xr.Dataset:
         self.logger.info("Joining postprocessed files along time.")
-
         return xr.concat(postprocessed_files, dim="time")

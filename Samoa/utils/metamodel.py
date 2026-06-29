@@ -1,7 +1,19 @@
-"""Samoa metamodel: MDA → per-variable PCA → stacked GPR.
+"""GPR metamodel on SnapWave LHS cases (MDA → per-variable PCA → stacked GP).
 
-mm.fit("1")
-mm.fit_all()
+Training
+--------
+:func:`fit` / :func:`fit_all` fit MDA, PCA and GP per goal and save under
+``outputs/goal_XX/``.
+
+Prediction
+----------
+:func:`predict_cases` — metamodel estimate at chosen ``case_num`` indices.
+:func:`holdout_snapwave_cases` — SnapWave reference for the same indices.
+
+Holdout validation (metamodel vs SnapWave on MDA test cases) is in
+:mod:`utils.validation`. Dynamic validation (reconstructed metamodel vs
+offshore-driven SnapWave) will use :func:`utils.validation.compare` on
+``time``-indexed datasets.
 """
 
 from __future__ import annotations
@@ -87,6 +99,8 @@ def goal_output_dir(goal: str | int) -> Path:
 
 
 def cases_path(goal: str | int) -> Path:
+    """Postprocessed SnapWave LHS cases for one goal (``output_sites_{goal}.nc``)."""
+
     return resolve(SIMULATIONS["metamodel_cases"]) / f"output_sites_{int(goal)}.nc"
 
 
@@ -112,12 +126,6 @@ def pca_model_path(goal: str | int, n: int, variable: str, variance: float) -> P
         _model_dir("pca", goal, n)
         / f"pca_{variable}_{_variance_tag(variance)}_model.pkl"
     )
-
-
-def model_path(kind: str, goal: str | int, n: int) -> Path:
-    if kind != "gp":
-        raise ValueError("Use pca_model_path() for PCA")
-    return gp_model_path(goal, n)
 
 
 def missing_model_paths(
@@ -184,6 +192,7 @@ def removed_sites(goal: str | int) -> list[str]:
 
 
 def load_cases_goal(goal: str | int, *, apply_site_filter: bool = True) -> xr.Dataset:
+    """SnapWave LHS cases for one goal (``case_num`` × ``sites``)."""
     from bluemath_tk.core.operations import get_uv_components
 
     ds = xr.open_dataset(cases_path(goal))
@@ -210,6 +219,7 @@ def load_split(goal: str | int) -> tuple[np.ndarray, np.ndarray]:
 
 
 def load_context(goal: str | int) -> dict[str, Any]:
+    """MDA model and train/test index split for one goal."""
     from bluemath_tk.core.io import load_model
 
     goal = str(goal)
@@ -488,6 +498,7 @@ def predict_cases(
     models: dict[str, Any] | None = None,
     pca_variance: PcaVariance = None,
 ) -> xr.Dataset:
+    """Metamodel prediction at ``case_idx`` (same coords as SnapWave cases)."""
     from bluemath_tk.core.operations import get_degrees_from_uv
 
     goal = str(goal)
@@ -533,7 +544,8 @@ def predict_cases(
     )
 
 
-def truth_cases(goal: str | int, case_idx: Iterable[int]) -> xr.Dataset:
+def holdout_snapwave_cases(goal: str | int, case_idx: Iterable[int]) -> xr.Dataset:
+    """SnapWave reference for holdout ``case_idx`` (subset of :func:`load_cases_goal`)."""
     case_idx = np.asarray(list(case_idx), dtype=int)
     cases = load_cases_goal(goal)
     return cases.isel(case_num=case_idx)[["hs", "tp", "dir"]].assign(
@@ -559,6 +571,7 @@ __all__ = [
     "forcing_dataframe",
     "goal_output_dir",
     "gp_model_path",
+    "holdout_snapwave_cases",
     "load_cases_goal",
     "load_context",
     "load_models",
@@ -566,7 +579,6 @@ __all__ = [
     "logger",
     "mda_path",
     "missing_model_paths",
-    "model_path",
     "models_exist",
     "pca_model_path",
     "pca_variables",
@@ -576,6 +588,5 @@ __all__ = [
     "resolve_pca_variance",
     "resolved_pca_variances",
     "split_path",
-    "truth_cases",
     "vars_to_predict",
 ]

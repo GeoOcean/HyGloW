@@ -1,26 +1,29 @@
-"""Propagation holdout validation for Samoa metamodels.
+"""Compare wave datasets: metrics and plots.
 
-Validation **loads** saved models only — run :func:`utils.metamodel.fit` first.
+Holdout metamodel validation
+----------------------------
+:func:`validate` / :func:`sweep` — metamodel vs SnapWave on MDA **test** cases
+(requires :func:`utils.metamodel.fit` first).
 
-Typical notebook flow::
+Generic comparison
+------------------
+:func:`compare` — any aligned estimate/reference pair (row dim ``case_num`` or
+``time``, shared ``sites``). Use for dynamic validation (reconstructed metamodel
+vs offshore-driven SnapWave) once reconstruction is implemented.
+
+Typical holdout notebook flow::
 
     from utils import metamodel as mm
     from utils import validation as val
 
-    mm.fit("1")                         # train once
-    metrics = val.sweep("1")            # metrics for all MDA sizes → CSV
-    result = val.validate("1", n=125)   # one size, with data for plotting
-    result.plot("10m")                  # one isobath depth
-    result.plot_all(variables=["hs"])   # every group
-
+    mm.fit("1")
     metrics = val.sweep("1")
-    val.plot_sweep(metrics, by="bulk")           # all sites, all metrics
-    val.plot_sweep_suite(metrics)                # bulk + source + group + …
+    result = val.validate("1", n=125)
+    result.plot("10m")
 """
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
@@ -42,10 +45,6 @@ from utils.config import (
 
 _log_dir = resolve("outputs/logs")
 _log_dir.mkdir(parents=True, exist_ok=True)
-_makedirs = os.makedirs
-os.makedirs = lambda path, *args, **kwargs: (
-    _makedirs(path, exist_ok=True) if path else None
-)
 
 LOGGER_NAME = "Samoa.validation"
 logger = get_file_logger(
@@ -55,8 +54,6 @@ logger = get_file_logger(
     console=True,
     console_level="INFO",
 )
-
-os.makedirs = _makedirs
 
 PARAMETERS: dict[str, dict[str, Any]] = {
     "hs": {"label": "Hs", "units": "m", "circular": False},
@@ -253,19 +250,15 @@ def validation_metrics_path(goal: str | int) -> Path:
 
 
 @dataclass
-class ValidationResult:
-    """Metamodel vs SnapWave on held-out test cases for one goal and MDA size."""
+class ComparisonResult:
+    """Aligned estimate vs reference with site-group metrics and plot helpers."""
 
-    goal: str
-    n: int
     estimate: xr.Dataset
     reference: xr.Dataset
     metrics: pd.DataFrame
-    n_test_cases: int
     _groups: list[tuple[str, str, list[str]]] = field(repr=False)
 
     def site_ids(self, group: str) -> list[str]:
-        """Site ids for a validation group (e.g. ``'10m'``, ``'Apia'``, buoy id)."""
         return _find_group(self.estimate, group)[2]
 
     def plot(
@@ -273,9 +266,10 @@ class ValidationResult:
         group: str,
         *,
         variables: Iterable[str] | None = None,
+        estimate_label: str = "Estimate",
+        reference_label: str = "Reference",
         **kwargs: Any,
     ) -> Figure:
-        """Map + density scatters for one group."""
         name, _, site_ids = _find_group(self.estimate, group)
         return plot_group(
             self.estimate,
@@ -283,11 +277,12 @@ class ValidationResult:
             name,
             site_ids,
             variables=variables,
+            estimate_label=estimate_label,
+            reference_label=reference_label,
             **kwargs,
         )
 
     def plot_map(self, group: str, **kwargs: Any) -> tuple[Figure, plt.Axes]:
-        """Site map for one group."""
         name, _, site_ids = _find_group(self.estimate, group)
         return plot_map(self.estimate, site_ids, group_name=name, **kwargs)
 
@@ -296,9 +291,10 @@ class ValidationResult:
         group: str,
         *,
         variables: Iterable[str] | None = None,
+        estimate_label: str = "Estimate",
+        reference_label: str = "Reference",
         **kwargs: Any,
     ) -> Figure:
-        """Density scatters only (no map) for one group."""
         name, _, site_ids = _find_group(self.estimate, group)
         return plot_scatter(
             self.estimate,
@@ -306,6 +302,8 @@ class ValidationResult:
             name,
             site_ids,
             variables=variables,
+            estimate_label=estimate_label,
+            reference_label=reference_label,
             **kwargs,
         )
 
@@ -314,9 +312,10 @@ class ValidationResult:
         *,
         variables: Iterable[str] | None = None,
         groups: Iterable[str] | None = None,
+        estimate_label: str = "Estimate",
+        reference_label: str = "Reference",
         **kwargs: Any,
     ) -> list[Figure]:
-        """One figure per group (optionally filtered by name)."""
         active = self._groups
         if groups is not None:
             wanted = set(groups)
@@ -328,31 +327,124 @@ class ValidationResult:
                 name,
                 site_ids,
                 variables=variables,
+                estimate_label=estimate_label,
+                reference_label=reference_label,
                 **kwargs,
             )
             for name, _, site_ids in active
         ]
 
 
-def _pair(
+@dataclass
+class HoldoutValidationResult(ComparisonResult):
+    """Holdout metamodel validation for one goal and MDA train size."""
+
+    goal: str = ""
+    mda_candidate: int = 0
+    n_test_cases: int = 0
+
+    @property
+    def n(self) -> int:
+        """Alias for :attr:`mda_candidate` (MDA train size)."""
+        return self.mda_candidate
+
+    def plot(
+        self,
+        group: str,
+        *,
+        variables: Iterable[str] | None = None,
+        estimate_label: str = "Metamodel",
+        reference_label: str = "SnapWave",
+        **kwargs: Any,
+    ) -> Figure:
+        return super().plot(
+            group,
+            variables=variables,
+            estimate_label=estimate_label,
+            reference_label=reference_label,
+            **kwargs,
+        )
+
+    def plot_scatter(
+        self,
+        group: str,
+        *,
+        variables: Iterable[str] | None = None,
+        estimate_label: str = "Metamodel",
+        reference_label: str = "SnapWave",
+        **kwargs: Any,
+    ) -> Figure:
+        return super().plot_scatter(
+            group,
+            variables=variables,
+            estimate_label=estimate_label,
+            reference_label=reference_label,
+            **kwargs,
+        )
+
+    def plot_all(
+        self,
+        *,
+        variables: Iterable[str] | None = None,
+        groups: Iterable[str] | None = None,
+        estimate_label: str = "Metamodel",
+        reference_label: str = "SnapWave",
+        **kwargs: Any,
+    ) -> list[Figure]:
+        return super().plot_all(
+            variables=variables,
+            groups=groups,
+            estimate_label=estimate_label,
+            reference_label=reference_label,
+            **kwargs,
+        )
+
+
+# Backward-compatible alias
+ValidationResult = HoldoutValidationResult
+
+
+def _holdout_pair(
     goal: str,
-    n: int,
+    mda_candidate: int,
     *,
     context: dict[str, Any] | None = None,
     models: dict[str, Any] | None = None,
     pca_variance: mm.PcaVariance = None,
 ) -> tuple[xr.Dataset, xr.Dataset, int]:
-    """Load models and return estimate, reference, n_test on holdout cases."""
+    """Metamodel estimate and SnapWave reference on MDA test cases."""
     if context is None:
         context = mm.load_context(goal)
     test_idx = context["test_idx"]
     if models is None:
-        models = mm.load_models(goal, n, pca_variance=pca_variance)
+        models = mm.load_models(goal, mda_candidate, pca_variance=pca_variance)
     estimate = mm.predict_cases(
-        goal, n, test_idx, models=models, pca_variance=pca_variance
+        goal, mda_candidate, test_idx, models=models, pca_variance=pca_variance
     )
-    reference = mm.truth_cases(goal, test_idx)
+    reference = mm.holdout_snapwave_cases(goal, test_idx)
     return estimate, reference, len(test_idx)
+
+
+def compare(
+    estimate: xr.Dataset,
+    reference: xr.Dataset,
+    *,
+    variables: Iterable[str] | None = None,
+    estimate_label: str = "Estimate",
+    reference_label: str = "Reference",
+) -> ComparisonResult:
+    """Metrics and plot helpers for any aligned estimate/reference datasets."""
+    table = metrics_table(estimate, reference, variables=variables)
+    if estimate_label != "Estimate" or reference_label != "Reference":
+        table = table.copy()
+        table["estimate_label"] = estimate_label
+        table["reference_label"] = reference_label
+    return ComparisonResult(
+        estimate=estimate,
+        reference=reference,
+        metrics=table,
+        _groups=metric_groups(estimate),
+    )
 
 
 def _tag_metrics(
@@ -376,11 +468,11 @@ def validate(
     *,
     variables: Iterable[str] | None = None,
     pca_variance: mm.PcaVariance = None,
-) -> ValidationResult:
-    """Validate one MDA size on holdout cases (loads saved models only)."""
+) -> HoldoutValidationResult:
+    """Holdout validation for one goal and MDA train size (loads saved models)."""
     goal = str(goal)
     n = int(n)
-    estimate, reference, n_test = _pair(goal, n, pca_variance=pca_variance)
+    estimate, reference, n_test = _holdout_pair(goal, n, pca_variance=pca_variance)
     table = _tag_metrics(
         metrics_table(estimate, reference, variables=variables),
         goal=goal,
@@ -388,9 +480,9 @@ def validate(
         n_test=n_test,
         pca_variance=pca_variance,
     )
-    return ValidationResult(
+    return HoldoutValidationResult(
         goal=goal,
-        n=n,
+        mda_candidate=n,
         estimate=estimate,
         reference=reference,
         metrics=table,
@@ -415,7 +507,7 @@ def sweep(
     frames: list[pd.DataFrame] = []
     for n in cand:
         logger.info("Goal %s: validating n=%d", goal, n)
-        estimate, reference, n_test = _pair(
+        estimate, reference, n_test = _holdout_pair(
             goal, n, context=context, pca_variance=pca_variance
         )
         frames.append(
@@ -482,8 +574,8 @@ def _scatter_panel(
     reference: np.ndarray,
     variable: str,
     *,
-    estimate_label: str = "Metamodel",
-    reference_label: str = "SnapWave",
+    estimate_label: str = "Estimate",
+    reference_label: str = "Reference",
     cmap: str = "viridis",
 ) -> None:
     spec = PARAMETERS[variable]
@@ -544,8 +636,8 @@ def plot_scatter(
     site_ids: list[str],
     *,
     variables: Iterable[str] | None = None,
-    estimate_label: str = "Metamodel",
-    reference_label: str = "SnapWave",
+    estimate_label: str = "Estimate",
+    reference_label: str = "Reference",
     figsize: tuple[float, float] = (12, 4),
     cmap: str = "viridis",
 ) -> Figure:
@@ -608,8 +700,8 @@ def plot_group(
     site_ids: list[str],
     *,
     variables: Iterable[str] | None = None,
-    estimate_label: str = "Metamodel",
-    reference_label: str = "SnapWave",
+    estimate_label: str = "Estimate",
+    reference_label: str = "Reference",
     figsize: tuple[float, float] = (14, 9),
     cmap: str = "viridis",
 ) -> Figure:
@@ -918,7 +1010,10 @@ def plot_sweep_suite(
 
 __all__ = [
     "LOGGER_NAME",
+    "ComparisonResult",
+    "HoldoutValidationResult",
     "ValidationResult",
+    "compare",
     "compute_metrics",
     "logger",
     "metric_groups",
