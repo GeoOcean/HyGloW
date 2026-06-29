@@ -1,22 +1,14 @@
-"""Samoa metamodel training (MDA → PCA → GPR per goal).
+"""Samoa metamodel: MDA → per-variable PCA → stacked GPR.
 
-Typical notebook flow::
-
-    from utils import metamodel as mm
-
-    mm.fit("1")          # one goal, all ``mda_candidates`` from config
-    mm.fit_all()         # every goal
-
-Models are written under ``outputs/goal_{NN}/``. Validation (:mod:`utils.validation`)
-loads these pickles only — it never retrains.
+mm.fit("1")
+mm.fit_all()
 """
 
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Literal
 
 import numpy as np
 import pandas as pd
@@ -31,23 +23,58 @@ from utils.config import (
     resolve,
 )
 
-_log_dir = resolve("outputs/logs")
-_log_dir.mkdir(parents=True, exist_ok=True)
-_makedirs = os.makedirs
-os.makedirs = lambda path, *args, **kwargs: (
-    _makedirs(path, exist_ok=True) if path else None
-)
-
 LOGGER_NAME = "Samoa.metamodel"
 logger = get_file_logger(
     LOGGER_NAME,
-    logs_path=str(resolve("outputs/logs/metamodel.log")),
+    logs_path=str(resolve("logs/metamodel.log")),
     level="INFO",
     console=True,
     console_level="INFO",
 )
 
-os.makedirs = _makedirs
+PcaVariance = float | dict[str, float] | None
+VarSpec = Literal["raw"] | dict[str, Any]
+
+
+class ModelsNotFittedError(FileNotFoundError):
+    """PCA/GP pickles missing for the requested goal, n and variance."""
+
+
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+
+
+def vars_to_predict() -> dict[str, VarSpec]:
+    return METAMODEL["vars_to_predict"]
+
+
+def _variance_tag(variance: float) -> str:
+    return f"{variance:g}"
+
+
+def resolve_pca_variance(variable: str, override: PcaVariance = None) -> float:
+    spec = vars_to_predict()[variable]
+    if spec == "raw":
+        raise ValueError(f"{variable!r} is raw")
+    if isinstance(override, dict) and variable in override:
+        return float(override[variable])
+    if isinstance(override, (int, float)):
+        return float(override)
+    return float(spec["pca_variance"])
+
+
+def pca_variables(override: PcaVariance = None) -> list[tuple[str, float, list[str]]]:
+    """(name, variance, vars_to_stack) in config order."""
+    return [
+        (name, resolve_pca_variance(name, override), spec["vars_to_stack"])
+        for name, spec in vars_to_predict().items()
+        if spec != "raw"
+    ]
+
+
+def resolved_pca_variances(override: PcaVariance = None) -> dict[str, float]:
+    return {name: var for name, var, _ in pca_variables(override)}
 
 
 # ---------------------------------------------------------------------------
@@ -56,14 +83,11 @@ os.makedirs = _makedirs
 
 
 def goal_output_dir(goal: str | int) -> Path:
-    """``outputs/goal_{NN}/`` for one goal."""
     return resolve(f"outputs/goal_{int(goal):02d}")
 
 
 def cases_path(goal: str | int) -> Path:
-    """SnapWave metamodel cases NetCDF for one goal."""
-    cases_dir = SIMULATIONS["metamodel_cases"]
-    return resolve(cases_dir) / f"output_sites_{int(goal)}.nc"
+    return resolve(SIMULATIONS["metamodel_cases"]) / f"output_sites_{int(goal)}.nc"
 
 
 def mda_path(goal: str | int) -> Path:
@@ -74,40 +98,73 @@ def split_path(goal: str | int) -> Path:
     return goal_output_dir(goal) / "split.json"
 
 
-def model_path(kind: str, goal: str | int, mda_candidate: int) -> Path:
-    """PCA or GP pickle for one goal and MDA size ``n``."""
+def _model_dir(kind: str, goal: str | int, n: int) -> Path:
     template = METAMODEL["paths"][f"{kind}_dir"]
+    return resolve(template.format(goal=f"goal_{int(goal):02d}", mda_candidate=n))
+
+
+def gp_model_path(goal: str | int, n: int) -> Path:
+    return _model_dir("gp", goal, n) / "gp_model.pkl"
+
+
+def pca_model_path(goal: str | int, n: int, variable: str, variance: float) -> Path:
     return (
-        resolve(
-            template.format(goal=f"goal_{int(goal):02d}", mda_candidate=mda_candidate)
-        )
-        / f"{kind}_model.pkl"
+        _model_dir("pca", goal, n)
+        / f"pca_{variable}_{_variance_tag(variance)}_model.pkl"
     )
 
 
+def model_path(kind: str, goal: str | int, n: int) -> Path:
+    if kind != "gp":
+        raise ValueError("Use pca_model_path() for PCA")
+    return gp_model_path(goal, n)
+
+
+def missing_model_paths(
+    goal: str | int, n: int, *, pca_variance: PcaVariance = None
+) -> list[Path]:
+    missing = []
+    if not gp_model_path(goal, n).exists():
+        missing.append(gp_model_path(goal, n))
+    for name, variance, _ in pca_variables(pca_variance):
+        p = pca_model_path(goal, n, name, variance)
+        if not p.exists():
+            missing.append(p)
+    return missing
+
+
 # ---------------------------------------------------------------------------
-# Data loading
+# Cases & split
 # ---------------------------------------------------------------------------
 
 
-def _hs_max_threshold() -> float:
-    return float(METAMODEL.get("site_filter", {}).get("hs_max", 10.0))
+def _site_filter() -> dict[str, float]:
+    return {k: float(v) for k, v in METAMODEL.get("site_filter", {}).items()}
 
 
-def detect_removed_sites(
-    cases: xr.Dataset,
-    *,
-    hs_max: float | None = None,
-) -> list[str]:
-    """Sites whose peak Hs over all cases exceeds ``hs_max`` (unphysical SnapWave)."""
-    limit = _hs_max_threshold() if hs_max is None else float(hs_max)
-    peak_hs = cases["hs"].max("case_num")
-    bad = peak_hs.where(peak_hs > limit, drop=True)
-    return [str(s) for s in bad.sites.values]
+def detect_removed_sites(cases: xr.Dataset) -> list[str]:
+    """Sites failing ``site_filter`` rules in ``Samoa.json`` (e.g. hs_max, tp_min)."""
+    bad: set[str] = set()
+    filt = _site_filter()
+
+    if "hs_max" in filt:
+        peak_hs = cases["hs"].max("case_num")
+        bad.update(
+            str(s)
+            for s in peak_hs.where(peak_hs > filt["hs_max"], drop=True).sites.values
+        )
+
+    if "tp_min" in filt:
+        min_tp = cases["tp"].min("case_num")
+        bad.update(
+            str(s)
+            for s in min_tp.where(min_tp < filt["tp_min"], drop=True).sites.values
+        )
+
+    return sorted(bad)
 
 
 def drop_sites(cases: xr.Dataset, site_ids: Iterable[str]) -> xr.Dataset:
-    """Drop sites by id; no-op when ``site_ids`` is empty."""
     remove = {str(s) for s in site_ids}
     if not remove:
         return cases
@@ -121,14 +178,12 @@ def _read_split(goal: str | int) -> dict[str, Any]:
 
 
 def removed_sites(goal: str | int) -> list[str]:
-    """Sites excluded from PCA/validation for this goal (from ``split.json``)."""
     if not split_path(goal).exists():
         return []
     return list(_read_split(goal).get("removed_sites", []))
 
 
 def load_cases_goal(goal: str | int, *, apply_site_filter: bool = True) -> xr.Dataset:
-    """Load propagated cases, add direction UV, and drop flagged sites."""
     from bluemath_tk.core.operations import get_uv_components
 
     ds = xr.open_dataset(cases_path(goal))
@@ -140,31 +195,26 @@ def load_cases_goal(goal: str | int, *, apply_site_filter: bool = True) -> xr.Da
 
 
 def forcing_dataframe(cases: xr.Dataset) -> pd.DataFrame:
-    """Forcing table with MDA input column names (``tp``, ``dir``, …)."""
     cols = forcing_columns()
-    inputs = METAMODEL["mda_inputs"]
     df = cases[list(cols.values())].to_dataframe()
-    df.columns = inputs
+    df.columns = METAMODEL["mda_inputs"]
     return df
 
 
 def load_split(goal: str | int) -> tuple[np.ndarray, np.ndarray]:
-    """Train and test case indices from a previous MDA fit."""
     split = _read_split(goal)
-    train_idx = np.asarray(split["train_idx"], dtype=int)
-    test_idx = np.asarray(split["test_idx"], dtype=int)
-    return train_idx, test_idx
+    return (
+        np.asarray(split["train_idx"], dtype=int),
+        np.asarray(split["test_idx"], dtype=int),
+    )
 
 
 def load_context(goal: str | int) -> dict[str, Any]:
-    """Load saved MDA and train/test split (no fitting)."""
     from bluemath_tk.core.io import load_model
 
     goal = str(goal)
     if not mda_path(goal).exists() or not split_path(goal).exists():
-        raise FileNotFoundError(
-            f"Missing MDA for goal {goal!r}. Run mm.fit() or mm.fit_mda() first."
-        )
+        raise FileNotFoundError(f"Missing MDA for goal {goal!r}. Run mm.fit() first.")
     train_idx, test_idx = load_split(goal)
     return {
         "mda": load_model(mda_path(goal)),
@@ -178,30 +228,37 @@ def load_context(goal: str | int) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def models_exist(goal: str | int, mda_candidate: int) -> bool:
-    """True when both PCA and GP pickles exist for this goal / ``n``."""
-    return (
-        model_path("pca", goal, mda_candidate).exists()
-        and model_path("gp", goal, mda_candidate).exists()
-    )
+def models_exist(goal: str | int, n: int, *, pca_variance: PcaVariance = None) -> bool:
+    return not missing_model_paths(goal, n, pca_variance=pca_variance)
 
 
-def require_models(goal: str | int, mda_candidate: int) -> None:
-    if not models_exist(goal, mda_candidate):
-        raise FileNotFoundError(
-            f"Missing PCA/GP for goal {goal!r}, n={mda_candidate}. Run mm.fit() first."
+def require_models(
+    goal: str | int, n: int, *, pca_variance: PcaVariance = None
+) -> None:
+    missing = missing_model_paths(goal, n, pca_variance=pca_variance)
+    if missing:
+        raise ModelsNotFittedError(
+            f"Models not fitted: goal={goal!r}, n={n}, "
+            f"pca_variance={resolved_pca_variances(pca_variance)}. Missing:\n"
+            + "\n".join(f"  {p}" for p in missing)
         )
 
 
-def load_models(goal: str | int, mda_candidate: int) -> dict[str, Any]:
-    """Load saved MDA, PCA and GP for one goal and candidate size."""
+def load_models(
+    goal: str | int, n: int, *, pca_variance: PcaVariance = None
+) -> dict[str, Any]:
     from bluemath_tk.core.io import load_model
 
-    require_models(goal, mda_candidate)
+    require_models(goal, n, pca_variance=pca_variance)
+    pcas = {
+        name: load_model(pca_model_path(goal, n, name, var))
+        for name, var, _ in pca_variables(pca_variance)
+    }
     return {
         "mda": load_model(mda_path(goal)),
-        "pca": load_model(model_path("pca", goal, mda_candidate)),
-        "gp": load_model(model_path("gp", goal, mda_candidate)),
+        "gp": load_model(gp_model_path(goal, n)),
+        "pcas": pcas,
+        "pca_variances": resolved_pca_variances(pca_variance),
     }
 
 
@@ -217,49 +274,43 @@ def _goal_ids(goals: Iterable[str | int] | None = None) -> list[str]:
 
 
 def fit_mda(
-    goal: str | int,
-    *,
-    force_retrain: bool = False,
+    goal: str | int, *, force_retrain: bool = False
 ) -> tuple[Any, np.ndarray, np.ndarray]:
-    """Fit (or load) MDA with ``mda_max_points()`` centers; return train/test indices."""
-
     from bluemath_tk.core.io import load_model
     from bluemath_tk.datamining.mda import MDA
 
     goal = str(goal)
-    path = mda_path(goal)
-    split_file = split_path(goal)
+    path, split_file = mda_path(goal), split_path(goal)
 
     if not force_retrain and path.exists() and split_file.exists():
         mda = load_model(path)
         train_idx, test_idx = load_split(goal)
-        n_removed = len(removed_sites(goal))
         logger.info(
-            "Goal %s: loaded MDA (%d train, %d test, %d sites removed)",
+            "Goal %s: loaded MDA (%d train, %d test)",
             goal,
             len(train_idx),
             len(test_idx),
-            n_removed,
         )
         return mda, train_idx, test_idx
 
-    raw_cases = load_cases_goal(goal, apply_site_filter=False)
-    dropped = detect_removed_sites(raw_cases)
-    cases = drop_sites(raw_cases, dropped)
+    raw = load_cases_goal(goal, apply_site_filter=False)
+    dropped = detect_removed_sites(raw)
+    cases = drop_sites(raw, dropped)
     if dropped:
         logger.warning(
-            "Goal %s: removing %d site(s) with Hs > %.1f m: %s",
+            "Goal %s: removed %d site(s) (site_filter=%s): %s",
             goal,
             len(dropped),
-            _hs_max_threshold(),
+            _site_filter(),
             ", ".join(dropped),
         )
 
-    forcing = forcing_dataframe(cases)
     num_centers = mda_max_points()
-
     mda = MDA(num_centers=num_centers)
-    mda.fit(forcing, directional_variables=METAMODEL["directional_variables"])
+    mda.fit(
+        forcing_dataframe(cases),
+        directional_variables=METAMODEL["mda_directional_variables"],
+    )
 
     train_idx = np.asarray(mda.centroid_real_indices, dtype=int)
     all_idx = set(range(cases.sizes["case_num"]))
@@ -274,89 +325,103 @@ def fit_mda(
                 "test_idx": test_idx.tolist(),
                 "num_centers": num_centers,
                 "removed_sites": dropped,
-                "site_filter": {"hs_max": _hs_max_threshold()},
+                "site_filter": _site_filter(),
             },
             f,
             indent=2,
         )
-
     logger.info(
-        "Goal %s: MDA fitted with %d centers (%d train, %d test, %d sites removed)",
-        goal,
-        num_centers,
-        len(train_idx),
-        len(test_idx),
-        len(dropped),
+        "Goal %s: MDA fitted (%d train, %d test)", goal, len(train_idx), len(test_idx)
     )
     return mda, train_idx, test_idx
 
 
+def _stack_pcs(pcas: dict[str, Any]) -> pd.DataFrame:
+    frames = []
+    for name, _ in vars_to_predict().items():
+        if name not in pcas:
+            continue
+        df = pcas[name].pcs_df.copy()
+        df.columns = [f"{name}__{c}" for c in df.columns]
+        frames.append(df)
+    return pd.concat(frames, axis=1)
+
+
+def _split_pcs(pcs: np.ndarray, pcas: dict[str, Any]) -> dict[str, np.ndarray]:
+    blocks, offset = {}, 0
+    for name, _ in vars_to_predict().items():
+        if name not in pcas:
+            continue
+        k = pcas[name].pcs_df.shape[1]
+        blocks[name] = pcs[:, offset : offset + k]
+        offset += k
+    return blocks
+
+
 def fit_models(
     goal: str | int,
-    mda_candidate: int,
+    n: int,
     *,
     mda: Any | None = None,
     train_idx: np.ndarray | None = None,
     force_retrain: bool = False,
     gp_epochs: int = 1000,
+    pca_variance: PcaVariance = None,
 ) -> dict[str, Any]:
-    """Train (or load) PCA + GPR using the first ``mda_candidate`` MDA train cases."""
-
-    from bluemath_tk.core.io import load_model
     from bluemath_tk.datamining.pca import PCA
     from bluemath_tk.interpolation.gps import ExactGPInterpolation
 
-    goal = str(goal)
-    mda_candidate = int(mda_candidate)
-    candidates = [int(n) for n in METAMODEL["mda_candidates"]]
-    if mda_candidate not in candidates:
-        raise ValueError(f"{mda_candidate} not in mda_candidates {candidates}")
-    if mda_candidate > mda_max_points():
-        raise ValueError(
-            f"mda_candidate={mda_candidate} exceeds mda_max_points={mda_max_points()}"
-        )
+    goal, n = str(goal), int(n)
+    if n not in METAMODEL["mda_candidates"]:
+        raise ValueError(f"{n} not in mda_candidates")
+    if n > mda_max_points():
+        raise ValueError(f"n={n} exceeds mda_max_points={mda_max_points()}")
 
-    pca_p = model_path("pca", goal, mda_candidate)
-    gp_p = model_path("gp", goal, mda_candidate)
-
-    if not force_retrain and pca_p.exists() and gp_p.exists():
-        logger.info("Goal %s / n=%d: loaded existing PCA + GP", goal, mda_candidate)
-        return {
-            "mda": mda or load_model(mda_path(goal)),
-            "pca": load_model(pca_p),
-            "gp": load_model(gp_p),
-            "train_idx": train_idx,
-        }
+    if not force_retrain and models_exist(goal, n, pca_variance=pca_variance):
+        logger.info("Goal %s / n=%d: loaded models", goal, n)
+        out = load_models(goal, n, pca_variance=pca_variance)
+        out["train_idx"] = train_idx
+        return out
 
     if mda is None or train_idx is None:
         mda, train_idx, _ = fit_mda(goal, force_retrain=force_retrain)
 
-    sel = train_idx[:mda_candidate]
-    cases = load_cases_goal(goal)
-    inputs = METAMODEL["mda_inputs"]
-    pca_var = float(METAMODEL["pca_variance"])
+    cases = load_cases_goal(goal).isel(case_num=train_idx[:n])
+    pcas: dict[str, Any] = {}
 
-    pca = PCA(n_components=pca_var)
-    pca.fit_transform(
-        data=cases.isel(case_num=sel),
-        vars_to_stack=METAMODEL["vars_to_stack"],
-        coords_to_stack=["sites"],
-        pca_dim_for_rows="case_num",
-    )
-    pca_p.parent.mkdir(parents=True, exist_ok=True)
-    pca.save_model(pca_p)
+    for name, variance, stack in pca_variables(pca_variance):
+        pca = PCA(n_components=variance)
+        pca.fit_transform(
+            data=cases,
+            vars_to_stack=stack,
+            coords_to_stack=["sites"],
+            pca_dim_for_rows="case_num",
+        )
+        path = pca_model_path(goal, n, name, variance)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        pca.save_model(path)
+        pcas[name] = pca
+        logger.info("Goal %s / n=%d: saved %s", goal, n, path.name)
 
+    target = _stack_pcs(pcas)
     gp = ExactGPInterpolation(epochs=gp_epochs)
     gp.fit(
-        subset_data=mda.centroids[inputs].iloc[:mda_candidate],
-        subset_directional_variables=METAMODEL["directional_variables"],
-        target_data=pca.pcs_df,
+        subset_data=mda.centroids[METAMODEL["mda_inputs"]].iloc[:n],
+        subset_directional_variables=METAMODEL["mda_directional_variables"],
+        target_data=target,
     )
+    gp_p = gp_model_path(goal, n)
     gp_p.parent.mkdir(parents=True, exist_ok=True)
     gp.save_model(gp_p)
+    logger.info("Goal %s / n=%d: GP saved (%d PCs)", goal, n, target.shape[1])
 
-    logger.info("Goal %s / n=%d: PCA + GP saved", goal, mda_candidate)
-    return {"mda": mda, "pca": pca, "gp": gp, "train_idx": train_idx}
+    return {
+        "mda": mda,
+        "gp": gp,
+        "pcas": pcas,
+        "pca_variances": resolved_pca_variances(pca_variance),
+        "train_idx": train_idx,
+    }
 
 
 def fit(
@@ -365,19 +430,19 @@ def fit(
     candidates: Iterable[int] | None = None,
     force_retrain: bool = False,
     gp_epochs: int = 1000,
+    pca_variance: PcaVariance = None,
 ) -> None:
-    """Fit MDA once, then PCA/GP for each MDA candidate size (one goal)."""
     goal = str(goal)
-    cand = [int(n) for n in (candidates or METAMODEL["mda_candidates"])]
     mda, train_idx, _ = fit_mda(goal, force_retrain=force_retrain)
-    for n in cand:
+    for n in candidates or METAMODEL["mda_candidates"]:
         fit_models(
             goal,
-            n,
+            int(n),
             mda=mda,
             train_idx=train_idx,
             force_retrain=force_retrain,
             gp_epochs=gp_epochs,
+            pca_variance=pca_variance,
         )
 
 
@@ -387,14 +452,15 @@ def fit_all(
     candidates: Iterable[int] | None = None,
     force_retrain: bool = False,
     gp_epochs: int = 1000,
+    pca_variance: PcaVariance = None,
 ) -> None:
-    """Fit every goal (or a subset) for each MDA candidate size."""
     for goal in _goal_ids(goals):
         fit(
             goal,
             candidates=candidates,
             force_retrain=force_retrain,
             gp_epochs=gp_epochs,
+            pca_variance=pca_variance,
         )
 
 
@@ -403,44 +469,61 @@ def fit_all(
 # ---------------------------------------------------------------------------
 
 
+def _broadcast_forcing(
+    forcing: pd.DataFrame, var: str, sites: np.ndarray
+) -> xr.DataArray:
+    v = forcing[var].to_numpy()
+    return xr.DataArray(
+        np.broadcast_to(v[:, None], (len(v), len(sites))),
+        dims=("case_num", "sites"),
+        coords={"case_num": forcing.index, "sites": sites},
+    )
+
+
 def predict_cases(
     goal: str | int,
-    mda_candidate: int,
+    n: int,
     case_idx: Iterable[int],
     *,
     models: dict[str, Any] | None = None,
+    pca_variance: PcaVariance = None,
 ) -> xr.Dataset:
-    """Reconstruct ``hs``, ``tp``, ``dir`` for selected propagated cases."""
     from bluemath_tk.core.operations import get_degrees_from_uv
 
     goal = str(goal)
     case_idx = np.asarray(list(case_idx), dtype=int)
     if models is None:
-        models = load_models(goal, mda_candidate)
+        models = load_models(goal, n, pca_variance=pca_variance)
 
     cases = load_cases_goal(goal)
+    sites = cases.sites.values
     forcing = forcing_dataframe(cases).iloc[case_idx]
+    blocks = _split_pcs(models["gp"].predict(dataset=forcing).values, models["pcas"])
 
-    pcs = models["gp"].predict(dataset=forcing).values
-    points = models["pca"].inverse_transform(
-        xr.Dataset(
-            {"PCs": (("case_num", "n_component"), pcs)},
-            coords={"case_num": forcing.index},
+    out: dict[str, Any] = {}
+    for name, spec in vars_to_predict().items():
+        if spec == "raw":
+            out[name] = _broadcast_forcing(forcing, name, sites)
+            continue
+        pts = models["pcas"][name].inverse_transform(
+            xr.Dataset(
+                {"PCs": (("case_num", "n_component"), blocks[name])},
+                coords={"case_num": forcing.index},
+            )
         )
-    )
+        if name == "dir":
+            out["dir"] = (
+                ("case_num", "sites"),
+                get_degrees_from_uv(pts["dir_u"].values, pts["dir_v"].values),
+            )
+        else:
+            out[name] = pts[name]
 
     return xr.Dataset(
-        {
-            "hs": points["hs"],
-            "tp": points["tp"],
-            "dir": (
-                ("case_num", "sites"),
-                get_degrees_from_uv(points["dir_u"].values, points["dir_v"].values),
-            ),
-        },
+        out,
         coords={
             "case_num": forcing.index,
-            "sites": cases["sites"].values,
+            "sites": sites,
             "site_source": cases["site_source"],
             "site_label": cases["site_label"],
             "site_depth": cases["site_depth"],
@@ -451,7 +534,6 @@ def predict_cases(
 
 
 def truth_cases(goal: str | int, case_idx: Iterable[int]) -> xr.Dataset:
-    """Observed SnapWave outputs for selected cases."""
     case_idx = np.asarray(list(case_idx), dtype=int)
     cases = load_cases_goal(goal)
     return cases.isel(case_num=case_idx)[["hs", "tp", "dir"]].assign(
@@ -465,6 +547,8 @@ def truth_cases(goal: str | int, case_idx: Iterable[int]) -> xr.Dataset:
 
 __all__ = [
     "LOGGER_NAME",
+    "ModelsNotFittedError",
+    "PcaVariance",
     "cases_path",
     "detect_removed_sites",
     "drop_sites",
@@ -474,17 +558,24 @@ __all__ = [
     "fit_models",
     "forcing_dataframe",
     "goal_output_dir",
+    "gp_model_path",
     "load_cases_goal",
     "load_context",
     "load_models",
     "load_split",
     "logger",
     "mda_path",
+    "missing_model_paths",
     "model_path",
     "models_exist",
+    "pca_model_path",
+    "pca_variables",
     "predict_cases",
     "removed_sites",
     "require_models",
+    "resolve_pca_variance",
+    "resolved_pca_variances",
     "split_path",
     "truth_cases",
+    "vars_to_predict",
 ]

@@ -340,16 +340,34 @@ def _pair(
     *,
     context: dict[str, Any] | None = None,
     models: dict[str, Any] | None = None,
+    pca_variance: mm.PcaVariance = None,
 ) -> tuple[xr.Dataset, xr.Dataset, int]:
     """Load models and return estimate, reference, n_test on holdout cases."""
     if context is None:
         context = mm.load_context(goal)
     test_idx = context["test_idx"]
     if models is None:
-        models = mm.load_models(goal, n)
-    estimate = mm.predict_cases(goal, n, test_idx, models=models)
+        models = mm.load_models(goal, n, pca_variance=pca_variance)
+    estimate = mm.predict_cases(
+        goal, n, test_idx, models=models, pca_variance=pca_variance
+    )
     reference = mm.truth_cases(goal, test_idx)
     return estimate, reference, len(test_idx)
+
+
+def _tag_metrics(
+    table: pd.DataFrame,
+    *,
+    goal: str,
+    n: int,
+    n_test: int,
+    pca_variance: mm.PcaVariance,
+) -> pd.DataFrame:
+    table.insert(0, "goal", goal)
+    table.insert(1, "mda_candidate", n)
+    table.insert(2, "n_test_cases", n_test)
+    table.insert(3, "pca_variances", str(mm.resolved_pca_variances(pca_variance)))
+    return table
 
 
 def validate(
@@ -357,15 +375,19 @@ def validate(
     n: int,
     *,
     variables: Iterable[str] | None = None,
+    pca_variance: mm.PcaVariance = None,
 ) -> ValidationResult:
     """Validate one MDA size on holdout cases (loads saved models only)."""
     goal = str(goal)
     n = int(n)
-    estimate, reference, n_test = _pair(goal, n)
-    table = metrics_table(estimate, reference, variables=variables)
-    table.insert(0, "goal", goal)
-    table.insert(1, "mda_candidate", n)
-    table.insert(2, "n_test_cases", n_test)
+    estimate, reference, n_test = _pair(goal, n, pca_variance=pca_variance)
+    table = _tag_metrics(
+        metrics_table(estimate, reference, variables=variables),
+        goal=goal,
+        n=n,
+        n_test=n_test,
+        pca_variance=pca_variance,
+    )
     return ValidationResult(
         goal=goal,
         n=n,
@@ -382,6 +404,7 @@ def sweep(
     *,
     candidates: Iterable[int] | None = None,
     variables: Iterable[str] | None = None,
+    pca_variance: mm.PcaVariance = None,
     save: bool = True,
 ) -> pd.DataFrame:
     """Metrics for every MDA candidate size on one goal."""
@@ -392,12 +415,18 @@ def sweep(
     frames: list[pd.DataFrame] = []
     for n in cand:
         logger.info("Goal %s: validating n=%d", goal, n)
-        estimate, reference, n_test = _pair(goal, n, context=context)
-        table = metrics_table(estimate, reference, variables=variables)
-        table.insert(0, "goal", goal)
-        table.insert(1, "mda_candidate", n)
-        table.insert(2, "n_test_cases", n_test)
-        frames.append(table)
+        estimate, reference, n_test = _pair(
+            goal, n, context=context, pca_variance=pca_variance
+        )
+        frames.append(
+            _tag_metrics(
+                metrics_table(estimate, reference, variables=variables),
+                goal=goal,
+                n=n,
+                n_test=n_test,
+                pca_variance=pca_variance,
+            )
+        )
 
     out = pd.concat(frames, ignore_index=True)
     if save:
@@ -413,6 +442,7 @@ def sweep_all(
     *,
     candidates: Iterable[int] | None = None,
     variables: Iterable[str] | None = None,
+    pca_variance: mm.PcaVariance = None,
     save: bool = True,
 ) -> pd.DataFrame:
     """Run :func:`sweep` for every goal and concatenate."""
@@ -422,6 +452,7 @@ def sweep_all(
             goal,
             candidates=candidates,
             variables=variables,
+            pca_variance=pca_variance,
             save=save,
         )
         for goal in active
