@@ -632,13 +632,12 @@ def predict(
     out: dict[str, Any] = {}
     for name, spec in VARS.items():
         if spec == "raw":
-            # tp, spr, wl: identical at every site for a given forcing row
             v = forcing[name].to_numpy()
             out[name] = xr.DataArray(
-                np.broadcast_to(v[:, None], (len(v), len(all_sites))),
+                np.broadcast_to(v[:, None], (len(v), len(site_ids))),
                 dims=("case_num", "sites"),
-                coords={"case_num": rows, "sites": all_sites},
-            ).sel(sites=site_ids)
+                coords={"case_num": rows, "sites": site_ids},
+            )
             continue
         pts = models["pcas"][name].inverse_transform(
             xr.Dataset(
@@ -647,15 +646,16 @@ def predict(
             )
         )
         if name == "dir":
+            pca_sites = pts["dir_u"].coords["sites"].values
             arr = xr.DataArray(
                 get_degrees_from_uv(pts["dir_u"].values, pts["dir_v"].values),
                 dims=("case_num", "sites"),
-                coords={"case_num": rows, "sites": all_sites},
+                coords={"case_num": rows, "sites": pca_sites},
             )
         else:
             arr = pts[name]
             if "time" in arr.dims:
-                arr = arr.rename(time="case_num")  # PCA may keep hindcast dim name
+                arr = arr.rename(time="case_num")
         out[name] = arr.sel(sites=site_ids)
 
     meta = cases.sel(sites=site_ids)
@@ -665,6 +665,7 @@ def predict(
     )
     if row_dim != "case_num":
         ds = ds.rename(case_num=row_dim)  # case_num → time for hindcast output
+
     return ds
 
 

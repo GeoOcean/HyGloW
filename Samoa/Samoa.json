@@ -73,7 +73,11 @@
     },
     "metamodel": {
         "mda_candidates": [
-            50,
+            25,
+            75,
+            125,
+            200,
+            300,
             450
         ],
         "mda_inputs": [

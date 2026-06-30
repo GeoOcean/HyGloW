@@ -14,26 +14,8 @@
       "geometry": {
         "type": "Point",
         "coordinates": [
-          -171.22,
-          -14.415
-        ]
-      }
-    },
-    {
-      "type": "Feature",
-      "properties": {
-        "type": "waves",
-        "institution": "SPC",
-        "recording": "1989-1990",
-        "depth": -80.0,
-        "name": "Savaii - Upolu middle buoy",
-        "instrument_id": "Apolima_Javi_Buoy"
-      },
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          -172.24003,
-          -13.91735
+          -172.2,
+          -13.88
         ]
       }
     },

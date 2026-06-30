@@ -1,18 +1,21 @@
 """Compare wave datasets: metrics and plots.
 
-Holdout validation (:func:`validate`, :func:`sweep`) — metamodel vs SnapWave on
-MDA test cases (requires :func:`utils.metamodel.fit`).
+Holdout validation (:func:`validate`, :func:`sweep`) — metamodel vs SnapWave on MDA
+test cases (requires :func:`utils.metamodel.fit`).
 
-Generic comparison (:func:`compare`) — any aligned estimate/reference pair
-(``case_num`` or ``time``, shared ``sites``). Used in
-``09_Validate_Linear_Summation.ipynb`` with :func:`utils.metamodel.reconstruct`.
+Generic comparison (:func:`compare`) — any aligned estimate/reference pair.
+
+Buoy validation (:func:`load_buoy_observations`, :func:`compare_all`) — bulk /
+spectral reconstruction and dynamic SnapWave vs Lauri buoy records
+(``10_Validate_Buoy_Observations.ipynb``).
 """
 
 from __future__ import annotations
 
+import pickle
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -43,6 +46,9 @@ PARAMETERS: dict[str, dict[str, Any]] = {
     "tp": {"label": "Tp", "units": "s", "circular": False},
     "dir": {"label": "Dir", "units": "deg", "circular": True},
 }
+
+# LauriBuoys processed pickles (see ``03_Generate_Observations_Configuration.ipynb``)
+BUOY_OBS_DIR = Path("inputs/LauriBuoys/processed")
 
 
 def _metrics_variables(variables: Iterable[str] | None) -> list[str]:
@@ -225,6 +231,151 @@ def metrics_table(
 def validation_metrics_path(goal: str | int) -> Path:
     """CSV path for :func:`sweep` output on one goal."""
     return mm.goal_output_dir(goal) / "validation_metrics.csv"
+
+
+# ---------------------------------------------------------------------------
+# Buoy observations
+# ---------------------------------------------------------------------------
+
+
+def _buoy_site_id(name: str) -> str:
+    """SnapWave site label (``buoy_<instrument_id>``)."""
+    text = str(name)
+    return text if text.startswith("buoy_") else f"buoy_{text}"
+
+
+def _buoy_pickle_to_dataset(frame: pd.DataFrame, site: str) -> xr.Dataset:
+    """One LauriBuoys bulk pickle → ``(time, sites)`` with ``hs`` / ``tp`` / ``dir``."""
+    df = frame.copy()
+    if "time" in df.columns:
+        df = df.set_index("time")
+    if not isinstance(df.index, pd.DatetimeIndex):
+        raise ValueError(
+            f"Buoy data for {site!r} needs a datetime index or time column"
+        )
+
+    vars_out: dict[str, xr.DataArray] = {}
+    if "hs" in df.columns:
+        vars_out["hs"] = (("time",), df["hs"].to_numpy())
+    if "tp" in df.columns:
+        vars_out["tp"] = (("time",), df["tp"].to_numpy())
+    elif "tm10" in df.columns:
+        vars_out["tp"] = (("time",), df["tm10"].to_numpy())
+    if "dir" in df.columns:
+        vars_out["dir"] = (("time",), df["dir"].to_numpy())
+
+    if "hs" not in vars_out:
+        raise ValueError(f"Buoy pickle for {site!r} has no hs column")
+
+    ds = xr.Dataset(vars_out, coords={"time": df.index})
+    return ds.expand_dims(sites=[site]).transpose("time", "sites")
+
+
+def load_buoy_observations(
+    buoy_files: Mapping[str, str | Path],
+    *,
+    time: str | slice | None = None,
+) -> xr.Dataset:
+    """Load processed Lauri buoy pickles as ``(time, sites)``.
+
+    Parameters
+    ----------
+    buoy_files
+        SnapWave site id (or instrument id) → path to a ``.pkl`` bulk file.
+    time
+        Optional slice applied after concat (e.g. ``"1990-05"``).
+
+    Returns
+    -------
+    xarray.Dataset
+        Variables ``hs``, ``tp`` and ``dir`` when present in the pickles.
+    """
+    chunks: list[xr.Dataset] = []
+    for site_key, path in buoy_files.items():
+        site = _buoy_site_id(site_key)
+        p = resolve(path)
+        if not p.is_file():
+            logger.warning("Buoy file not found: %s", p)
+            continue
+        frame = pickle.loads(p.read_bytes())
+        chunks.append(_buoy_pickle_to_dataset(frame, site))
+
+    if not chunks:
+        raise FileNotFoundError(
+            "No buoy observation files loaded — check buoy_files paths"
+        )
+
+    out = xr.concat(chunks, dim="sites")
+    if time is not None:
+        out = out.sel(time=time)
+    logger.info(
+        "Loaded buoy data: %d site(s), %d time step(s)",
+        out.sizes["sites"],
+        out.sizes.get("time", 0),
+    )
+    return out
+
+
+def align_pair(
+    estimate: xr.Dataset,
+    reference: xr.Dataset,
+    *,
+    sites: str | Iterable[str] | None = None,
+    time: str | slice | None = None,
+) -> tuple[xr.Dataset, xr.Dataset]:
+    """Inner join on shared ``sites`` and ``time``."""
+    if sites is not None:
+        site_ids = mm.resolve_sites(estimate, sites)
+    else:
+        site_ids = sorted(
+            set(str(s) for s in estimate.sites.values)
+            & set(str(s) for s in reference.sites.values),
+            key=str,
+        )
+    if not site_ids:
+        raise ValueError("No shared sites between estimate and reference")
+
+    estimate = estimate.sel(sites=site_ids)
+    reference = reference.sel(sites=site_ids)
+    if time is not None:
+        estimate = estimate.sel(time=time)
+        reference = reference.sel(time=time)
+
+    estimate, reference = xr.align(estimate, reference, join="inner")
+    if estimate.sizes.get("time", 0) == 0:
+        raise ValueError("No overlapping time steps after alignment")
+    return estimate, reference
+
+
+def compare_all(
+    reference: xr.Dataset,
+    estimates: Mapping[str, xr.Dataset],
+    *,
+    sites: str | Iterable[str] | None = None,
+    time: str | slice | None = None,
+    variables: Iterable[str] | None = None,
+    reference_label: str = "Buoy",
+) -> dict[str, ComparisonResult]:
+    """Run :func:`compare` for several models against the same buoy reference."""
+    results: dict[str, ComparisonResult] = {}
+    for name, est in estimates.items():
+        aligned_est, aligned_ref = align_pair(est, reference, sites=sites, time=time)
+        results[name] = compare(
+            aligned_est,
+            aligned_ref,
+            variables=variables,
+            estimate_label=name,
+            reference_label=reference_label,
+        )
+    return results
+
+
+def metrics_summary(results: Mapping[str, ComparisonResult]) -> pd.DataFrame:
+    """Concatenate :attr:`ComparisonResult.metrics` tables with a ``model`` column."""
+    return pd.concat(
+        [r.metrics.assign(model=name) for name, r in results.items()],
+        ignore_index=True,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1004,14 +1155,19 @@ def plot_sweep_suite(
 
 
 __all__ = [
+    "BUOY_OBS_DIR",
     "LOGGER_NAME",
     "ComparisonResult",
     "HoldoutValidationResult",
     "ValidationResult",
+    "align_pair",
     "compare",
+    "compare_all",
     "compute_metrics",
+    "load_buoy_observations",
     "logger",
     "metric_groups",
+    "metrics_summary",
     "metrics_table",
     "aggregate_sweep",
     "load_sweep_metrics",
