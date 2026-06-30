@@ -1,2 +1,2 @@
-   0 {% for ds in ds_goals %} {{ ds }}{% endfor %}
-3600 {% for ds in ds_goals %} {{ ds }}{% endfor %}
+   0 {% for spr in spr_goals %} {{ spr }}{% endfor %}
+3600 {% for spr in spr_goals %} {{ spr }}{% endfor %}

@@ -1,2 +1,2 @@
-   0 {% for wd in wd_goals %} {{ wd }}{% endfor %}
-3600 {% for wd in wd_goals %} {{ wd }}{% endfor %}
+   0 {% for dir in dir_goals %} {{ dir }}{% endfor %}
+3600 {% for dir in dir_goals %} {{ dir }}{% endfor %}

@@ -1,25 +1,11 @@
 """Compare wave datasets: metrics and plots.
 
-Holdout metamodel validation
-----------------------------
-:func:`validate` / :func:`sweep` — metamodel vs SnapWave on MDA **test** cases
-(requires :func:`utils.metamodel.fit` first).
+Holdout validation (:func:`validate`, :func:`sweep`) — metamodel vs SnapWave on
+MDA test cases (requires :func:`utils.metamodel.fit`).
 
-Generic comparison
-------------------
-:func:`compare` — any aligned estimate/reference pair (row dim ``case_num`` or
-``time``, shared ``sites``). Use for dynamic validation (reconstructed metamodel
-vs offshore-driven SnapWave) once reconstruction is implemented.
-
-Typical holdout notebook flow::
-
-    from utils import metamodel as mm
-    from utils import validation as val
-
-    mm.fit("1")
-    metrics = val.sweep("1")
-    result = val.validate("1", n=125)
-    result.plot("10m")
+Generic comparison (:func:`compare`) — any aligned estimate/reference pair
+(``case_num`` or ``time``, shared ``sites``). Used in
+``09_Validate_Linear_Summation.ipynb`` with :func:`utils.metamodel.reconstruct`.
 """
 
 from __future__ import annotations
@@ -37,14 +23,11 @@ from bluemath_tk.core.metrics import bias, r2, rmse
 from bluemath_tk.core.plotting.old_scatter import density_scatter
 from matplotlib.figure import Figure
 from utils import metamodel as mm
-from utils.config import (
-    METAMODEL,
-    load_goals,
-    resolve,
-)
+from utils.config import METAMODEL, load_goals, resolve
 
-_log_dir = resolve("outputs/logs")
-_log_dir.mkdir(parents=True, exist_ok=True)
+# Config mirrors metamodel module (Samoa.json → metamodel)
+METRICS_VARIABLES = METAMODEL["validation"]["metrics_variables"]
+MDA_CANDIDATES = mm.MDA_CANDIDATES
 
 LOGGER_NAME = "Samoa.validation"
 logger = get_file_logger(
@@ -63,9 +46,8 @@ PARAMETERS: dict[str, dict[str, Any]] = {
 
 
 def _metrics_variables(variables: Iterable[str] | None) -> list[str]:
-    if variables is not None:
-        return list(variables)
-    return list(METAMODEL["validation"]["metrics_variables"])
+    """Variables to score; default from ``Samoa.json`` validation section."""
+    return list(variables) if variables is not None else list(METRICS_VARIABLES)
 
 
 # ---------------------------------------------------------------------------
@@ -241,6 +223,7 @@ def metrics_table(
 
 
 def validation_metrics_path(goal: str | int) -> Path:
+    """CSV path for :func:`sweep` output on one goal."""
     return mm.goal_output_dir(goal) / "validation_metrics.csv"
 
 
@@ -400,7 +383,7 @@ class HoldoutValidationResult(ComparisonResult):
         )
 
 
-# Backward-compatible alias
+# HoldoutValidationResult alias (notebooks may import either name)
 ValidationResult = HoldoutValidationResult
 
 
@@ -412,16 +395,28 @@ def _holdout_pair(
     models: dict[str, Any] | None = None,
     pca_variance: mm.PcaVariance = None,
 ) -> tuple[xr.Dataset, xr.Dataset, int]:
-    """Metamodel estimate and SnapWave reference on MDA test cases."""
+    """Metamodel estimate and SnapWave reference on MDA test cases.
+
+    Returns estimate, reference (both ``case_num`` × ``sites``), and test count.
+    """
     if context is None:
         context = mm.load_context(goal)
     test_idx = context["test_idx"]
     if models is None:
         models = mm.load_models(goal, mda_candidate, pca_variance=pca_variance)
-    estimate = mm.predict_cases(
-        goal, mda_candidate, test_idx, models=models, pca_variance=pca_variance
+
+    cases = mm.load_cases_goal(goal)
+    idx = np.asarray(test_idx, dtype=int)
+    estimate = mm.predict(
+        goal,
+        mda_candidate,
+        mm.forcing_dataframe(cases).iloc[idx],
+        models=models,
+        pca_variance=pca_variance,
     )
-    reference = mm.holdout_snapwave_cases(goal, test_idx)
+    reference = cases.isel(case_num=idx)[["hs", "tp", "dir"]].assign(
+        **{name: cases[name] for name in mm.SITE_META if name in cases}
+    )
     return estimate, reference, len(test_idx)
 
 
@@ -433,7 +428,7 @@ def compare(
     estimate_label: str = "Estimate",
     reference_label: str = "Reference",
 ) -> ComparisonResult:
-    """Metrics and plot helpers for any aligned estimate/reference datasets."""
+    """Build metrics table and plot helpers for aligned estimate vs reference."""
     table = metrics_table(estimate, reference, variables=variables)
     if estimate_label != "Estimate" or reference_label != "Reference":
         table = table.copy()
@@ -499,9 +494,9 @@ def sweep(
     pca_variance: mm.PcaVariance = None,
     save: bool = True,
 ) -> pd.DataFrame:
-    """Metrics for every MDA candidate size on one goal."""
+    """Holdout metrics for every MDA candidate size on one goal."""
     goal = str(goal)
-    cand = [int(c) for c in (candidates or METAMODEL["mda_candidates"])]
+    cand = [int(c) for c in (candidates or MDA_CANDIDATES)]
     context = mm.load_context(goal)
 
     frames: list[pd.DataFrame] = []

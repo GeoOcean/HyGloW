@@ -3,7 +3,8 @@
 Processed zarrs (see ``07_Download_Process_WHACS.ipynb``) share one schema:
 
 - dims: ``(time, goal)``
-- bulk variables: ``hs``, ``tp``, ``dir``, ``spr``
+- bulk variables: ``hs``, ``tp``, ``dir``, ``spr`` (metamodel partition ``-1``)
+- partition variables: ``phs0``…``phs3``, ``ptp0``…``ptp3``, … (partitions ``0``–``3``)
 - ``goal`` ids ``1…N`` aligned with ``Samoa_goals.json`` (``seapoint`` is metadata only)
 
 Open catalogs via :func:`utils.config.open_offshore_waves`.
@@ -18,12 +19,6 @@ GOAL_DIM = "goal"
 BOUNDARY_VARS = ("hs", "tp", "dir", "spr")
 
 
-def _ensure_tp(ds: xr.Dataset) -> xr.Dataset:
-    if "tp" not in ds and "fp" in ds:
-        return ds.assign(tp=1.0 / ds["fp"])
-    return ds
-
-
 def boundary_parameters(offshore: xr.Dataset) -> dict[str, list]:
     """Offshore time series → SnapWave dynamic template inputs.
 
@@ -31,7 +26,6 @@ def boundary_parameters(offshore: xr.Dataset) -> dict[str, list]:
     ``tref`` (one entry per timestep). ``dir``/``spr`` map to SnapWave ``wd``/``ds``.
     """
 
-    offshore = _ensure_tp(offshore)
     if GOAL_DIM not in offshore.dims:
         raise ValueError(
             f"offshore waves must have a {GOAL_DIM!r} dimension; "
@@ -48,7 +42,7 @@ def boundary_parameters(offshore: xr.Dataset) -> dict[str, list]:
     return {
         "hs_goals": [offshore.hs.isel(time=i).values.tolist() for i in range(n_time)],
         "tp_goals": [offshore.tp.isel(time=i).values.tolist() for i in range(n_time)],
-        "wd_goals": [offshore.dir.isel(time=i).values.tolist() for i in range(n_time)],
-        "ds_goals": [offshore.spr.isel(time=i).values.tolist() for i in range(n_time)],
+        "dir_goals": [offshore.dir.isel(time=i).values.tolist() for i in range(n_time)],
+        "spr_goals": [offshore.spr.isel(time=i).values.tolist() for i in range(n_time)],
         "tref": pd.to_datetime(offshore.time.values).strftime("%Y%m%d %H%M%S").tolist(),
     }

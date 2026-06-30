@@ -90,7 +90,7 @@
                 "vars_to_stack": [
                     "hs"
                 ],
-                "pca_variance": 0.95
+                "pca_variance": 0.99
             },
             "tp": "raw",
             "dir": {
@@ -98,7 +98,7 @@
                     "dir_u",
                     "dir_v"
                 ],
-                "pca_variance": 0.95
+                "pca_variance": 0.99
             },
             "spr": "raw"
         },
@@ -114,7 +114,6 @@
             ]
         },
         "paths": {
-            "mda_dir": "outputs/{goal}/mda_{mda_candidate}",
             "pca_dir": "outputs/{goal}/pca_{mda_candidate}",
             "gp_dir": "outputs/{goal}/gp_{mda_candidate}"
         }
