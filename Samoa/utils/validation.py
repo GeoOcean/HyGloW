@@ -5,9 +5,9 @@ test cases (requires :func:`utils.metamodel.fit`).
 
 Generic comparison (:func:`compare`) — any aligned estimate/reference pair.
 
-Buoy validation (:func:`load_buoy_observations`, :func:`compare_all`) — bulk /
-spectral reconstruction and dynamic SnapWave vs Lauri buoy records
-(``10_Validate_Buoy_Observations.ipynb``).
+Buoy validation (:func:`load_buoy_observations`, :func:`load_offshore_hindcast_at_buoys`,
+:func:`compare_all`) — bulk / spectral reconstruction, dynamic SnapWave, and closest-goal
+offshore hindcast vs Lauri buoy records (``10_Validate_Buoy_Observations.ipynb``).
 """
 
 from __future__ import annotations
@@ -26,7 +26,16 @@ from bluemath_tk.core.metrics import bias, r2, rmse
 from bluemath_tk.core.plotting.old_scatter import density_scatter
 from matplotlib.figure import Figure
 from utils import metamodel as mm
-from utils.config import METAMODEL, load_goals, resolve
+from utils import observations as obs
+from utils.config import (
+    METAMODEL,
+    OFFSHORE_WAVES,
+    get_offshore_wave,
+    load_goals,
+    offshore_catalog_key,
+    open_offshore_waves,
+    resolve,
+)
 
 # Config mirrors metamodel module (Samoa.json → metamodel)
 METRICS_VARIABLES = METAMODEL["validation"]["metrics_variables"]
@@ -171,8 +180,9 @@ def metric_groups(ds: xr.Dataset) -> list[tuple[str, str, list[str]]]:
         if site_ids:
             groups.append((mesh_label, "mesh", site_ids))
 
-    for site_id in [s for s in labels if source_by_site.get(s) == "buoy"]:
-        groups.append((site_id, "buoy", [site_id]))
+    for site_id in labels:
+        if source_by_site.get(site_id) == "buoy" or str(site_id).startswith("buoy_"):
+            groups.append((site_id, "buoy", [site_id]))
 
     return groups
 
@@ -316,6 +326,141 @@ def load_buoy_observations(
     return out
 
 
+def _instrument_id(site: str) -> str:
+    return str(site).removeprefix("buoy_")
+
+
+def _haversine_m(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
+    radius = 6_371_000.0
+    phi1, phi2 = np.radians(lat1), np.radians(lat2)
+    dphi = np.radians(lat2 - lat1)
+    dlon = np.radians(lon2 - lon1)
+    a = np.sin(dphi / 2) ** 2 + np.cos(phi1) * np.cos(phi2) * np.sin(dlon / 2) ** 2
+    return float(2 * radius * np.arcsin(np.sqrt(a)))
+
+
+def closest_goal_for_point(
+    lon: float,
+    lat: float,
+    goals: Mapping[str, dict[str, Any]],
+    catalog_key: str,
+) -> tuple[str, float]:
+    """Nearest goal hindcast node in ``catalog_key`` (e.g. ``whacs``)."""
+    best_goal: str | None = None
+    best_dist = float("inf")
+    for gid, goal in goals.items():
+        snap = (goal.get("hindcast") or {}).get(catalog_key)
+        if not snap:
+            continue
+        dist = _haversine_m(lon, lat, snap["longitude"], snap["latitude"])
+        if dist < best_dist:
+            best_dist = dist
+            best_goal = str(gid)
+    if best_goal is None:
+        raise ValueError(f"No hindcast snaps for catalog {catalog_key!r} in goals")
+    return best_goal, best_dist
+
+
+def closest_goals_table(
+    sites: Iterable[str],
+    *,
+    offshore_names: Iterable[str] | None = None,
+    goals: Mapping[str, dict[str, Any]] | None = None,
+) -> pd.DataFrame:
+    """Map each buoy site to the closest goal hindcast node per offshore source."""
+    goals = dict(goals or load_goals())
+    buoy_coords = obs.get_coordinates()
+    names = (
+        list(offshore_names)
+        if offshore_names is not None
+        else [e["name"] for e in OFFSHORE_WAVES]
+    )
+
+    rows: list[dict[str, Any]] = []
+    for site in sites:
+        site = _buoy_site_id(site)
+        iid = _instrument_id(site)
+        if iid not in buoy_coords:
+            raise KeyError(
+                f"Buoy {site!r} not in onshore-waves GeoJSON (instrument {iid!r})"
+            )
+        lon = buoy_coords[iid]["lon"]
+        lat = buoy_coords[iid]["lat"]
+        for offshore_name in names:
+            catalog_key = offshore_catalog_key(get_offshore_wave(offshore_name))
+            goal, dist_m = closest_goal_for_point(lon, lat, goals, catalog_key)
+            snap = goals[goal]["hindcast"][catalog_key]
+            rows.append(
+                {
+                    "site": site,
+                    "offshore": offshore_name,
+                    "goal": int(goal),
+                    "distance_m": round(dist_m, 1),
+                    "hindcast_lon": snap["longitude"],
+                    "hindcast_lat": snap["latitude"],
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def _attach_site_meta(ds: xr.Dataset) -> xr.Dataset:
+    """Copy SnapWave site coords from a goal case file (for :func:`metric_groups`)."""
+    template = mm.load_cases_goal(1)
+    site_ids = [str(s) for s in ds.sites.values]
+    shared = [s for s in site_ids if s in template.sites.values]
+    if not shared:
+        return ds
+    ref = template.sel(sites=site_ids)
+    meta = {name: ref[name] for name in mm.SITE_META if name in ref.coords}
+    return ds.assign_coords(meta)
+
+
+def load_offshore_hindcast_at_buoys(
+    time: str | slice,
+    sites: Iterable[str],
+    *,
+    offshore_names: Iterable[str] | None = None,
+    goals: Mapping[str, dict[str, Any]] | None = None,
+    variables: Iterable[str] | None = None,
+    load: bool = True,
+) -> tuple[dict[str, xr.Dataset], pd.DataFrame]:
+    """Bulk offshore hindcast at each buoy's closest goal node.
+
+    One entry per configured offshore source (e.g. WHACS). Each dataset has
+    ``(time, sites)`` with ``hs``, ``tp``, ``dir`` when present in the zarr.
+    """
+    site_ids = [_buoy_site_id(s) for s in sites]
+    mapping = closest_goals_table(site_ids, offshore_names=offshore_names, goals=goals)
+    vars_ = [v for v in _metrics_variables(variables) if v in PARAMETERS]
+
+    estimates: dict[str, xr.Dataset] = {}
+    for offshore_name in mapping["offshore"].unique():
+        entry = get_offshore_wave(str(offshore_name))
+        offshore = open_offshore_waves(entry=entry).sel(time=time)
+        present = [v for v in vars_ if v in offshore]
+        if not present:
+            raise ValueError(f"Offshore {offshore_name!r} has none of {vars_}")
+
+        sub = mapping[mapping["offshore"] == offshore_name]
+        chunks: list[xr.Dataset] = []
+        for row in sub.itertuples(index=False):
+            goal_ds = offshore.sel(goal=int(row.goal))[present]
+            chunks.append(goal_ds.expand_dims(sites=[row.site]))
+
+        label = f"{offshore_name} (closest goal)"
+        out = xr.concat(chunks, dim="sites").transpose("time", "sites")
+        out = _attach_site_meta(out)
+        estimates[label] = out.load() if load else out
+        logger.info(
+            "Offshore %s: %d site(s) mapped to goals %s",
+            offshore_name,
+            len(sub),
+            sorted(sub["goal"].unique().tolist()),
+        )
+
+    return estimates, mapping
+
+
 def align_pair(
     estimate: xr.Dataset,
     reference: xr.Dataset,
@@ -435,6 +580,25 @@ class ComparisonResult:
             self.reference,
             name,
             site_ids,
+            variables=variables,
+            estimate_label=estimate_label,
+            reference_label=reference_label,
+            **kwargs,
+        )
+
+    def plot_timeseries(
+        self,
+        site: str,
+        *,
+        variables: Iterable[str] | None = None,
+        estimate_label: str = "Estimate",
+        reference_label: str = "Reference",
+        **kwargs: Any,
+    ) -> Figure:
+        return plot_timeseries(
+            self.estimate,
+            self.reference,
+            site,
             variables=variables,
             estimate_label=estimate_label,
             reference_label=reference_label,
@@ -913,6 +1077,107 @@ def plot_all_groups(
     ]
 
 
+_MODEL_COLORS: dict[str, str] = {
+    "Buoy": "black",
+    "Bulk metamodel": "C0",
+    "Spectral metamodel": "C1",
+    "Dynamic SnapWave": "C2",
+    "WHACS (closest goal)": "C3",
+}
+
+
+def plot_timeseries(
+    estimate: xr.Dataset,
+    reference: xr.Dataset,
+    site: str,
+    *,
+    variables: Iterable[str] | None = None,
+    estimate_label: str = "Estimate",
+    reference_label: str = "Reference",
+    figsize: tuple[float, float] = (12, 8),
+) -> Figure:
+    """Line plot of estimate vs reference at one site."""
+    site = str(site)
+    keys = _metrics_variables(variables)
+    fig, axes = plt.subplots(len(keys), 1, figsize=figsize, sharex=True)
+    if len(keys) == 1:
+        axes = [axes]
+
+    est_site = estimate.sel(sites=site)
+    ref_site = reference.sel(sites=site)
+
+    for ax, key in zip(axes, keys, strict=True):
+        spec = PARAMETERS[key]
+        est, ref = xr.align(est_site[key], ref_site[key], join="inner")
+        est.plot(
+            ax=ax,
+            label=estimate_label,
+            color=_MODEL_COLORS.get(estimate_label, "C0"),
+            lw=1.0,
+        )
+        ref.plot(
+            ax=ax,
+            label=reference_label,
+            color=_MODEL_COLORS.get(reference_label, "C1"),
+            lw=1.2,
+            alpha=0.85,
+        )
+        ax.set_ylabel(f"{spec['label']} [{spec['units']}]")
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc="upper right", fontsize=9)
+
+    axes[-1].set_xlabel("Time")
+    fig.suptitle(site, fontsize=11)
+    fig.tight_layout()
+    return fig
+
+
+def plot_buoy_timeseries(
+    reference: xr.Dataset,
+    estimates: Mapping[str, xr.Dataset],
+    site: str,
+    *,
+    variables: Iterable[str] | None = None,
+    reference_label: str = "Buoy",
+    figsize: tuple[float, float] = (12, 8),
+) -> Figure:
+    """Time series at one buoy: observations vs all model estimates."""
+    site = str(site)
+    keys = _metrics_variables(variables)
+    fig, axes = plt.subplots(len(keys), 1, figsize=figsize, sharex=True)
+    if len(keys) == 1:
+        axes = [axes]
+
+    ref_site = reference.sel(sites=site)
+
+    for ax, key in zip(axes, keys, strict=True):
+        spec = PARAMETERS[key]
+        ref = ref_site[key]
+        ref.plot(
+            ax=ax,
+            label=reference_label,
+            color=_MODEL_COLORS.get(reference_label, "black"),
+            lw=1.2,
+        )
+        for i, (name, est) in enumerate(estimates.items()):
+            est_aligned, _ = xr.align(est.sel(sites=site)[key], ref, join="inner")
+            est_aligned.plot(
+                ax=ax,
+                label=name,
+                color=_MODEL_COLORS.get(name, f"C{i}"),
+                lw=1.0,
+                alpha=0.9,
+            )
+        ax.set_ylabel(f"{spec['label']} [{spec['units']}]")
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc="upper right", fontsize=8)
+
+    axes[-1].set_xlabel("Time")
+    fig.suptitle(site, fontsize=11)
+    fig.tight_layout()
+    return fig
+
+
 # ---------------------------------------------------------------------------
 # MDA sweep summary plots
 # ---------------------------------------------------------------------------
@@ -1161,10 +1426,12 @@ __all__ = [
     "HoldoutValidationResult",
     "ValidationResult",
     "align_pair",
+    "closest_goals_table",
     "compare",
     "compare_all",
     "compute_metrics",
     "load_buoy_observations",
+    "load_offshore_hindcast_at_buoys",
     "logger",
     "metric_groups",
     "metrics_summary",
@@ -1172,9 +1439,11 @@ __all__ = [
     "aggregate_sweep",
     "load_sweep_metrics",
     "plot_all_groups",
+    "plot_buoy_timeseries",
     "plot_group",
     "plot_map",
     "plot_scatter",
+    "plot_timeseries",
     "plot_sweep",
     "plot_sweep_suite",
     "sweep",
