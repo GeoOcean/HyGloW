@@ -227,9 +227,9 @@ class SnapWaveModelWrapper(BaseModelWrapper):
         write_array_in_file(
             self.goals_nodes_array, os.path.join(case_dir, "boundary.txt")
         )
-        write_polygon_vertices_to_txt(
-            self.aoi_polygon, os.path.join(case_dir, "enclosure.txt")
-        )
+        # write_polygon_vertices_to_txt(
+        #     self.aoi_polygon, os.path.join(case_dir, "enclosure.txt")
+        # )
         write_output_sites(self.output_sites_df, case_dir, filename=self._sites_txt)
 
     def run_case(

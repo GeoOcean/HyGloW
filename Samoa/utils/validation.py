@@ -44,7 +44,7 @@ MDA_CANDIDATES = mm.MDA_CANDIDATES
 LOGGER_NAME = "Samoa.validation"
 logger = get_file_logger(
     LOGGER_NAME,
-    logs_path=str(resolve("outputs/logs/validation.log")),
+    logs_path=str(resolve("logs/validation.log")),
     level="INFO",
     console=True,
     console_level="INFO",
