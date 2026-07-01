@@ -1,7 +1,19 @@
-"""Isobath extraction and SnapWave output-site construction."""
+"""Isobath extraction and SnapWave output-site construction.
+
+Used by :class:`utils.snapwave_wrapper.SnapWaveModelWrapper` to build the
+``output_sites.txt`` file written into every SnapWave case. Site layout is
+configured in ``Samoa.json`` → ``simulations.output_sites_config``.
+
+Row order in the output table (SnapWave matches by position):
+
+1. isobath points (depth contours from topobathy)
+2. mesh nodes inside named polygons (e.g. Apia)
+3. buoy locations from the onshore-waves GeoJSON
+"""
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Mapping
 
 import geopandas as gpd
@@ -18,8 +30,37 @@ from utils.config import OUTPUT_SITES_CONFIG, PATHS, resolve
 _X_NAMES = ("x", "lon", "longitude")
 _Y_NAMES = ("y", "lat", "latitude")
 
+# Columns expected by snapwave_wrapper.SITE_COORDS
+OUTPUT_SITE_COLUMNS = (
+    "lon",
+    "lat",
+    "source",
+    "source_id",
+    "source_label",
+    "depth",
+    "name",
+)
+
 
 def _xy_names(da: xr.DataArray) -> tuple[str, str]:
+    """
+    Resolve horizontal coordinate names on a 2D DataArray.
+
+    Parameters
+    ----------
+    da
+        Raster or gridded field with lon/lat (or x/y) coordinates.
+
+    Returns
+    -------
+    tuple[str, str]
+        ``(x_name, y_name)``.
+
+    Raises
+    ------
+    KeyError
+        If no recognised horizontal coordinate pair is found.
+    """
     x = next((n for n in _X_NAMES if n in da.coords), None)
     y = next((n for n in _Y_NAMES if n in da.coords), None)
     if x is None or y is None:
@@ -31,6 +72,21 @@ def _xy_names(da: xr.DataArray) -> tuple[str, str]:
 
 
 def _resample_polyline(pts: np.ndarray, spacing: float) -> np.ndarray:
+    """
+    Resample a polyline at approximately uniform arc length.
+
+    Parameters
+    ----------
+    pts
+        ``(N, 2)`` vertex array.
+    spacing
+        Target spacing between output points (same units as *pts*).
+
+    Returns
+    -------
+    numpy.ndarray
+        Resampled ``(M, 2)`` points; empty when the polyline has zero length.
+    """
     seg = np.diff(pts, axis=0)
     seg_len = np.linalg.norm(seg, axis=1)
     total = float(seg_len.sum())
@@ -58,12 +114,33 @@ def get_isobath_points(
     spacing: float | None = None,
     aoi_polygon: Polygon | MultiPolygon | None = None,
 ) -> np.ndarray:
-    """Return ``(N, 2)`` array of ``(lon, lat)`` points along an isobath.
-
-    When ``aoi_polygon`` is given, only contour segments with at least one
-    point inside the AoI are kept (multi-island areas keep every island).
     """
+    Extract ``(lon, lat)`` points along a bathymetry isobath.
 
+    Uses Matplotlib contouring on the gridded field (figure is closed
+    immediately; no display required).
+
+    Parameters
+    ----------
+    da
+        Topobathy raster with horizontal coordinates and depth values.
+    level
+        Contour level (negative for depth below sea level, e.g. ``-10``).
+    spacing
+        Optional resampling spacing in degrees along each contour segment.
+    aoi_polygon
+        When given, keep only segments with at least one point inside the AoI.
+
+    Returns
+    -------
+    numpy.ndarray
+        ``(N, 2)`` array of ``[lon, lat]``; empty when no contour is found.
+
+    Raises
+    ------
+    ValueError
+        If array dimensions do not match coordinate lengths.
+    """
     xname, yname = _xy_names(da)
     x = da[xname].values
     y = da[yname].values
@@ -76,9 +153,11 @@ def get_isobath_points(
         )
 
     fig, ax = plt.subplots()
-    cs = ax.contour(x, y, z, levels=[float(level)])
-    segments = [np.asarray(p) for p in cs.allsegs[0] if len(p) >= 2]
-    plt.close(fig)
+    try:
+        cs = ax.contour(x, y, z, levels=[float(level)])
+        segments = [np.asarray(p) for p in cs.allsegs[0] if len(p) >= 2]
+    finally:
+        plt.close(fig)
 
     if not segments:
         return np.empty((0, 2), dtype=float)
@@ -103,8 +182,23 @@ def get_mesh_nodes_in_polygon(
     *,
     wet_only: bool = False,
 ) -> list[dict[str, Any]]:
-    """Mesh nodes inside ``polygon`` using exact ``mesh2d_node_x/y`` coordinates."""
+    """
+    List unstructured-mesh nodes inside a polygon.
 
+    Parameters
+    ----------
+    polygon
+        Area of interest in geographic coordinates.
+    mesh
+        SnapWave mesh NetCDF with ``mesh2d_node_x/y/z``.
+    wet_only
+        When ``True``, keep only nodes with negative bed elevation (wet).
+
+    Returns
+    -------
+    list[dict]
+        One dict per node with keys ``lon``, ``lat``, ``depth``, ``node_index``.
+    """
     lon = mesh["mesh2d_node_x"].values
     lat = mesh["mesh2d_node_y"].values
     z = mesh["mesh2d_node_z"].values
@@ -131,11 +225,31 @@ def compute_output_sites(
     topobathy: xr.DataArray | None = None,
     aoi_polygon: Polygon | MultiPolygon | None = None,
 ) -> pd.DataFrame:
-    """Build output sites from isobaths, mesh polygons, and buoys.
-
-    Row order (SnapWave matches by position): isobaths → polygons → buoys.
     """
+    Build the SnapWave output-sites table from config and static inputs.
 
+    Parameters
+    ----------
+    config
+        Override or extend ``simulations.output_sites_config`` from
+        ``Samoa.json``.
+    topobathy
+        Bathymetry raster; opened from ``paths.topobathy_file`` when omitted.
+    aoi_polygon
+        AoI geometry for clipping; read from ``paths.aoi_file`` when omitted
+        and ``clip_to_aoi`` is enabled.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Columns ``lon``, ``lat``, ``source``, ``source_id``, ``source_label``,
+        ``depth``, ``name``. Row order: isobaths → mesh polygons → buoys.
+
+    Raises
+    ------
+    ValueError
+        If no sites are produced or all are clipped by the AoI.
+    """
     cfg = {**OUTPUT_SITES_CONFIG, **dict(config or {})}
     rows: list[dict[str, Any]] = []
 
@@ -240,9 +354,34 @@ def write_output_sites(
     df: pd.DataFrame,
     out_dir: str,
     filename: str = "output_sites.txt",
-) -> None:
-    """Write ``lon lat`` pairs to a SnapWave observation file."""
+) -> Path:
+    """
+    Write SnapWave observation coordinates to a text file.
 
+    Parameters
+    ----------
+    df
+        Output-sites table from :func:`compute_output_sites`.
+    out_dir
+        Case or output directory.
+    filename
+        Observation file name (``.nc`` sibling is produced by SnapWave).
+
+    Returns
+    -------
+    Path
+        Written text file path.
+    """
     path = resolve(out_dir) / filename
     path.parent.mkdir(parents=True, exist_ok=True)
     np.savetxt(path, df[["lon", "lat"]].to_numpy(float), fmt="%.8f")
+    return path
+
+
+__all__ = [
+    "OUTPUT_SITE_COLUMNS",
+    "compute_output_sites",
+    "get_isobath_points",
+    "get_mesh_nodes_in_polygon",
+    "write_output_sites",
+]

@@ -8,6 +8,8 @@ Generic comparison (:func:`compare`) — any aligned estimate/reference pair.
 Buoy validation (:func:`load_buoy_observations`, :func:`load_offshore_hindcast_at_buoys`,
 :func:`compare_all`) — bulk / spectral reconstruction, dynamic SnapWave, and closest-goal
 offshore hindcast vs Lauri buoy records (``10_Validate_Buoy_Observations.ipynb``).
+
+Site grouping: :mod:`utils.sites` (re-exported here for notebook convenience).
 """
 
 from __future__ import annotations
@@ -36,6 +38,14 @@ from utils.config import (
     open_offshore_waves,
     resolve,
 )
+from utils.sites import (
+    SITE_META,
+    attach_site_meta,
+    find_group,
+    metric_groups,
+    per_site_coord,
+    resolve_sites,
+)
 
 # Config mirrors metamodel module (Samoa.json → metamodel)
 METRICS_VARIABLES = METAMODEL["validation"]["metrics_variables"]
@@ -61,7 +71,19 @@ BUOY_OBS_DIR = Path("inputs/LauriBuoys/processed")
 
 
 def _metrics_variables(variables: Iterable[str] | None) -> list[str]:
-    """Variables to score; default from ``Samoa.json`` validation section."""
+    """
+    Return the list of variables to score.
+
+    Parameters
+    ----------
+    variables
+        Explicit variable names; default from ``Samoa.json`` validation section.
+
+    Returns
+    -------
+    list[str]
+        Variable keys (e.g. ``hs``, ``tp``, ``dir``).
+    """
     return list(variables) if variables is not None else list(METRICS_VARIABLES)
 
 
@@ -71,19 +93,23 @@ def _metrics_variables(variables: Iterable[str] | None) -> list[str]:
 
 
 def _theta_to_360(values: np.ndarray) -> np.ndarray:
+    """Wrap direction angles to ``[0, 360)`` degrees."""
     return np.mod(values, 360.0)
 
 
 def _circular_difference(ref: np.ndarray, est: np.ndarray) -> np.ndarray:
+    """Signed shortest angular difference ``estimate - reference`` in degrees."""
     return (est - ref + 180.0) % 360.0 - 180.0
 
 
 def _coincident_values(x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Return paired finite values from *x* and *y*."""
     mask = np.isfinite(x) & np.isfinite(y)
     return x[mask], y[mask]
 
 
 def _circular_r2(reference: np.ndarray, estimate: np.ndarray) -> float:
+    """R² for circular data using shortest angular deviations."""
     ref, est = _coincident_values(_theta_to_360(reference), _theta_to_360(estimate))
     if ref.size == 0:
         return np.nan
@@ -106,7 +132,21 @@ def compute_metrics(
     *,
     circular: bool = False,
 ) -> dict[str, float]:
-    """Bias, RMSE, R² and sample count for one variable pair."""
+    """
+    Bias, RMSE, R² and sample count for one variable pair.
+
+    Parameters
+    ----------
+    estimate, reference
+        Flat arrays of paired values.
+    circular
+        If ``True``, treat values as directions in degrees.
+
+    Returns
+    -------
+    dict[str, float]
+        Keys ``n``, ``bias``, ``rmse``, ``r2``.
+    """
     if circular:
         ref, est = _coincident_values(_theta_to_360(reference), _theta_to_360(estimate))
         if ref.size == 0:
@@ -131,71 +171,13 @@ def compute_metrics(
 
 
 # ---------------------------------------------------------------------------
-# Site groups
+# Site groups (re-exported from utils.sites)
 # ---------------------------------------------------------------------------
 
 
-def _per_site_coord(ds: xr.Dataset, name: str, default: str = "") -> dict[str, str]:
-    if name not in ds.coords:
-        return {str(s): default for s in ds.sites.values}
-    values = ds[name].values
-    labels = [str(s) for s in ds.sites.values]
-    if values.ndim == 0:
-        return {s: str(values) for s in labels}
-    return {s: str(v) for s, v in zip(labels, values, strict=True)}
-
-
-def _isobath_sort_key(label: str) -> float:
-    try:
-        return float(str(label).rstrip("m"))
-    except ValueError:
-        return float("inf")
-
-
-def metric_groups(ds: xr.Dataset) -> list[tuple[str, str, list[str]]]:
-    """Validation groups as ``(name, site_source, site_ids)``.
-
-    - isobaths: one group per depth label (``5m``, ``10m``, …)
-    - mesh: one group per polygon label (e.g. ``Apia``)
-    - buoys: one group per site id
-    """
-    labels = [str(s) for s in ds.sites.values]
-    source_by_site = _per_site_coord(ds, "site_source", "")
-    label_by_site = _per_site_coord(ds, "site_label", "")
-
-    groups: list[tuple[str, str, list[str]]] = []
-
-    isobath_sites = [s for s in labels if source_by_site.get(s) == "isobath"]
-    for iso_label in sorted(
-        {label_by_site[s] for s in isobath_sites},
-        key=_isobath_sort_key,
-    ):
-        site_ids = [s for s in isobath_sites if label_by_site[s] == iso_label]
-        if site_ids:
-            groups.append((iso_label, "isobath", site_ids))
-
-    mesh_sites = [s for s in labels if source_by_site.get(s) == "mesh"]
-    for mesh_label in sorted({label_by_site[s] for s in mesh_sites}):
-        site_ids = [s for s in mesh_sites if label_by_site[s] == mesh_label]
-        if site_ids:
-            groups.append((mesh_label, "mesh", site_ids))
-
-    for site_id in labels:
-        if source_by_site.get(site_id) == "buoy" or str(site_id).startswith("buoy_"):
-            groups.append((site_id, "buoy", [site_id]))
-
-    return groups
-
-
-def _find_group(
-    ds: xr.Dataset,
-    group: str,
-) -> tuple[str, str, list[str]]:
-    for name, source, site_ids in metric_groups(ds):
-        if name == group:
-            return name, source, site_ids
-    available = [g[0] for g in metric_groups(ds)]
-    raise KeyError(f"Unknown group {group!r}. Available: {available}")
+def _find_group(ds: xr.Dataset, group: str) -> tuple[str, str, list[str]]:
+    """Alias for :func:`utils.sites.find_group`."""
+    return find_group(ds, group)
 
 
 def metrics_table(
@@ -204,7 +186,22 @@ def metrics_table(
     *,
     variables: Iterable[str] | None = None,
 ) -> pd.DataFrame:
-    """Metrics table with one row per group × variable."""
+    """
+    Build a metrics table with one row per validation group and variable.
+
+    Parameters
+    ----------
+    estimate, reference
+        Aligned datasets with ``sites`` and wave variables.
+    variables
+        Subset of metrics variables; default from config.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Columns include ``group``, ``site_source``, ``variable``, ``bias``,
+        ``rmse``, ``r2``, ``n``.
+    """
     params = _metrics_variables(variables)
     rows: list[dict[str, Any]] = []
 
@@ -224,7 +221,7 @@ def metrics_table(
                     "site_source": site_source,
                     "site_label": group_name
                     if site_source in ("isobath", "mesh")
-                    else _per_site_coord(estimate, "site_label").get(
+                    else per_site_coord(estimate, "site_label").get(
                         site_ids[0], group_name
                     ),
                     "variable": param,
@@ -327,10 +324,12 @@ def load_buoy_observations(
 
 
 def _instrument_id(site: str) -> str:
+    """Strip the ``buoy_`` prefix from a SnapWave site label."""
     return str(site).removeprefix("buoy_")
 
 
 def _haversine_m(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
+    """Great-circle distance in metres between two lon/lat points."""
     radius = 6_371_000.0
     phi1, phi2 = np.radians(lat1), np.radians(lat2)
     dphi = np.radians(lat2 - lat1)
@@ -403,18 +402,6 @@ def closest_goals_table(
     return pd.DataFrame(rows)
 
 
-def _attach_site_meta(ds: xr.Dataset) -> xr.Dataset:
-    """Copy SnapWave site coords from a goal case file (for :func:`metric_groups`)."""
-    template = mm.load_cases_goal(1)
-    site_ids = [str(s) for s in ds.sites.values]
-    shared = [s for s in site_ids if s in template.sites.values]
-    if not shared:
-        return ds
-    ref = template.sel(sites=site_ids)
-    meta = {name: ref[name] for name in mm.SITE_META if name in ref.coords}
-    return ds.assign_coords(meta)
-
-
 def load_offshore_hindcast_at_buoys(
     time: str | slice,
     sites: Iterable[str],
@@ -449,7 +436,7 @@ def load_offshore_hindcast_at_buoys(
 
         label = f"{offshore_name} (closest goal)"
         out = xr.concat(chunks, dim="sites").transpose("time", "sites")
-        out = _attach_site_meta(out)
+        out = attach_site_meta(out, mm.load_cases_goal(1))
         estimates[label] = out.load() if load else out
         logger.info(
             "Offshore %s: %d site(s) mapped to goals %s",
@@ -470,7 +457,7 @@ def align_pair(
 ) -> tuple[xr.Dataset, xr.Dataset]:
     """Inner join on shared ``sites`` and ``time``."""
     if sites is not None:
-        site_ids = mm.resolve_sites(estimate, sites)
+        site_ids = resolve_sites(estimate, sites)
     else:
         site_ids = sorted(
             set(str(s) for s in estimate.sites.values)
@@ -640,6 +627,8 @@ class HoldoutValidationResult(ComparisonResult):
     goal: str = ""
     mda_candidate: int = 0
     n_test_cases: int = 0
+    _default_estimate_label: str = field(default="Metamodel", repr=False)
+    _default_reference_label: str = field(default="SnapWave", repr=False)
 
     @property
     def n(self) -> int:
@@ -651,15 +640,15 @@ class HoldoutValidationResult(ComparisonResult):
         group: str,
         *,
         variables: Iterable[str] | None = None,
-        estimate_label: str = "Metamodel",
-        reference_label: str = "SnapWave",
+        estimate_label: str | None = None,
+        reference_label: str | None = None,
         **kwargs: Any,
     ) -> Figure:
         return super().plot(
             group,
             variables=variables,
-            estimate_label=estimate_label,
-            reference_label=reference_label,
+            estimate_label=estimate_label or self._default_estimate_label,
+            reference_label=reference_label or self._default_reference_label,
             **kwargs,
         )
 
@@ -668,15 +657,15 @@ class HoldoutValidationResult(ComparisonResult):
         group: str,
         *,
         variables: Iterable[str] | None = None,
-        estimate_label: str = "Metamodel",
-        reference_label: str = "SnapWave",
+        estimate_label: str | None = None,
+        reference_label: str | None = None,
         **kwargs: Any,
     ) -> Figure:
         return super().plot_scatter(
             group,
             variables=variables,
-            estimate_label=estimate_label,
-            reference_label=reference_label,
+            estimate_label=estimate_label or self._default_estimate_label,
+            reference_label=reference_label or self._default_reference_label,
             **kwargs,
         )
 
@@ -685,15 +674,15 @@ class HoldoutValidationResult(ComparisonResult):
         *,
         variables: Iterable[str] | None = None,
         groups: Iterable[str] | None = None,
-        estimate_label: str = "Metamodel",
-        reference_label: str = "SnapWave",
+        estimate_label: str | None = None,
+        reference_label: str | None = None,
         **kwargs: Any,
     ) -> list[Figure]:
         return super().plot_all(
             variables=variables,
             groups=groups,
-            estimate_label=estimate_label,
-            reference_label=reference_label,
+            estimate_label=estimate_label or self._default_estimate_label,
+            reference_label=reference_label or self._default_reference_label,
             **kwargs,
         )
 
@@ -730,7 +719,7 @@ def _holdout_pair(
         pca_variance=pca_variance,
     )
     reference = cases.isel(case_num=idx)[["hs", "tp", "dir"]].assign(
-        **{name: cases[name] for name in mm.SITE_META if name in cases}
+        **{name: cases[name] for name in SITE_META if name in cases}
     )
     return estimate, reference, len(test_idx)
 
@@ -743,7 +732,23 @@ def compare(
     estimate_label: str = "Estimate",
     reference_label: str = "Reference",
 ) -> ComparisonResult:
-    """Build metrics table and plot helpers for aligned estimate vs reference."""
+    """
+    Compare aligned estimate and reference datasets.
+
+    Parameters
+    ----------
+    estimate, reference
+        Datasets sharing ``sites`` (and ``time`` or ``case_num``).
+    variables
+        Metrics variables to score.
+    estimate_label, reference_label
+        Labels stored on the metrics table and used in plots.
+
+    Returns
+    -------
+    ComparisonResult
+        Metrics plus plot helpers.
+    """
     table = metrics_table(estimate, reference, variables=variables)
     if estimate_label != "Estimate" or reference_label != "Reference":
         table = table.copy()
@@ -779,7 +784,23 @@ def validate(
     variables: Iterable[str] | None = None,
     pca_variance: mm.PcaVariance = None,
 ) -> HoldoutValidationResult:
-    """Holdout validation for one goal and MDA train size (loads saved models)."""
+    """
+    Holdout validation for one goal and MDA train size.
+
+    Parameters
+    ----------
+    goal, n
+        Goal id and MDA train size (saved models must exist).
+    variables
+        Metrics variables to score.
+    pca_variance
+        PCA fractions used at fit time.
+
+    Returns
+    -------
+    HoldoutValidationResult
+        Estimate, reference, tagged metrics, and plot helpers.
+    """
     goal = str(goal)
     n = int(n)
     estimate, reference, n_test = _holdout_pair(goal, n, pca_variance=pca_variance)

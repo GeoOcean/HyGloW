@@ -4,6 +4,8 @@ Training: :func:`fit`, :func:`fit_all`
 Prediction: :func:`predict` (LHS ``case_num`` or hindcast ``time`` via ``row_dim``)
 Hindcast: :func:`reconstruct` — ``spectral=False`` bulk (partition ``-1``),
 ``spectral=True`` WHACS partitions ``0``–``3``; both via wavespectra linear sum.
+
+Site grouping and selection: :mod:`utils.sites`.
 """
 
 from __future__ import annotations
@@ -30,6 +32,7 @@ from utils.config import (
     open_offshore_waves,
     resolve,
 )
+from utils.sites import SITE_META, resolve_sites
 from wavespectra.construct import construct_partition
 
 LOGGER_NAME = "Samoa.metamodel"
@@ -58,13 +61,6 @@ SPECTRAL_DIR = np.arange(0.0, 360.0, 5)
 # WHACS: bulk = partition -1; wind sea + swells = 0–3 (see offshore_waves.py)
 BULK_PARTITION = -1
 SPECTRAL_PARTITIONS = (0, 1, 2, 3)
-SITE_META = (
-    "site_source",
-    "site_label",
-    "site_depth",
-    "site_longitude",
-    "site_latitude",
-)
 
 
 class ModelsNotFittedError(FileNotFoundError):
@@ -258,6 +254,7 @@ def load_context(goal: str | int) -> dict[str, Any]:
 def _missing_model_paths(
     goal: str | int, n: int, *, pca_variance: PcaVariance = None
 ) -> list[Path]:
+    """Return paths of missing GP/PCA model files for one goal and MDA size."""
     missing: list[Path] = []
     if not gp_model_path(goal, n).exists():
         missing.append(gp_model_path(goal, n))
@@ -685,54 +682,6 @@ def common_model_sites(goals: Iterable[str | int] | None = None) -> list[str]:
     for goal in active[1:]:
         common &= {str(s) for s in load_cases_goal(goal).sites.values}
     return sorted(common)
-
-
-def resolve_sites(
-    ds: xr.Dataset,
-    sites: str | Iterable[str] | None = None,
-) -> list[str]:
-    """Resolve a site selector to concrete ``sites`` coordinate labels.
-
-    Accepts metric group names (from validation plots), umbrella sources
-    (``buoy``, ``isobath``, ``mesh``), individual site ids, or a list of
-    those. ``None`` returns every site in *ds*.
-    """
-    from utils.validation import metric_groups
-
-    labels = [str(s) for s in ds.sites.values]
-    if sites is None:
-        return labels
-
-    def from_selector(selector: str) -> list[str]:
-        if selector in ("buoy", "isobath", "mesh"):
-            return [
-                sid
-                for _name, source, ids in metric_groups(ds)
-                if source == selector
-                for sid in ids
-            ]
-        for name, _source, ids in metric_groups(ds):
-            if name == selector:
-                return list(ids)
-        if selector in labels:
-            return [selector]
-        raise ValueError(
-            f"Unknown site selector {selector!r}. "
-            f"Use a group name ({[g[0] for g in metric_groups(ds)]}), "
-            f"umbrella ('buoy', 'isobath', 'mesh'), or a site id."
-        )
-
-    if isinstance(sites, str):
-        return from_selector(sites)
-
-    out: list[str] = []
-    seen: set[str] = set()
-    for item in sites:
-        for sid in resolve_sites(ds, item):
-            if sid not in seen:
-                seen.add(sid)
-                out.append(sid)
-    return out
 
 
 def resolve_reconstruction_sites(

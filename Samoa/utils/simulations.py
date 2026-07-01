@@ -10,8 +10,20 @@ from utils.config import SIMULATIONS
 
 
 def generate_cases(goals: Mapping[str, Mapping]) -> pd.DataFrame:
-    """Generate LHS cases for each goal using ``SIMULATIONS`` from ``Samoa.json``."""
+    """
+    Generate Latin Hypercube cases for each metamodel goal.
 
+    Parameters
+    ----------
+    goals
+        Goals mapping from :func:`utils.config.load_goals`.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Columns ``goal``, ``tp``, ``dir``, ``spr``, ``wl`` with one row per
+        LHS sample (``num_samples_per_goal`` per goal).
+    """
     bounds = SIMULATIONS["bounds"]
     n = SIMULATIONS["num_samples_per_goal"]
     tp_lo, tp_hi = bounds["tp"]

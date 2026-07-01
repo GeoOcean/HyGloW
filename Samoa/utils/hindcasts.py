@@ -47,6 +47,19 @@ def load_catalogs(hindcasts_dir: Path | str) -> dict[str, gpd.GeoDataFrame]:
 
 
 def load_land(land_path: Path | str) -> gpd.GeoDataFrame:
+    """
+    Load a land polygon file in geographic CRS.
+
+    Parameters
+    ----------
+    land_path
+        Path to a land vector dataset.
+
+    Returns
+    -------
+    geopandas.GeoDataFrame
+        Land geometries in ``EPSG:4326``.
+    """
     return gpd.read_file(land_path).to_crs(GEO_CRS)
 
 

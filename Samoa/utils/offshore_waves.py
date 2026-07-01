@@ -20,12 +20,25 @@ BOUNDARY_VARS = ("hs", "tp", "dir", "spr")
 
 
 def boundary_parameters(offshore: xr.Dataset) -> dict[str, list]:
-    """Offshore time series → SnapWave dynamic template inputs.
-
-    Returns lists keyed ``hs_goals``, ``tp_goals``, ``wd_goals``, ``ds_goals``,
-    ``tref`` (one entry per timestep). ``dir``/``spr`` map to SnapWave ``wd``/``ds``.
     """
+    Convert offshore time series to SnapWave dynamic template inputs.
 
+    Parameters
+    ----------
+    offshore
+        Processed offshore dataset with dims ``(time, goal)``.
+
+    Returns
+    -------
+    dict[str, list]
+        Keys ``hs_goals``, ``tp_goals``, ``wd_goals``, ``ds_goals``, ``tref``
+        (one list entry per timestep). ``dir``/``spr`` map to SnapWave ``wd``/``ds``.
+
+    Raises
+    ------
+    ValueError
+        If required dimensions or variables are missing.
+    """
     if GOAL_DIM not in offshore.dims:
         raise ValueError(
             f"offshore waves must have a {GOAL_DIM!r} dimension; "

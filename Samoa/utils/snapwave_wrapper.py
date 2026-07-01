@@ -55,6 +55,19 @@ _DROP_NATIVE = ("station_x", "station_y", "station_name", "point_zb", "goal")
 def read_polygon_from_shp_file(
     shp_path: str | Path,
 ) -> tuple[gpd.GeoDataFrame, Polygon | MultiPolygon]:
+    """
+    Read a shapefile and return its GeoDataFrame and first geometry.
+
+    Parameters
+    ----------
+    shp_path
+        Path to a polygon shapefile.
+
+    Returns
+    -------
+    tuple[GeoDataFrame, Polygon | MultiPolygon]
+        Full frame and primary geometry.
+    """
     gdf = gpd.read_file(shp_path)
     return gdf, gdf.geometry.iloc[0]
 
@@ -65,6 +78,23 @@ def write_polygon_vertices_to_txt(
     *,
     drop_closing_vertex: bool = True,
 ) -> Path:
+    """
+    Write polygon exterior vertices to a SnapWave enclosure text file.
+
+    Parameters
+    ----------
+    polygon
+        Domain polygon or multipolygon.
+    out_path
+        Output text file path.
+    drop_closing_vertex
+        Omit repeated closing coordinate when ``True``.
+
+    Returns
+    -------
+    Path
+        Written file path.
+    """
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -89,12 +119,14 @@ def write_polygon_vertices_to_txt(
 
 
 def _site_coord_values(sites_df: pd.DataFrame, col: str) -> np.ndarray:
+    """Extract one output-sites column as a numpy array."""
     if col == "depth":
         return pd.to_numeric(sites_df[col], errors="coerce").to_numpy(float)
     return sites_df[col].to_numpy()
 
 
 def _label_sites(ds: xr.Dataset, sites_df: pd.DataFrame) -> xr.Dataset:
+    """Attach HyGloW site metadata coordinates to a SnapWave output dataset."""
     dim = "stations" if "stations" in ds.dims else "sites"
     if ds.sizes[dim] != len(sites_df):
         raise ValueError(
@@ -120,8 +152,11 @@ def _standardize_postprocessed(
     *,
     row_dim: str,
 ) -> xr.Dataset:
-    """Site labels, HyGloW variable names, optional scalar forcing."""
+    """
+    Standardise postprocessed SnapWave output for HyGloW.
 
+    Renames point variables, attaches site labels, and stores scalar forcing.
+    """
     ds = _label_sites(ds, sites_df)
     ds = ds.rename({k: v for k, v in POINT_VARS.items() if k in ds.data_vars})
 
@@ -138,6 +173,7 @@ def _standardize_postprocessed(
 
 
 def _read_sites_nc(case_dir: str, sites_nc: str) -> xr.Dataset:
+    """Open a SnapWave sites NetCDF from a case directory."""
     return (
         xr.open_dataset(os.path.join(case_dir, sites_nc))
         .drop_dims(["runtime"])
@@ -168,6 +204,22 @@ class SnapWaveModelWrapper(BaseModelWrapper):
         output_sites_df: pd.DataFrame | None = None,
         sites_filename: str = "output_sites.txt",
     ) -> None:
+        """
+        Initialise shared SnapWave wrapper state.
+
+        Parameters
+        ----------
+        templates_dir, output_dir, aoi_file
+            SnapWave template and output paths.
+        metamodel_parameters, fixed_parameters
+            Case parameter dicts for the base wrapper.
+        goals_config
+            ``{id: {lon, lat, angles}}`` from :func:`utils.config.goals_for_snapwave`.
+        output_sites_df
+            Pre-built output sites table; computed from AoI when omitted.
+        sites_filename
+            Observation file name written into each case directory.
+        """
         super().__init__(
             templates_dir=templates_dir,
             metamodel_parameters=metamodel_parameters,
@@ -196,9 +248,18 @@ class SnapWaveModelWrapper(BaseModelWrapper):
 
     @property
     def _sites_nc(self) -> str:
+        """NetCDF filename paired with the sites text file."""
         return str(Path(self._sites_txt).with_suffix(".nc"))
 
     def plot_configuration(self, radius_deg: float = 0.3) -> None:
+        """
+        Plot goals, direction wedges, and the AoI boundary.
+
+        Parameters
+        ----------
+        radius_deg
+            Wedge radius in degrees.
+        """
         fig, ax = plt.subplots(subplot_kw={"projection": ccrs.PlateCarree()})
         self.aoi_gdf.plot(ax=ax, facecolor="none", edgecolor="black")
 
@@ -223,6 +284,16 @@ class SnapWaveModelWrapper(BaseModelWrapper):
         plt.show()
 
     def build_case(self, case_context: dict, case_dir: str) -> None:
+        """
+        Write boundary nodes and output sites into a SnapWave case directory.
+
+        Parameters
+        ----------
+        case_context
+            Per-case parameters (mutated with ``ngoals``).
+        case_dir
+            Case working directory.
+        """
         case_context["ngoals"] = len(self.goals_config)
         write_array_in_file(
             self.goals_nodes_array, os.path.join(case_dir, "boundary.txt")
@@ -241,6 +312,16 @@ class SnapWaveModelWrapper(BaseModelWrapper):
         output_log_file: str = "wrapper_out.log",
         error_log_file: str = "wrapper_error.log",
     ) -> None:
+        """
+        Run one SnapWave case and remove the ``snapwave.upw`` scratch file.
+
+        Parameters
+        ----------
+        case_num, case_dir, case_context, launcher
+            Passed to the base wrapper ``run_case``.
+        output_log_file, error_log_file
+            Log file names inside *case_dir*.
+        """
         super().run_case(
             case_num=case_num,
             case_dir=case_dir,
@@ -254,6 +335,19 @@ class SnapWaveModelWrapper(BaseModelWrapper):
             os.remove(upw)
 
     def monitor_cases(self, value_counts: str | None = None):
+        """
+        Report case status from wrapper log file sizes.
+
+        Parameters
+        ----------
+        value_counts
+            Optional status filter passed to the base monitor.
+
+        Returns
+        -------
+        Any
+            Base wrapper monitor result.
+        """
         cases_status: dict[str, str] = {}
         for case_dir in self.cases_dirs:
             log = os.path.join(case_dir, "wrapper_out.log")
@@ -275,6 +369,9 @@ class SnapWaveMetaModelWrapper(SnapWaveModelWrapper):
     def postprocess_case(
         self, case_num: int, case_dir: str, case_context: dict
     ) -> xr.Dataset:
+        """
+        Postprocess one LHS case to ``(case_num, sites)`` HyGloW format.
+        """
         self.logger.info(f"[{case_num}]: Postprocessing case {case_num} in {case_dir}.")
         ds = _read_sites_nc(case_dir, self._sites_nc).rename({"time": "case_num"})
         ds["case_num"] = [case_num]
@@ -283,6 +380,14 @@ class SnapWaveMetaModelWrapper(SnapWaveModelWrapper):
         )
 
     def join_postprocessed_files(self, postprocessed_files: list[xr.Dataset]) -> str:
+        """
+        Merge postprocessed cases into one NetCDF per goal.
+
+        Returns
+        -------
+        str
+            Status message ``"Done"``.
+        """
         self.logger.info("Joining postprocessed files per goal.")
 
         n_goals = len(self.goals_config)
@@ -304,7 +409,9 @@ class SnapWaveDynamicModelWrapper(SnapWaveModelWrapper):
     def postprocess_case(
         self, case_num: int, case_dir: str, case_context: dict
     ) -> xr.Dataset:
-        self.logger.info(f"[{case_num}]: Postprocessing case {case_num} in {case_dir}.")
+        """
+        Postprocess one dynamic case to ``(time, sites)`` HyGloW format.
+        """
         ds = _read_sites_nc(case_dir, self._sites_nc)
         return _standardize_postprocessed(
             ds, case_context, self.output_sites_df, row_dim="time"
@@ -313,5 +420,13 @@ class SnapWaveDynamicModelWrapper(SnapWaveModelWrapper):
     def join_postprocessed_files(
         self, postprocessed_files: list[xr.Dataset]
     ) -> xr.Dataset:
+        """
+        Concatenate postprocessed dynamic cases along ``time``.
+
+        Returns
+        -------
+        xarray.Dataset
+            Combined time series for all cases.
+        """
         self.logger.info("Joining postprocessed files along time.")
         return xr.concat(postprocessed_files, dim="time")

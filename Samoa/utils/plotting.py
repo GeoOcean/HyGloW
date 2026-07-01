@@ -64,6 +64,18 @@ def _aoi() -> gpd.GeoDataFrame:
 
 
 def plot_land(land: gpd.GeoDataFrame, ax: Axes, *, label: str = "land") -> None:
+    """
+    Plot land polygons on an existing axes.
+
+    Parameters
+    ----------
+    land
+        Land geometry in geographic CRS.
+    ax
+        Target matplotlib axes.
+    label
+        Legend label.
+    """
     land.plot(
         ax=ax,
         facecolor=LAND_FACE_COLOR,
@@ -77,6 +89,18 @@ def plot_land(land: gpd.GeoDataFrame, ax: Axes, *, label: str = "land") -> None:
 def plot_ring(
     ring_gdf: gpd.GeoDataFrame, ax: Axes, *, label: str = "buffer ring"
 ) -> None:
+    """
+    Plot a buffer-ring boundary as a dashed line.
+
+    Parameters
+    ----------
+    ring_gdf
+        Ring polygon GeoDataFrame.
+    ax
+        Target matplotlib axes.
+    label
+        Legend label.
+    """
     ring_gdf.boundary.plot(
         ax=ax, color=RING_COLOR, linewidth=RING_LINEWIDTH, linestyle="--", label=label
     )
@@ -91,6 +115,25 @@ def plot_base_map(
     land: gpd.GeoDataFrame | None = None,
     ring: gpd.GeoDataFrame | None = None,
 ) -> tuple[Figure, Axes]:
+    """
+    Draw the standard Samoa case-map background.
+
+    Parameters
+    ----------
+    ax
+        Existing axes; created when ``None``.
+    title
+        Optional map title.
+    show_topobathy, show_aoi
+        Toggle bathymetry raster and AoI outline.
+    land, ring
+        Optional land and buffer-ring overlays.
+
+    Returns
+    -------
+    tuple[Figure, Axes]
+        Figure and axes handles.
+    """
     fig, ax = plt.subplots(figsize=FIGSIZE) if ax is None else (ax.figure, ax)
 
     if show_topobathy:
@@ -126,6 +169,22 @@ def plot_points(
     annotate: bool = True,
     color_map: dict[str, str] | None = None,
 ) -> None:
+    """
+    Plot observation or goal points with optional annotations.
+
+    Parameters
+    ----------
+    points
+        Point GeoDataFrame.
+    ax
+        Target matplotlib axes.
+    color_col, label_col
+        Columns used for colour grouping and text labels.
+    annotate
+        Annotate each point when ``True``.
+    color_map
+        Optional colour lookup by *color_col* value.
+    """
     colors = color_map or TYPE_COLORS
     if color_col in points.columns:
         for value, group in points.groupby(color_col):
@@ -166,8 +225,22 @@ def plot_sectors(
     *,
     radius_deg: float = 0.35,
 ) -> None:
-    """Draw direction wedges at each goal's AoI boundary snap (math deg, CCW from East)."""
+    """
+    Draw direction wedges at each goal's AoI boundary snap.
 
+    Parameters
+    ----------
+    targets
+        Goal target points with ``goal_id``.
+    goals
+        Goals dict with ``angles`` per goal.
+    boundary_snaps
+        Hindcast snap lon/lat per goal id.
+    ax
+        Target matplotlib axes.
+    radius_deg
+        Wedge radius in degrees.
+    """
     for _, row in targets.iterrows():
         key = str(int(row["goal_id"]))
         goal = goals[key]
@@ -211,6 +284,25 @@ def plot_case_map(
     ring: gpd.GeoDataFrame | None = None,
     color_map: dict[str, str] | None = None,
 ) -> tuple[Figure, Axes]:
+    """
+    Full case map with optional point overlay.
+
+    Parameters
+    ----------
+    points
+        Optional points to plot on top of the base map.
+    title
+        Map title.
+    color_col, label_col, color_map
+        Passed to :func:`plot_points`.
+    land, ring
+        Optional land and buffer-ring overlays.
+
+    Returns
+    -------
+    tuple[Figure, Axes]
+        Figure and axes handles.
+    """
     fig, ax = plot_base_map(title=title, land=land, ring=ring)
     if points is not None and not points.empty:
         plot_points(
@@ -241,9 +333,22 @@ def plot_validation_sites(
     annotate_buoys: bool = True,
     markersize_scale: float = 1.0,
 ) -> None:
-    """Plot validation output sites on an existing map axes."""
+    """
+    Plot validation output sites on an existing map axes.
 
-    sources = np.asarray(sources, dtype=str)
+    Parameters
+    ----------
+    lon, lat, sources, labels
+        Per-site coordinates and metadata arrays.
+    ax
+        Target matplotlib axes.
+    site_ids
+        Optional site id array for buoy annotations.
+    annotate_buoys
+        Label buoy sites when ``True``.
+    markersize_scale
+        Multiplier on default marker sizes.
+    """
     labels = np.asarray(labels, dtype=str)
     lon = np.asarray(lon, dtype=float)
     lat = np.asarray(lat, dtype=float)

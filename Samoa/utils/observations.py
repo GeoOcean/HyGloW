@@ -15,12 +15,19 @@ COORD_KEYS = ("lon", "lat")
 
 
 def geojson_path() -> Path:
-    """Resolved path to the onshore-waves GeoJSON (``onshore_waves`` in Samoa.json)."""
+    """
+    Resolved path to the onshore-waves GeoJSON.
 
+    Returns
+    -------
+    Path
+        ``onshore_waves`` path from ``Samoa.json``.
+    """
     return resolve(ONSHORE_WAVES)
 
 
 def _load_geojson(path: Path | str | None = None) -> dict:
+    """Load a GeoJSON feature collection from disk."""
     with resolve(path or geojson_path()).open(encoding="utf-8") as f:
         return json.load(f)
 
@@ -31,8 +38,21 @@ def get_coordinates(
     *,
     path: Path | str | None = None,
 ) -> dict[str, dict[str, Any]]:
-    """``instrument_id`` → site metadata from the observations GeoJSON."""
+    """
+    Load site metadata keyed by ``instrument_id``.
 
+    Parameters
+    ----------
+    role, institution
+        Optional filters (case-insensitive).
+    path
+        Override GeoJSON path.
+
+    Returns
+    -------
+    dict[str, dict]
+        ``instrument_id`` → lon/lat and metadata fields.
+    """
     features = _load_geojson(path).get("features", [])
     requested_role = role.strip().lower() if role else None
     requested_inst = institution.strip().lower() if institution else None
@@ -72,8 +92,24 @@ def get_coordinates(
 
 
 def dict_to_geojson(observations: dict[str, dict]) -> dict:
-    """Observations dict → GeoJSON FeatureCollection."""
+    """
+    Convert an observations dict to a GeoJSON FeatureCollection.
 
+    Parameters
+    ----------
+    observations
+        ``instrument_id`` → property dict with required keys.
+
+    Returns
+    -------
+    dict
+        GeoJSON FeatureCollection.
+
+    Raises
+    ------
+    KeyError
+        If required property keys are missing.
+    """
     features = []
     for instrument_id, props in observations.items():
         missing = [k for k in REQUIRED_KEYS if k not in props]
@@ -94,6 +130,19 @@ def dict_to_geojson(observations: dict[str, dict]) -> dict:
 
 
 def geojson_to_dataframe(feature_collection: dict) -> pd.DataFrame:
+    """
+    Flatten a GeoJSON FeatureCollection to a DataFrame.
+
+    Parameters
+    ----------
+    feature_collection
+        GeoJSON with point features.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Indexed by ``instrument_id`` with lon/lat columns.
+    """
     rows = []
     for feat in feature_collection["features"]:
         props = dict(feat["properties"])
@@ -103,6 +152,19 @@ def geojson_to_dataframe(feature_collection: dict) -> pd.DataFrame:
 
 
 def dict_to_gdf(observations: dict[str, dict]) -> gpd.GeoDataFrame:
+    """
+    Build a GeoDataFrame from an observations dict.
+
+    Parameters
+    ----------
+    observations
+        ``instrument_id`` → property dict with ``lon`` and ``lat``.
+
+    Returns
+    -------
+    geopandas.GeoDataFrame
+        Points in ``EPSG:4326``.
+    """
     rows = [{**props, "instrument_id": iid} for iid, props in observations.items()]
     return gpd.GeoDataFrame(
         rows,
@@ -114,6 +176,21 @@ def dict_to_gdf(observations: dict[str, dict]) -> gpd.GeoDataFrame:
 def save_geojson(
     feature_collection: dict, output_path: Path | str | None = None
 ) -> Path:
+    """
+    Write a GeoJSON FeatureCollection to disk.
+
+    Parameters
+    ----------
+    feature_collection
+        GeoJSON dict to serialize.
+    output_path
+        Destination path; default ``onshore_waves`` from config.
+
+    Returns
+    -------
+    Path
+        Written file path.
+    """
     path = resolve(output_path or geojson_path())
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as f:
