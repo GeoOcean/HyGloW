@@ -24,6 +24,7 @@ from bluemath_tk.wrappers._base_wrappers import BaseModelWrapper
 from bluemath_tk.wrappers._utils_wrappers import write_array_in_file
 from shapely.geometry import MultiPolygon, Polygon
 from utils.contours import compute_output_sites, write_output_sites
+from utils.directions import nautical_sector_to_wedge_angles
 
 # SnapWave history NetCDF → HyGloW names
 POINT_VARS = {
@@ -255,6 +256,9 @@ class SnapWaveModelWrapper(BaseModelWrapper):
         """
         Plot goals, direction wedges, and the AoI boundary.
 
+        Goal ``angles`` are nautical clockwise ``[left, right]``; wedges are
+        drawn via an internal matplotlib conversion (see :mod:`utils.directions`).
+
         Parameters
         ----------
         radius_deg
@@ -265,18 +269,14 @@ class SnapWaveModelWrapper(BaseModelWrapper):
 
         for key, vals in self.goals_config.items():
             lon, lat = vals["lon"], vals["lat"]
-            a1 = np.deg2rad(vals["angles"][0] % 360)
-            a2 = np.deg2rad(vals["angles"][1] % 360)
-            theta = (
-                np.linspace(a1, a2 + 2 * np.pi, 100)
-                if a2 < a1
-                else np.linspace(a1, a2, 100)
-            )
+            left, right = vals["angles"]
+            theta1, theta2 = nautical_sector_to_wedge_angles(left, right)
+            arc = np.linspace(np.deg2rad(theta1), np.deg2rad(theta2), 100)
             ax.plot(lon, lat, "ko")
             ax.text(lon, lat, str(key), fontsize=9, ha="right")
             ax.fill(
-                np.concatenate([[lon], lon + radius_deg * np.cos(theta)]),
-                np.concatenate([[lat], lat + radius_deg * np.sin(theta)]),
+                np.concatenate([[lon], lon + radius_deg * np.cos(arc)]),
+                np.concatenate([[lat], lat + radius_deg * np.sin(arc)]),
                 alpha=0.4,
             )
 

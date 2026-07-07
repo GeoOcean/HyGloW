@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable, Literal
 
@@ -36,6 +37,7 @@ from utils.config import (
     open_offshore_waves,
     resolve,
 )
+from utils.directions import in_nautical_sector
 from utils.sites import SITE_META, resolve_sites
 from wavespectra.construct import construct_partition
 
@@ -599,6 +601,36 @@ def _goals(goals: Iterable[str | int] | None = None) -> list[str]:
     return [str(g) for g in goals]
 
 
+@lru_cache(maxsize=1)
+def _goal_angles_lookup() -> dict[str, tuple[float, float]]:
+    """Goal sector bounds in nautical clockwise ``[left, right]``.
+
+    Returns
+    -------
+    dict[str, tuple[float, float]]
+        Mapping ``goal_id -> (left, right)`` from ``Samoa_goals.json``.
+
+    Raises
+    ------
+    ValueError
+        If any goal stores invalid bounds (``left >= right``).
+    """
+    out: dict[str, tuple[float, float]] = {}
+    for key, item in load_goals().items():
+        left, right = float(item["angles"][0]), float(item["angles"][1])
+        if left >= right:
+            raise ValueError(
+                f"Goal {key!r} has invalid nautical sector bounds: {left} >= {right}"
+            )
+        out[str(key)] = (left, right)
+    return out
+
+
+def _goal_sector(goal: str | int) -> tuple[float, float]:
+    """Return nautical ``(left, right)`` bounds for one goal."""
+    return _goal_angles_lookup()[str(goal)]
+
+
 def _fit_mda(
     goal: str | int, *, force_retrain: bool = False
 ) -> tuple[Any, np.ndarray, np.ndarray]:
@@ -1098,6 +1130,8 @@ def _valid_timesteps(
     forcing_df: pd.DataFrame,
     hs_offshore: xr.DataArray,
     partition: int,
+    *,
+    goal: str | int | None = None,
 ) -> pd.Series:
     """Return a boolean mask of usable hindcast timesteps.
 
@@ -1109,6 +1143,9 @@ def _valid_timesteps(
         Offshore significant height used for transfer-function scaling.
     partition
         WHACS partition id; bulk ``-1`` skips the ``phs > 0`` filter.
+    goal
+        Goal id. When provided, timesteps are additionally filtered to that
+        goal's nautical propagation sector from ``Samoa_goals.json``.
 
     Returns
     -------
@@ -1116,6 +1153,13 @@ def _valid_timesteps(
         ``True`` where forcing is finite (and partition height is positive).
     """
     valid = forcing_df[list(FORCING_COLS)].notna().all(axis=1)
+    if goal is not None:
+        left, right = _goal_sector(goal)
+        in_sector = pd.Series(
+            in_nautical_sector(forcing_df["dir"].to_numpy(), left, right),
+            index=forcing_df.index,
+        )
+        valid = valid & in_sector
     if partition == BULK_PARTITION:
         return valid
     row_dim = forcing_df.index.name or "time"
@@ -1211,7 +1255,7 @@ def _predict_offshore(
     forcing_df, hs_offshore = _offshore_forcing(
         offshore, goal, partition=partition, wl=wl
     )
-    valid = _valid_timesteps(forcing_df, hs_offshore, partition)
+    valid = _valid_timesteps(forcing_df, hs_offshore, partition, goal=goal)
     if not valid.any():
         return None
 
@@ -1418,6 +1462,7 @@ def reconstruction_cache_path(
         Target ``.nc`` path under ``tmp/reconstruct`` (not created on disk).
     """
     stem = (
+        "reconstruct-v2__"
         f"reconstruct__offshore-{offshore_name}__n-{n}__"
         f"{'spectral' if spectral else 'bulk'}__"
         f"goals-{_goals_label(goals)}__wl-{wl:g}__"
@@ -1667,8 +1712,10 @@ def reconstruct(
     """Reconstruct nearshore waves from offshore hindcast forcing.
 
     Runs the metamodel for each goal and WHACS partition, then linearly sums
-    partition spectra with wavespectra. Long periods are processed month by
-    month to limit GPU memory. Results are cached under ``tmp/reconstruct``.
+    partition spectra with wavespectra. Each goal is only evaluated for
+    timesteps whose offshore direction lies inside that goal's nautical sector
+    (from ``Samoa_goals.json``). Long periods are processed month by month to
+    limit GPU memory. Results are cached under ``tmp/reconstruct``.
 
     Parameters
     ----------

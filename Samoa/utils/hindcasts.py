@@ -1,4 +1,8 @@
-"""Hindcast catalog loading, goal placement in the AoI buffer ring, and direction sectors."""
+"""Hindcast catalog loading, goal placement in the AoI buffer ring, and direction sectors.
+
+Open-sea propagation sectors are stored in **nautical** wave-from directions
+(clockwise from North). See :mod:`utils.directions` for the full convention.
+"""
 
 from __future__ import annotations
 
@@ -9,6 +13,11 @@ from typing import Any
 import geopandas as gpd
 import numpy as np
 from shapely.geometry import LineString, Point, Polygon
+
+from utils.directions import (
+    math_sector_to_nautical_clockwise,
+    nautical_sector_wedge_coords,
+)
 
 GEO_CRS = "EPSG:4326"
 
@@ -296,10 +305,15 @@ class AoIRingSectors:
 
         Projects ``point_xy`` onto the exterior ring, snaps to that boundary point,
         and builds the sector from the segment tangent / outward normal there
-        (NC ``00_Compute_Goal_Directions`` convention).
+        (NC ``00_Compute_Goal_Directions`` geometry).
 
-        Returns ``angles`` (math degrees, CCW from East) and ``boundary_snap_xy``
-        (the snapped point in the same CRS as ``point_xy``).
+        Returns
+        -------
+        dict
+            ``angles`` — nautical clockwise ``[left, right]`` (see
+            :mod:`utils.directions`); ``left < right``, negative ``left`` when
+            the sector crosses North.
+            ``boundary_snap_xy`` — snapped point in the same CRS as *point_xy*.
         """
 
         d = self.aoi_ring.project(point_xy)
@@ -311,10 +325,10 @@ class AoIRingSectors:
         center_deg = self.seg_tau_deg[seg_idx] + self.outward_side_deg
         opening_deg = 180.0 + 0.5 * (self.turn_deg[v_a] + self.turn_deg[v_b])
         half_w = opening_deg / 2.0
-        low = center_deg - half_w - margin_deg
-        high = center_deg + half_w + margin_deg
+        low_math = center_deg - half_w - margin_deg
+        high_math = center_deg + half_w + margin_deg
         return {
-            "angles": [round(low, 1), round(high, 1)],
+            "angles": math_sector_to_nautical_clockwise(low_math, high_math),
             "boundary_snap_xy": boundary_snap_xy,
         }
 
@@ -350,7 +364,12 @@ def build_goals_dict(
     work_crs: str,
     margin_deg: float = 5.0,
 ) -> dict[str, dict[str, Any]]:
-    """Build the ``goals`` object for ``Samoa_goals.json`` (no boundary snap)."""
+    """Build the ``goals`` object for ``Samoa_goals.json``.
+
+    Each goal includes ``angles`` as nautical clockwise ``[left, right]``
+    (see :mod:`utils.directions`). Boundary snap coordinates are not stored
+    in the JSON (use :func:`boundary_snaps` for maps).
+    """
 
     targets_xy = targets.to_crs(work_crs)
     goals: dict[str, dict[str, Any]] = {}
@@ -374,16 +393,14 @@ def build_goals_dict(
 
 
 def _sector_wedge(
-    lon: float, lat: float, theta1: float, theta2: float, radius_deg: float
+    lon: float,
+    lat: float,
+    left: float,
+    right: float,
+    radius_deg: float,
 ) -> Polygon:
-    n = max(8, int(abs(theta2 - theta1) / 5))
-    angles = np.linspace(theta1, theta2, n)
-    coords = [(lon, lat)]
-    for a in angles:
-        r = np.radians(a)
-        coords.append((lon + radius_deg * np.cos(r), lat + radius_deg * np.sin(r)))
-    coords.append((lon, lat))
-    return Polygon(coords)
+    """Build a sector polygon from nautical ``[left, right]`` (GPKG / QGIS)."""
+    return Polygon(nautical_sector_wedge_coords(lon, lat, left, right, radius_deg))
 
 
 def hindcast_snaps_gdf(goals: dict[str, dict[str, Any]]) -> gpd.GeoDataFrame:
@@ -419,7 +436,11 @@ def goals_layers(
     *,
     sector_radius_deg: float = 0.35,
 ) -> dict[str, gpd.GeoDataFrame]:
-    """Build GeoDataFrames for QGIS export (targets, sectors, links)."""
+    """Build GeoDataFrames for QGIS export (targets, sectors, links).
+
+    ``angle_low`` / ``angle_high`` match the nautical ``angles`` stored in the
+    goals JSON (left / right clockwise boundaries).
+    """
 
     target_rows: list[dict[str, Any]] = []
     snap_rows: list[dict[str, Any]] = []

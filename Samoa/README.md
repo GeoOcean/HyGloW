@@ -81,7 +81,7 @@ sites when `include_buoys: true` in `output_sites_config`.
 `utils.hindcasts` places random targets in the inland buffer ring, snaps each goal
 to hindcast catalog nodes (WHACS, etc.), and saves:
 
-- `inputs/goals/Samoa_goals.json` — targets, direction sectors, hindcast snaps
+- `inputs/goals/Samoa_goals.json` — targets, **nautical** direction sectors (`[left, right]` clockwise from N; see `utils/directions.py`), hindcast snaps
 - `inputs/goals/Samoa_goals.gpkg` — QGIS preview
 
 Goals define **where** offshore forcing enters the domain (boundary nodes + sectors).
@@ -89,8 +89,10 @@ Goals define **where** offshore forcing enters the domain (boundary nodes + sect
 ### 05 — Metamodel LHS cases
 
 For each goal, `utils.simulations.generate_cases` builds 500 Latin Hypercube samples
-of `(tp, dir, spr, wl)` within bounds in `Samoa.json`. `SnapWaveMetaModelWrapper`
-runs propagation and writes `SnapWave_CASES_Metamodel/output_sites_{goal}.nc`.
+of `(tp, dir, spr, wl)` within bounds in `Samoa.json`. Wave direction `dir` is sampled
+in nautical degrees inside each goal's sector (`angles` in the goals JSON), then
+normalized to `[0, 360)`. `SnapWaveMetaModelWrapper` runs propagation and writes
+`SnapWave_CASES_Metamodel/output_sites_{goal}.nc`.
 
 These cases are the **training library** for the GPR metamodel.
 

@@ -12,6 +12,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.patches import Wedge
 from utils.config import PATHS, resolve
+from utils.directions import nautical_sector_to_wedge_angles
 
 FIGSIZE = (9, 7)
 TOPOBATHY_VMIN, TOPOBATHY_VMAX = -200, 0
@@ -233,7 +234,8 @@ def plot_sectors(
     targets
         Goal target points with ``goal_id``.
     goals
-        Goals dict with ``angles`` per goal.
+        Goals dict; ``angles`` is nautical clockwise ``[left, right]`` (see
+        :mod:`utils.directions`).
     boundary_snaps
         Hindcast snap lon/lat per goal id.
     ax
@@ -244,7 +246,8 @@ def plot_sectors(
     for _, row in targets.iterrows():
         key = str(int(row["goal_id"]))
         goal = goals[key]
-        theta1, theta2 = goal["angles"]
+        left, right = goal["angles"]
+        theta1, theta2 = nautical_sector_to_wedge_angles(left, right)
         snap = boundary_snaps[key]
         lon, lat = snap["longitude"], snap["latitude"]
         tgt_lon, tgt_lat = row.geometry.x, row.geometry.y
