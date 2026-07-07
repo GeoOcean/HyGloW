@@ -1,16 +1,4 @@
-"""Samoa utilities package."""
-
-from . import (
-    config,
-    directions,
-    evaluation,
-    geometry,
-    mesh,
-    model,
-    observation,
-    simulation,
-    viz,
-)
+"""HyGloW case utilities package."""
 
 __all__ = [
     "config",

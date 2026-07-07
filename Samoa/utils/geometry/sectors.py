@@ -364,7 +364,7 @@ def build_goals_dict(
     work_crs: str,
     margin_deg: float = 5.0,
 ) -> dict[str, dict[str, Any]]:
-    """Build the ``goals`` object for ``Samoa_goals.json``.
+    """Build the ``goals`` object for the case goals JSON.
 
     Each goal includes ``angles`` as nautical clockwise ``[left, right]``
     (see :mod:`utils.directions`). Boundary snap coordinates are not stored
@@ -520,7 +520,13 @@ def save_goals_gpkg(
 
     snaps = hindcast_snaps_gdf(goals)
     for catalog in sorted(snaps["catalog"].unique()):
-        layers[catalog] = snaps[snaps["catalog"] == catalog].drop(columns="catalog")
+        layer = snaps[snaps["catalog"] == catalog].drop(columns="catalog")
+        # GPKG reserves "fid" as the feature primary key. Catalog snap IDs can
+        # legitimately repeat across goals, so keep them under a non-reserved
+        # name to avoid UNIQUE constraint errors on export.
+        if "fid" in layer.columns:
+            layer = layer.rename(columns={"fid": "node_fid"})
+        layers[catalog] = layer
 
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():

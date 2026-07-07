@@ -21,7 +21,7 @@ def geojson_path() -> Path:
     Returns
     -------
     Path
-        ``onshore_waves`` path from ``Samoa.json``.
+        ``onshore_waves`` path from the case config JSON.
     """
     return resolve(ONSHORE_WAVES)
 

@@ -1,4 +1,4 @@
-"""Nautical wave-direction conventions for the Samoa pipeline.
+"""Nautical wave-direction conventions for a HyGloW case pipeline.
 
 Convention (used everywhere except hidden matplotlib geometry helpers)
 -----------------------------------------------------------------------
@@ -7,7 +7,7 @@ All **stored** and **user-facing** directions are **nautical**:
 - **Wave-from direction** (same as WHACS ``wave_from_direction`` / CF).
 - **Clockwise from North**: 0° = North, 90° = East, 180° = South, 270° = West.
 
-Goal propagation sectors in ``Samoa_goals.json`` use::
+Goal propagation sectors in the case goals JSON use::
 
     "angles": [left, right]
 

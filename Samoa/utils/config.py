@@ -1,4 +1,4 @@
-"""Load ``Samoa.json`` and expose its sections plus :func:`resolve`."""
+"""Load the case config JSON and expose its sections plus :func:`resolve`."""
 
 from __future__ import annotations
 
@@ -10,12 +10,12 @@ import xarray as xr
 
 UTILS_DIR = Path(__file__).resolve().parent
 CASE_DIR = UTILS_DIR.parent
-CASE_CONFIG_PATH = CASE_DIR / "Samoa.json"
+CASE_CONFIG_PATH = CASE_DIR / f"{CASE_DIR.name}.json"
 
 
 def resolve(path: str | Path) -> Path:
     """
-    Return an absolute path under the Samoa case directory.
+    Return an absolute path under the current case directory.
 
     Parameters
     ----------
@@ -32,20 +32,82 @@ def resolve(path: str | Path) -> Path:
 
 
 def _load() -> dict[str, Any]:
-    """Read and parse ``Samoa.json``."""
-    with CASE_CONFIG_PATH.open(encoding="utf-8") as f:
-        return json.load(f)
+    """Read and parse the case config JSON."""
+    try:
+        with CASE_CONFIG_PATH.open(encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(
+            "Case config not found. Expected "
+            f"{CASE_CONFIG_PATH}. Ensure the file name matches the case folder "
+            "(e.g. ``Samoa/Samoa.json``)."
+        ) from exc
+
+
+def _refresh_sections(config: dict[str, Any]) -> None:
+    """Refresh module-level section shortcuts from *config*."""
+    global PATHS, OFFSHORE_WAVES, ONSHORE_WAVES
+    global OUTPUT_SITES, SIMULATIONS, OUTPUT_SITES_CONFIG, METAMODEL
+
+    PATHS = config["paths"]
+    OFFSHORE_WAVES = config.get("offshore_waves", [])
+    ONSHORE_WAVES = config["onshore_waves"]
+    OUTPUT_SITES = config.get("output_sites", {})
+    SIMULATIONS = config.get("simulations", {})
+    OUTPUT_SITES_CONFIG = SIMULATIONS.get("output_sites_config", {})
+    METAMODEL = config.get("metamodel", {})
 
 
 CONFIG = _load()
+PATHS: dict[str, Any]
+OFFSHORE_WAVES: list[dict]
+ONSHORE_WAVES: str
+OUTPUT_SITES: dict[str, Any]
+SIMULATIONS: dict[str, Any]
+OUTPUT_SITES_CONFIG: dict[str, Any]
+METAMODEL: dict[str, Any]
+_refresh_sections(CONFIG)
 
-PATHS: dict[str, Any] = CONFIG["paths"]
-OFFSHORE_WAVES: list[dict] = CONFIG.get("offshore_waves", [])
-ONSHORE_WAVES: str = CONFIG["onshore_waves"]
-OUTPUT_SITES: dict[str, Any] = CONFIG.get("output_sites", {})
-SIMULATIONS: dict[str, Any] = CONFIG.get("simulations", {})
-OUTPUT_SITES_CONFIG: dict[str, Any] = SIMULATIONS.get("output_sites_config", {})
-METAMODEL: dict[str, Any] = CONFIG.get("metamodel", {})
+
+def case_name(default: str = "Case") -> str:
+    """Display name for the current case (from config ``name``)."""
+    return str(CONFIG.get("name") or default)
+
+
+def case_description(default: str = "") -> str:
+    """Long description for the current case (from config ``description``)."""
+    return str(CONFIG.get("description") or default)
+
+
+def display_title(
+    base: str,
+    *,
+    include_case: bool = True,
+    separator: str = " — ",
+) -> str:
+    """Build a plot/report title with optional case-name prefix.
+
+    Parameters
+    ----------
+    base
+        Core title text (e.g. ``"Goals + AoI"``).
+    include_case
+        Prefix with :func:`case_name` when ``True``.
+    separator
+        Separator between case name and base text.
+
+    Returns
+    -------
+    str
+        Composed title string.
+    """
+    text = str(base).strip()
+    if not include_case:
+        return text
+    name = case_name().strip()
+    if not name:
+        return text
+    return f"{name}{separator}{text}" if text else name
 
 
 def load_goals(path: str | Path | None = None) -> dict[str, dict[str, Any]]:
@@ -110,7 +172,7 @@ def mda_max_points() -> int:
     """
     candidates = METAMODEL.get("mda_candidates", [])
     if not candidates:
-        raise ValueError("metamodel.mda_candidates is empty in Samoa.json")
+        raise ValueError("metamodel.mda_candidates is empty in case config")
     return int(candidates[-1])
 
 
@@ -128,7 +190,7 @@ def forcing_columns() -> dict[str, str]:
 
 def get_offshore_wave(name: str | None = None) -> dict[str, Any]:
     """
-    Return one ``offshore_waves`` entry from ``Samoa.json``.
+    Return one ``offshore_waves`` entry from the case config.
 
     Parameters
     ----------
@@ -146,7 +208,7 @@ def get_offshore_wave(name: str | None = None) -> dict[str, Any]:
         If the catalog list is empty or *name* is unknown.
     """
     if not OFFSHORE_WAVES:
-        raise ValueError("offshore_waves is empty in Samoa.json")
+        raise ValueError("offshore_waves is empty in case config")
     if name is None:
         return OFFSHORE_WAVES[0]
     key = name.casefold()
@@ -164,7 +226,7 @@ def offshore_catalog_key(entry: dict[str, Any]) -> str:
     Parameters
     ----------
     entry
-        One ``offshore_waves`` block from ``Samoa.json``.
+        One ``offshore_waves`` block from the case config.
 
     Returns
     -------
@@ -185,7 +247,7 @@ def open_offshore_waves(
     Parameters
     ----------
     name
-        Offshore catalog name in ``Samoa.json``.
+        Offshore catalog name in the case config.
     entry
         Pre-resolved offshore block (overrides *name*).
 
@@ -208,32 +270,15 @@ def open_offshore_waves(
 
 def reload() -> dict[str, Any]:
     """
-    Re-read ``Samoa.json`` and refresh module globals.
+    Re-read the case config JSON and refresh module globals.
 
     Returns
     -------
     dict
         Parsed configuration dictionary.
     """
-    global \
-        CONFIG, \
-        PATHS, \
-        OFFSHORE_WAVES, \
-        ONSHORE_WAVES, \
-        OUTPUT_SITES, \
-        SIMULATIONS, \
-        OUTPUT_SITES_CONFIG, \
-        METAMODEL
-
     CONFIG = _load()
-    PATHS = CONFIG["paths"]
-    OFFSHORE_WAVES = CONFIG.get("offshore_waves", [])
-    ONSHORE_WAVES = CONFIG["onshore_waves"]
-    OUTPUT_SITES = CONFIG.get("output_sites", {})
-    SIMULATIONS = CONFIG.get("simulations", {})
-    OUTPUT_SITES_CONFIG = SIMULATIONS.get("output_sites_config", {})
-    METAMODEL = CONFIG.get("metamodel", {})
-
+    _refresh_sections(CONFIG)
     return CONFIG
 
 
@@ -248,6 +293,9 @@ __all__ = [
     "OUTPUT_SITES_CONFIG",
     "PATHS",
     "SIMULATIONS",
+    "case_description",
+    "case_name",
+    "display_title",
     "forcing_columns",
     "get_offshore_wave",
     "goals_for_snapwave",

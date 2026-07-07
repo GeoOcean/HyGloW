@@ -47,11 +47,11 @@ from utils.geometry.sites import (
     resolve_sites,
 )
 
-# Config mirrors metamodel module (Samoa.json → metamodel)
+# Config mirrors metamodel module (case config → metamodel)
 METRICS_VARIABLES = METAMODEL["validation"]["metrics_variables"]
 MDA_CANDIDATES = mm.MDA_CANDIDATES
 
-LOGGER_NAME = "Samoa.validation"
+LOGGER_NAME = "hyglow.validation"
 logger = get_file_logger(
     LOGGER_NAME,
     logs_path=str(resolve("logs/validation.log")),
@@ -77,7 +77,7 @@ def _metrics_variables(variables: Iterable[str] | None) -> list[str]:
     Parameters
     ----------
     variables
-        Explicit variable names; default from ``Samoa.json`` validation section.
+        Explicit variable names; default from the case config JSON validation section.
 
     Returns
     -------

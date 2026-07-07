@@ -5,7 +5,7 @@ Processed zarrs (see ``07_Download_Process_WHACS.ipynb``) share one schema:
 - dims: ``(time, goal)``
 - bulk variables: ``hs``, ``tp``, ``dir``, ``spr`` (metamodel partition ``-1``)
 - partition variables: ``phs0``…``phs3``, ``ptp0``…``ptp3``, … (partitions ``0``–``3``)
-- ``goal`` ids ``1…N`` aligned with ``Samoa_goals.json`` (``seapoint`` is metadata only)
+- ``goal`` ids ``1…N`` aligned with the case goals JSON (``seapoint`` is metadata only)
 
 Open catalogs via :func:`utils.config.open_offshore_waves`.
 """

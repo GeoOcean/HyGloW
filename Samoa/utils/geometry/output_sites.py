@@ -2,7 +2,7 @@
 
 Used by :class:`utils.snapwave_wrapper.SnapWaveModelWrapper` to build the
 ``output_sites.txt`` file written into every SnapWave case. Site layout is
-configured in ``Samoa.json`` → ``simulations.output_sites_config``.
+configured in the case config JSON → ``simulations.output_sites_config``.
 
 Row order in the output table (SnapWave matches by position):
 
@@ -232,7 +232,7 @@ def compute_output_sites(
     ----------
     config
         Override or extend ``simulations.output_sites_config`` from
-        ``Samoa.json``.
+        the case config JSON.
     topobathy
         Bathymetry raster; opened from ``paths.topobathy_file`` when omitted.
     aoi_polygon

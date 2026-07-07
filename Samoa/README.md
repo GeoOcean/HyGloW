@@ -15,8 +15,10 @@ are in **`utils/`**; each stage has a numbered Jupyter notebook.
 
 1. Work from the `Samoa/` directory (notebooks assume this as the working directory).
 2. Run notebooks **in order** (see pipeline below).
-3. After editing `Samoa.json`, restart the kernel or call `utils.config.reload()`.
-4. SnapWave cases are heavy — use `nohup` or a cluster for steps 05 and 08.
+3. Config auto-discovery: `utils.config` loads `<case-folder-name>.json` from the
+   current case directory (e.g. `Samoa/Samoa.json`, `NewSouthWales/NewSouthWales.json`).
+4. After editing your case JSON, restart the kernel or call `utils.config.reload()`.
+5. SnapWave cases are heavy — use `nohup` or a cluster for steps 05 and 08.
 
 **Imports** (consistent across validation notebooks):
 
@@ -150,6 +152,9 @@ Use the **same `period`** for buoy data, reconstruction, and dynamic NC.
 ---
 
 ## Configuration (`Samoa.json`)
+
+`utils.config` discovers config as `<CASE_DIR>/<CASE_DIR.name>.json`. In this
+case folder that is `Samoa/Samoa.json`.
 
 | Section | Role |
 |---------|------|

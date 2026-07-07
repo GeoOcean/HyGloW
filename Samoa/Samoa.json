@@ -3,26 +3,18 @@
     "description": "Samoa hybrid wave-downscaling case (SnapWave + GPR metamodel)",
     "paths": {
         "aoi_file": "inputs/AoI_Polygons/Samoa_AoI.shp",
-        "topobathy_file": "inputs/GRID/Samoa_300m.tif",
+        "topobathy_file": "inputs/GEBCO/Samoa_GEBCO.tiff",
         "mesh_file": "inputs/GRID/Samoa_mesh.nc"
     },
-    "offshore_waves": [
-        {
-            "name": "WHACS",
-            "description": "WHACS reanalysis from D. Gutierrez Barcelo (USGS) for Samoa",
-            "remote_url": null,
-            "data_path": "inputs/WHACS/processed/Samoa_WHACS.zarr",
-            "coordinates_path": "inputs/WHACS/Samoa_whacs.gpkg"
-        }
-    ],
-    "onshore_waves": "inputs/LauriBuoys/LauriBuoys_coordinates.json",
+    "onshore_waves": "inputs/Observations/Samoa_observations.json",
+    "offshore_waves": [],
     "simulations": {
-        "goals_file": "inputs/goals/Samoa_goals.json",
+        "goals_file": "inputs/Goals/Samoa_Goals.json",
         "metamodel_templates": "templates-metamodel",
         "dynamic_templates": "templates-dynamic",
         "metamodel_cases": "SnapWave_CASES_Metamodel",
         "dynamic_cases": "SnapWave_CASES_Dynamic",
-        "num_samples_per_goal": 500,
+        "num_samples_per_goal": 50,
         "bounds": {
             "tp": [
                 1,
@@ -71,55 +63,5 @@
             "clip_to_aoi": true
         }
     },
-    "metamodel": {
-        "mda_candidates": [
-            25,
-            75,
-            125,
-            200,
-            300,
-            450
-        ],
-        "mda_inputs": [
-            "tp",
-            "dir",
-            "spr",
-            "wl"
-        ],
-        "mda_directional_variables": [
-            "dir"
-        ],
-        "vars_to_predict": {
-            "hs": {
-                "vars_to_stack": [
-                    "hs"
-                ],
-                "pca_variance": 0.99
-            },
-            "tp": "raw",
-            "dir": {
-                "vars_to_stack": [
-                    "dir_u",
-                    "dir_v"
-                ],
-                "pca_variance": 0.99
-            },
-            "spr": "raw"
-        },
-        "site_filter": {
-            "hs_max": 10.0,
-            "tp_min": 0.5
-        },
-        "validation": {
-            "metrics_variables": [
-                "hs",
-                "tp",
-                "dir"
-            ]
-        },
-        "paths": {
-            "pca_dir": "outputs/{goal}/pca_{mda_candidate}",
-            "gp_dir": "outputs/{goal}/gp_{mda_candidate}"
-        }
-    }
+    "metamodel": {}
 }

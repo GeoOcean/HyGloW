@@ -41,7 +41,7 @@ from utils.directions import in_nautical_sector
 from utils.geometry.sites import SITE_META, resolve_sites
 from wavespectra.construct import construct_partition
 
-LOGGER_NAME = "Samoa.metamodel"
+LOGGER_NAME = "hyglow.metamodel"
 logger = get_file_logger(
     LOGGER_NAME,
     logs_path=str(resolve("logs/metamodel.log")),
@@ -53,7 +53,7 @@ logger = get_file_logger(
 PcaVariance = float | dict[str, float] | None
 VarSpec = Literal["raw"] | dict[str, Any]
 
-# Samoa.json → metamodel (single source; do not duplicate in other modules)
+# case config → metamodel (single source; do not duplicate in other modules)
 VARS = METAMODEL["vars_to_predict"]
 MDA_INPUTS = METAMODEL["mda_inputs"]
 MDA_DIRECTIONAL = METAMODEL["mda_directional_variables"]
@@ -106,7 +106,7 @@ def _resolve_pca_variance(variable: str, override: PcaVariance = None) -> float:
 
 
 def _pca_variables(override: PcaVariance = None) -> list[tuple[str, float, list[str]]]:
-    """List PCA targets configured in ``Samoa.json``.
+    """List PCA targets configured in the case config JSON.
 
     Parameters
     ----------
@@ -131,7 +131,7 @@ def resolved_pca_variances(override: PcaVariance = None) -> dict[str, float]:
     Parameters
     ----------
     override
-        Optional override; default values come from ``Samoa.json``.
+        Optional override; default values come from the case config JSON.
 
     Returns
     -------
@@ -168,12 +168,12 @@ def goal_output_dir(goal: str | int) -> Path:
     Parameters
     ----------
     goal
-        Goal id from ``Samoa_goals.json``.
+        Goal id from the case goals JSON.
 
     Returns
     -------
     Path
-        ``outputs/goal_XX`` under the Samoa case directory.
+        ``outputs/goal_XX`` under the current case directory.
     """
     return resolve(f"outputs/goal_{int(goal):02d}")
 
@@ -184,7 +184,7 @@ def cases_path(goal: str | int) -> Path:
     Parameters
     ----------
     goal
-        Goal id from ``Samoa_goals.json``.
+        Goal id from the case goals JSON.
 
     Returns
     -------
@@ -200,7 +200,7 @@ def mda_path(goal: str | int) -> Path:
     Parameters
     ----------
     goal
-        Goal id from ``Samoa_goals.json``.
+        Goal id from the case goals JSON.
 
     Returns
     -------
@@ -216,7 +216,7 @@ def split_path(goal: str | int) -> Path:
     Parameters
     ----------
     goal
-        Goal id from ``Samoa_goals.json``.
+        Goal id from the case goals JSON.
 
     Returns
     -------
@@ -232,7 +232,7 @@ def gp_model_path(goal: str | int, n: int) -> Path:
     Parameters
     ----------
     goal
-        Goal id from ``Samoa_goals.json``.
+        Goal id from the case goals JSON.
     n
         MDA train size (candidate from ``mda_candidates``).
 
@@ -254,7 +254,7 @@ def pca_model_path(goal: str | int, n: int, variable: str, variance: float) -> P
     Parameters
     ----------
     goal
-        Goal id from ``Samoa_goals.json``.
+        Goal id from the case goals JSON.
     n
         MDA train size (candidate from ``mda_candidates``).
     variable
@@ -334,7 +334,7 @@ def removed_sites(goal: str | int) -> list[str]:
     Parameters
     ----------
     goal
-        Goal id from ``Samoa_goals.json``.
+        Goal id from the case goals JSON.
 
     Returns
     -------
@@ -353,7 +353,7 @@ def load_cases_goal(goal: str | int, *, apply_site_filter: bool = True) -> xr.Da
     Parameters
     ----------
     goal
-        Goal id (as in ``Samoa_goals.json``).
+        Goal id (as in the case goals JSON).
     apply_site_filter
         If ``True``, drop sites listed in ``split.json`` ``removed_sites``.
 
@@ -395,7 +395,7 @@ def load_split(goal: str | int) -> tuple[np.ndarray, np.ndarray]:
     Parameters
     ----------
     goal
-        Goal id from ``Samoa_goals.json``.
+        Goal id from the case goals JSON.
 
     Returns
     -------
@@ -447,7 +447,7 @@ def _missing_model_paths(
     Parameters
     ----------
     goal
-        Goal id from ``Samoa_goals.json``.
+        Goal id from the case goals JSON.
     n
         MDA train size.
     pca_variance
@@ -474,7 +474,7 @@ def models_exist(goal: str | int, n: int, *, pca_variance: PcaVariance = None) -
     Parameters
     ----------
     goal
-        Goal id from ``Samoa_goals.json``.
+        Goal id from the case goals JSON.
     n
         MDA train size.
     pca_variance
@@ -496,7 +496,7 @@ def require_models(
     Parameters
     ----------
     goal
-        Goal id from ``Samoa_goals.json``.
+        Goal id from the case goals JSON.
     n
         MDA train size.
     pca_variance
@@ -553,7 +553,7 @@ def load_models(
     goal, n
         Goal id and MDA train size (must match saved artefacts).
     pca_variance
-        Override PCA variance fractions; default uses ``Samoa.json``.
+        Override PCA variance fractions; default uses the case config JSON.
 
     Returns
     -------
@@ -589,7 +589,7 @@ def _goals(goals: Iterable[str | int] | None = None) -> list[str]:
     Parameters
     ----------
     goals
-        Explicit goal ids; ``None`` uses all keys in ``Samoa_goals.json``.
+        Explicit goal ids; ``None`` uses all keys in the case goals JSON.
 
     Returns
     -------
@@ -608,7 +608,7 @@ def _goal_angles_lookup() -> dict[str, tuple[float, float]]:
     Returns
     -------
     dict[str, tuple[float, float]]
-        Mapping ``goal_id -> (left, right)`` from ``Samoa_goals.json``.
+        Mapping ``goal_id -> (left, right)`` from the case goals JSON.
 
     Raises
     ------
@@ -642,7 +642,7 @@ def _fit_mda(
     Parameters
     ----------
     goal
-        Goal id from ``Samoa_goals.json``.
+        Goal id from the case goals JSON.
     force_retrain
         If ``True``, re-fit even when artefacts already exist.
 
@@ -770,7 +770,7 @@ def _fit_models(
     Parameters
     ----------
     goal
-        Goal id from ``Samoa_goals.json``.
+        Goal id from the case goals JSON.
     n
         Number of MDA centroids (must be in ``mda_candidates``).
     mda, train_idx
@@ -780,7 +780,7 @@ def _fit_models(
     gp_epochs
         GP optimisation iterations.
     pca_variance
-        Override per-variable PCA variance; default from ``Samoa.json``.
+        Override per-variable PCA variance; default from the case config JSON.
 
     Returns
     -------
@@ -852,7 +852,7 @@ def fit(
     Parameters
     ----------
     goal
-        Goal id from ``Samoa_goals.json``.
+        Goal id from the case goals JSON.
     candidates
         MDA train sizes to fit; default ``mda_candidates`` from config.
     force_retrain
@@ -860,7 +860,7 @@ def fit(
     gp_epochs
         GP optimisation iterations.
     pca_variance
-        Override per-variable PCA variance; default from ``Samoa.json``.
+        Override per-variable PCA variance; default from the case config JSON.
     """
     goal = str(goal)
     mda, train_idx, _ = _fit_mda(goal, force_retrain=force_retrain)
@@ -897,7 +897,7 @@ def fit_all(
     gp_epochs
         GP optimisation iterations.
     pca_variance
-        Override per-variable PCA variance; default from ``Samoa.json``.
+        Override per-variable PCA variance; default from the case config JSON.
     """
     for goal in _goals(goals):
         fit(
@@ -1145,7 +1145,7 @@ def _valid_timesteps(
         WHACS partition id; bulk ``-1`` skips the ``phs > 0`` filter.
     goal
         Goal id. When provided, timesteps are additionally filtered to that
-        goal's nautical propagation sector from ``Samoa_goals.json``.
+        goal's nautical propagation sector from the case goals JSON.
 
     Returns
     -------
@@ -1184,7 +1184,7 @@ def _offshore_forcing(
     offshore
         Offshore dataset already selected on ``time``.
     goal
-        Goal id from ``Samoa_goals.json``.
+        Goal id from the case goals JSON.
     partition
         Bulk ``-1`` uses ``hs/tp/dir/spr``; ``0``–``3`` use ``phs*`` variables.
     wl
@@ -1232,7 +1232,7 @@ def _predict_offshore(
     offshore
         Offshore dataset already selected on ``time``.
     goal
-        Goal id from ``Samoa_goals.json``.
+        Goal id from the case goals JSON.
     n
         MDA train size used at fitting time.
     site_ids
@@ -1321,7 +1321,7 @@ def _wavespectra_sum(
 def reconstruction_cache_dir() -> Path:
     """Return the directory used for cached hindcast reconstructions.
 
-    Creates ``Samoa/tmp/reconstruct`` if it does not exist.
+    Creates ``tmp/reconstruct`` in the current case if it does not exist.
 
     Returns
     -------
@@ -1446,7 +1446,7 @@ def reconstruction_cache_path(
     spectral
         ``True`` for spectral partition sum; ``False`` for bulk only.
     offshore_name
-        Processed hindcast key in ``Samoa.json``.
+        Processed hindcast key in the case config JSON.
     goals
         Goals included in reconstruction.
     wl
@@ -1601,7 +1601,7 @@ def _reconstruct_period(
     spectral
         ``True`` for WHACS partitions ``0``–``3``; ``False`` for bulk only.
     offshore_name
-        Processed hindcast key in ``Samoa.json``.
+        Processed hindcast key in the case config JSON.
     pca_variance
         PCA variance override used for prediction.
     wl
@@ -1714,7 +1714,7 @@ def reconstruct(
     Runs the metamodel for each goal and WHACS partition, then linearly sums
     partition spectra with wavespectra. Each goal is only evaluated for
     timesteps whose offshore direction lies inside that goal's nautical sector
-    (from ``Samoa_goals.json``). Long periods are processed month by month to
+    (from the case goals JSON). Long periods are processed month by month to
     limit GPU memory. Results are cached under ``tmp/reconstruct``.
 
     Parameters
@@ -1727,7 +1727,7 @@ def reconstruct(
         ``False`` — bulk ``hs/tp/dir/spr`` only (partition ``-1``).
         ``True`` — WHACS partitions ``phs0``–``phs3`` (``0``–``3``).
     offshore_name
-        Processed hindcast key in ``Samoa.json``.
+        Processed hindcast key in the case config JSON.
     goals
         Goals to include; default all configured goals.
     wl

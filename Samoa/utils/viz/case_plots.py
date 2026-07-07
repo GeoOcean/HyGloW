@@ -11,7 +11,7 @@ import rioxarray
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.patches import Wedge
-from utils.config import PATHS, resolve
+from utils.config import PATHS, display_title, resolve
 from utils.directions import nautical_sector_to_wedge_angles
 
 FIGSIZE = (9, 7)
@@ -117,14 +117,14 @@ def plot_base_map(
     ring: gpd.GeoDataFrame | None = None,
 ) -> tuple[Figure, Axes]:
     """
-    Draw the standard Samoa case-map background.
+    Draw the standard case-map background.
 
     Parameters
     ----------
     ax
         Existing axes; created when ``None``.
     title
-        Optional map title.
+        Optional map title (defaults to case-aware ``"Case map"``).
     show_topobathy, show_aoi
         Toggle bathymetry raster and AoI outline.
     land, ring
@@ -156,8 +156,7 @@ def plot_base_map(
 
     ax.set_xlabel("longitude")
     ax.set_ylabel("latitude")
-    if title:
-        ax.set_title(title)
+    ax.set_title(display_title(title or "Case map"))
     return fig, ax
 
 

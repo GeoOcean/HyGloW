@@ -1,4 +1,4 @@
-"""SnapWave case wrappers for Samoa.
+"""SnapWave case wrappers for a HyGloW case.
 
 :class:`SnapWaveMetaModelWrapper` — LHS propagation cases (``case_num`` dim,
 one NetCDF per goal).
@@ -23,6 +23,7 @@ import xarray as xr
 from bluemath_tk.wrappers._base_wrappers import BaseModelWrapper
 from bluemath_tk.wrappers._utils_wrappers import write_array_in_file
 from shapely.geometry import MultiPolygon, Polygon
+from utils.config import display_title
 from utils.geometry.output_sites import compute_output_sites, write_output_sites
 from utils.directions import nautical_sector_to_wedge_angles
 
@@ -280,7 +281,7 @@ class SnapWaveModelWrapper(BaseModelWrapper):
                 alpha=0.4,
             )
 
-        ax.set_title("Samoa goals + AoI")
+        ax.set_title(display_title("Goals + AoI"))
         plt.show()
 
     def build_case(self, case_context: dict, case_dir: str) -> None:
