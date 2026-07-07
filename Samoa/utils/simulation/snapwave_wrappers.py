@@ -23,9 +23,11 @@ import xarray as xr
 from bluemath_tk.wrappers._base_wrappers import BaseModelWrapper
 from bluemath_tk.wrappers._utils_wrappers import write_array_in_file
 from shapely.geometry import MultiPolygon, Polygon
-from utils.config import display_title
-from utils.geometry.output_sites import compute_output_sites, write_output_sites
+
+from utils.config import SIMULATIONS, display_title
 from utils.directions import nautical_sector_to_wedge_angles
+from utils.geometry.output_sites import compute_output_sites, write_output_sites
+from utils.viz import case_plots as plot
 
 # SnapWave history NetCDF → HyGloW names
 POINT_VARS = {
@@ -74,11 +76,99 @@ def read_polygon_from_shp_file(
     return gdf, gdf.geometry.iloc[0]
 
 
+def _single_exterior_polygon(polygon: Polygon | MultiPolygon) -> Polygon:
+    """Return one polygon built from the exterior ring only (no holes)."""
+    if isinstance(polygon, MultiPolygon):
+        polygon = max(polygon.geoms, key=lambda g: g.area)
+    if not isinstance(polygon, Polygon):
+        raise TypeError(f"Expected Polygon/MultiPolygon, got {polygon.geom_type}")
+    return Polygon(polygon.exterior.coords)
+
+
+def buffer_polygon(
+    polygon: Polygon | MultiPolygon,
+    buffer_m: float,
+    *,
+    geo_crs: str = "EPSG:4326",
+) -> Polygon | MultiPolygon:
+    """
+    Buffer a lon/lat polygon by *buffer_m* metres in a local projected CRS.
+
+    Parameters
+    ----------
+    polygon
+        Input domain polygon.
+    buffer_m
+        Outward buffer distance in metres. ``0`` returns *polygon* unchanged.
+    geo_crs
+        CRS of input/output coordinates.
+
+    Returns
+    -------
+    Polygon | MultiPolygon
+        Buffered geometry in *geo_crs*.
+    """
+    if buffer_m <= 0:
+        return polygon
+
+    gdf = gpd.GeoDataFrame(geometry=[polygon], crs=geo_crs)
+    work_crs = gdf.estimate_utm_crs()
+    if work_crs is None:
+        raise ValueError("Could not estimate UTM CRS for AoI polygon.")
+    buffered = gdf.to_crs(work_crs).buffer(buffer_m).to_crs(geo_crs)
+    return buffered.iloc[0]
+
+
+def build_enclosure_polygon(
+    polygon: Polygon | MultiPolygon,
+    buffer_m: float,
+    *,
+    geo_crs: str = "EPSG:4326",
+    n_vertices: int = 4,
+) -> Polygon:
+    """
+    Build a simple SnapWave enclosure from an AoI polygon.
+
+    Steps: exterior ring only -> outward buffer -> reduce to a quadrilateral.
+
+    Parameters
+    ----------
+    polygon
+        AoI polygon or multipolygon.
+    buffer_m
+        Outward buffer distance in metres.
+    geo_crs
+        CRS of input/output coordinates.
+    n_vertices
+        Target number of enclosure vertices. Currently only ``4`` is supported
+        (minimum rotated rectangle).
+
+    Returns
+    -------
+    Polygon
+        Simple enclosure quadrilateral.
+    """
+    if n_vertices != 4:
+        raise ValueError("Only n_vertices=4 is supported for SnapWave enclosures.")
+
+    exterior = _single_exterior_polygon(polygon)
+    buffered = buffer_polygon(exterior, buffer_m, geo_crs=geo_crs)
+    if isinstance(buffered, MultiPolygon):
+        buffered = max(buffered.geoms, key=lambda g: g.area)
+    if not isinstance(buffered, Polygon):
+        raise TypeError(
+            f"Buffered geometry must be a Polygon, got {buffered.geom_type}"
+        )
+
+    return buffered.minimum_rotated_rectangle
+
+
 def write_polygon_vertices_to_txt(
     polygon: Polygon | MultiPolygon,
     out_path: str | Path,
     *,
     drop_closing_vertex: bool = True,
+    fmt: str = "{x}, {y}",
 ) -> Path:
     """
     Write polygon exterior vertices to a SnapWave enclosure text file.
@@ -91,6 +181,8 @@ def write_polygon_vertices_to_txt(
         Output text file path.
     drop_closing_vertex
         Omit repeated closing coordinate when ``True``.
+    fmt
+        Per-vertex format string with ``x`` and ``y`` placeholders.
 
     Returns
     -------
@@ -114,7 +206,7 @@ def write_polygon_vertices_to_txt(
             if drop_closing_vertex and len(ring) > 1 and ring[0] == ring[-1]
             else ring
         )
-        lines.extend(f"{x} {y}" for x, y in coords)
+        lines.extend(fmt.format(x=x, y=y) for x, y in coords)
 
     out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return out_path
@@ -205,6 +297,8 @@ class SnapWaveModelWrapper(BaseModelWrapper):
         debug: bool = True,
         output_sites_df: pd.DataFrame | None = None,
         sites_filename: str = "output_sites.txt",
+        enclosure_buffer_m: float = 10_000.0,
+        enclosure_vertices: int = 4,
     ) -> None:
         """
         Initialise shared SnapWave wrapper state.
@@ -221,6 +315,11 @@ class SnapWaveModelWrapper(BaseModelWrapper):
             Pre-built output sites table; computed from AoI when omitted.
         sites_filename
             Observation file name written into each case directory.
+        enclosure_buffer_m
+            Outward buffer (metres) applied to the AoI exterior when writing
+            ``enclosure.txt``. Set to ``0`` to skip buffering.
+        enclosure_vertices
+            Number of enclosure corners (currently only ``4``).
         """
         super().__init__(
             templates_dir=templates_dir,
@@ -235,6 +334,13 @@ class SnapWaveModelWrapper(BaseModelWrapper):
         )
 
         self.aoi_gdf, self.aoi_polygon = read_polygon_from_shp_file(aoi_file)
+        self.enclosure_buffer_m = float(enclosure_buffer_m)
+        self.enclosure_vertices = int(enclosure_vertices)
+        self.enclosure_polygon = build_enclosure_polygon(
+            self.aoi_polygon,
+            self.enclosure_buffer_m,
+            n_vertices=self.enclosure_vertices,
+        )
         self.goals_config = dict(goals_config)
         self.goals_nodes_array = np.column_stack(
             (
@@ -266,7 +372,15 @@ class SnapWaveModelWrapper(BaseModelWrapper):
             Wedge radius in degrees.
         """
         fig, ax = plt.subplots(subplot_kw={"projection": ccrs.PlateCarree()})
-        self.aoi_gdf.plot(ax=ax, facecolor="none", edgecolor="black")
+        self.aoi_gdf.plot(ax=ax, facecolor="none", edgecolor="black", label="AoI")
+        gpd.GeoDataFrame(geometry=[self.enclosure_polygon], crs="EPSG:4326").plot(
+            ax=ax,
+            facecolor="none",
+            edgecolor="red",
+            linestyle="--",
+            linewidth=1.5,
+            label="enclosure",
+        )
 
         for key, vals in self.goals_config.items():
             lon, lat = vals["lon"], vals["lat"]
@@ -299,9 +413,9 @@ class SnapWaveModelWrapper(BaseModelWrapper):
         write_array_in_file(
             self.goals_nodes_array, os.path.join(case_dir, "boundary.txt")
         )
-        # write_polygon_vertices_to_txt(
-        #     self.aoi_polygon, os.path.join(case_dir, "enclosure.txt")
-        # )
+        write_polygon_vertices_to_txt(
+            self.enclosure_polygon, os.path.join(case_dir, "enclosure.txt")
+        )
         write_output_sites(self.output_sites_df, case_dir, filename=self._sites_txt)
 
     def run_case(
@@ -366,6 +480,54 @@ class SnapWaveModelWrapper(BaseModelWrapper):
 
 class SnapWaveMetaModelWrapper(SnapWaveModelWrapper):
     """LHS SnapWave cases — postprocess to ``case_num``, one NetCDF per goal."""
+
+    def plot_configuration(
+        self,
+        *,
+        cases_df: pd.DataFrame | None = None,
+        sector_radius_deg: float = 0.35,
+        arrow_scale_deg: float = 0.15,
+        max_arrows_per_goal: int = 25,
+        show_topobathy: bool = True,
+    ) -> plt.Figure:
+        """
+        Pre-run diagnostic for metamodel case generation.
+
+        Shows the domain, propagation sectors, sampled wave-from directions,
+        output sites, per-goal direction-range bars, and a text summary.
+
+        Parameters
+        ----------
+        cases_df
+            Optional LHS table override. Defaults to ``metamodel_parameters``.
+        sector_radius_deg, arrow_scale_deg, max_arrows_per_goal
+            Map styling controls for sectors and direction arrows.
+        show_topobathy
+            Draw bathymetry under the map panel.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+        """
+        df = cases_df if cases_df is not None else pd.DataFrame(self.metamodel_parameters)
+        fig = plot.plot_metamodel_configuration(
+            aoi_gdf=self.aoi_gdf,
+            enclosure_polygon=self.enclosure_polygon,
+            goals_config=self.goals_config,
+            cases_df=df,
+            output_sites_df=self.output_sites_df,
+            bounds=SIMULATIONS.get("bounds"),
+            num_samples_per_goal=SIMULATIONS.get("num_samples_per_goal"),
+            mesh_file=self.fixed_parameters.get("gridfile"),
+            enclosure_buffer_m=self.enclosure_buffer_m,
+            sector_radius_deg=sector_radius_deg,
+            arrow_scale_deg=arrow_scale_deg,
+            max_arrows_per_goal=max_arrows_per_goal,
+            show_topobathy=show_topobathy,
+            title="Metamodel pre-run diagnostic",
+        )
+        plt.show()
+        return fig
 
     def postprocess_case(
         self, case_num: int, case_dir: str, case_context: dict
@@ -440,6 +602,8 @@ __all__ = [
     "SnapWaveDynamicModelWrapper",
     "SnapWaveMetaModelWrapper",
     "SnapWaveModelWrapper",
+    "buffer_polygon",
+    "build_enclosure_polygon",
     "read_polygon_from_shp_file",
     "write_polygon_vertices_to_txt",
 ]

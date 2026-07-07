@@ -14,7 +14,7 @@
         "dynamic_templates": "templates-dynamic",
         "metamodel_cases": "SnapWave_CASES_Metamodel",
         "dynamic_cases": "SnapWave_CASES_Dynamic",
-        "num_samples_per_goal": 50,
+        "num_samples_per_goal": 5,
         "bounds": {
             "tp": [
                 1,

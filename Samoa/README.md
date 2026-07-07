@@ -234,8 +234,9 @@ These are not blockers — suggestions from the code review:
 6. **Dynamic case storage** — full-period dynamic runs grow quickly; document which
    `period` slices you keep for validation vs archive.
 
-7. **Enclosure files** — `build_case` has enclosure writing commented out; verify
-   this matches your SnapWave template expectations for the Samoa domain.
+7. **Enclosure files** — `SnapWaveModelWrapper.build_case` writes a 4-corner
+   ``enclosure.txt`` from the AoI exterior buffered by 10 km (``enclosure_buffer_m``).
+   A static ``templates-*/enclosure.txt`` is optional and will be overwritten.
 
 ---
 
