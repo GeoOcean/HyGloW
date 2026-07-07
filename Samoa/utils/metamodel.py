@@ -4,13 +4,17 @@ Training: :func:`fit`, :func:`fit_all`
 Prediction: :func:`predict` (LHS ``case_num`` or hindcast ``time`` via ``row_dim``)
 Hindcast: :func:`reconstruct` — ``spectral=False`` bulk (partition ``-1``),
 ``spectral=True`` WHACS partitions ``0``–``3``; both via wavespectra linear sum.
+Long hindcast periods are processed month by month; results are cached under
+``tmp/reconstruct``.
 
 Site grouping and selection: :mod:`utils.sites`.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any, Iterable, Literal
 
@@ -64,13 +68,31 @@ SPECTRAL_PARTITIONS = (0, 1, 2, 3)
 
 
 class ModelsNotFittedError(FileNotFoundError):
-    """Raised when PCA/GP pickles are missing for a goal, *n* and PCA variance."""
+    """Raised when PCA/GP pickles are missing for a goal, MDA size and PCA variance."""
 
     _FIT_HINT = " Run ``06_Validate_Metamodel.ipynb`` (``mm.fit_all``) first."
 
 
 def _resolve_pca_variance(variable: str, override: PcaVariance = None) -> float:
-    """PCA variance for one stacked variable (JSON default or *override*)."""
+    """Return the PCA variance fraction for one stacked variable.
+
+    Parameters
+    ----------
+    variable
+        Key in ``metamodel.vars_to_predict`` (must not be ``"raw"``).
+    override
+        Single float for all variables, or per-variable dict override.
+
+    Returns
+    -------
+    float
+        PCA variance fraction in ``(0, 1]``.
+
+    Raises
+    ------
+    ValueError
+        If *variable* is marked ``"raw"`` in the config.
+    """
     spec = VARS[variable]
     if spec == "raw":
         raise ValueError(f"{variable!r} is raw")
@@ -82,7 +104,18 @@ def _resolve_pca_variance(variable: str, override: PcaVariance = None) -> float:
 
 
 def _pca_variables(override: PcaVariance = None) -> list[tuple[str, float, list[str]]]:
-    """``(name, variance, vars_to_stack)`` for every non-raw entry in ``VARS``."""
+    """List PCA targets configured in ``Samoa.json``.
+
+    Parameters
+    ----------
+    override
+        Optional PCA variance override passed to :func:`_resolve_pca_variance`.
+
+    Returns
+    -------
+    list of tuple
+        ``(variable_name, variance, vars_to_stack)`` for each non-raw entry.
+    """
     return [
         (name, _resolve_pca_variance(name, override), spec["vars_to_stack"])
         for name, spec in VARS.items()
@@ -91,7 +124,18 @@ def _pca_variables(override: PcaVariance = None) -> list[tuple[str, float, list[
 
 
 def resolved_pca_variances(override: PcaVariance = None) -> dict[str, float]:
-    """PCA variance fraction per stacked variable (from ``Samoa.json`` or *override*)."""
+    """PCA variance fraction per stacked variable.
+
+    Parameters
+    ----------
+    override
+        Optional override; default values come from ``Samoa.json``.
+
+    Returns
+    -------
+    dict[str, float]
+        Mapping ``variable_name → variance``.
+    """
     return {name: var for name, var, _ in _pca_variables(override)}
 
 
@@ -101,32 +145,100 @@ def resolved_pca_variances(override: PcaVariance = None) -> dict[str, float]:
 
 
 def _variance_tag(variance: float) -> str:
-    """Filename-safe PCA variance label (e.g. ``0.95`` → ``0.95``)."""
+    """Format a PCA variance value for artefact filenames.
+
+    Parameters
+    ----------
+    variance
+        PCA variance fraction.
+
+    Returns
+    -------
+    str
+        Compact string (e.g. ``"0.99"``).
+    """
     return f"{variance:g}"
 
 
 def goal_output_dir(goal: str | int) -> Path:
-    """Directory for one goal's MDA, split, PCA and GP artefacts."""
+    """Return the output directory for one goal's fitted artefacts.
+
+    Parameters
+    ----------
+    goal
+        Goal id from ``Samoa_goals.json``.
+
+    Returns
+    -------
+    Path
+        ``outputs/goal_XX`` under the Samoa case directory.
+    """
     return resolve(f"outputs/goal_{int(goal):02d}")
 
 
 def cases_path(goal: str | int) -> Path:
-    """SnapWave LHS NetCDF for one goal."""
+    """Return the SnapWave LHS NetCDF path for one goal.
+
+    Parameters
+    ----------
+    goal
+        Goal id from ``Samoa_goals.json``.
+
+    Returns
+    -------
+    Path
+        Path to ``output_sites_{goal}.nc``.
+    """
     return resolve(SIMULATIONS["metamodel_cases"]) / f"output_sites_{int(goal)}.nc"
 
 
 def mda_path(goal: str | int) -> Path:
-    """Fitted MDA pickle for one goal."""
+    """Return the fitted MDA pickle path for one goal.
+
+    Parameters
+    ----------
+    goal
+        Goal id from ``Samoa_goals.json``.
+
+    Returns
+    -------
+    Path
+        ``outputs/goal_XX/mda.pkl``.
+    """
     return goal_output_dir(goal) / "mda.pkl"
 
 
 def split_path(goal: str | int) -> Path:
-    """Train/test index JSON written by :func:`_fit_mda`."""
+    """Return the train/test index JSON path for one goal.
+
+    Parameters
+    ----------
+    goal
+        Goal id from ``Samoa_goals.json``.
+
+    Returns
+    -------
+    Path
+        ``outputs/goal_XX/split.json`` written by :func:`_fit_mda`.
+    """
     return goal_output_dir(goal) / "split.json"
 
 
 def gp_model_path(goal: str | int, n: int) -> Path:
-    """Fitted GP pickle for one goal and MDA train size."""
+    """Return the fitted GP pickle path for one goal and MDA size.
+
+    Parameters
+    ----------
+    goal
+        Goal id from ``Samoa_goals.json``.
+    n
+        MDA train size (candidate from ``mda_candidates``).
+
+    Returns
+    -------
+    Path
+        ``outputs/goal_XX/gp_{n}/gp_model.pkl``.
+    """
     template = METAMODEL["paths"]["gp_dir"]
     return (
         resolve(template.format(goal=f"goal_{int(goal):02d}", mda_candidate=n))
@@ -135,7 +247,24 @@ def gp_model_path(goal: str | int, n: int) -> Path:
 
 
 def pca_model_path(goal: str | int, n: int, variable: str, variance: float) -> Path:
-    """Fitted PCA pickle for one goal, MDA size and stacked variable."""
+    """Return the fitted PCA pickle path for one goal, MDA size and variable.
+
+    Parameters
+    ----------
+    goal
+        Goal id from ``Samoa_goals.json``.
+    n
+        MDA train size (candidate from ``mda_candidates``).
+    variable
+        Stacked variable name (e.g. ``"hs"``, ``"dir"``).
+    variance
+        PCA variance fraction used when fitting.
+
+    Returns
+    -------
+    Path
+        ``outputs/goal_XX/pca_{n}/pca_{variable}_{variance}_model.pkl``.
+    """
     template = METAMODEL["paths"]["pca_dir"]
     base = resolve(template.format(goal=f"goal_{int(goal):02d}", mda_candidate=n))
     return base / f"pca_{variable}_{_variance_tag(variance)}_model.pkl"
@@ -147,7 +276,18 @@ def pca_model_path(goal: str | int, n: int, variable: str, variance: float) -> P
 
 
 def detect_removed_sites(cases: xr.Dataset) -> list[str]:
-    """Site labels failing ``METAMODEL.site_filter`` thresholds on SnapWave cases."""
+    """Return site labels that fail ``METAMODEL.site_filter`` on SnapWave cases.
+
+    Parameters
+    ----------
+    cases
+        SnapWave LHS dataset with ``hs`` and ``tp`` on ``(case_num, sites)``.
+
+    Returns
+    -------
+    list[str]
+        Sorted site labels exceeding ``hs_max`` or below ``tp_min``.
+    """
     bad: set[str] = set()
     if "hs_max" in SITE_FILTER:
         peak = cases["hs"].max("case_num")
@@ -165,7 +305,20 @@ def detect_removed_sites(cases: xr.Dataset) -> list[str]:
 
 
 def drop_sites(cases: xr.Dataset, site_ids: Iterable[str]) -> xr.Dataset:
-    """Return *cases* without the listed ``sites`` coordinate labels."""
+    """Return *cases* without the listed site coordinate labels.
+
+    Parameters
+    ----------
+    cases
+        Dataset with a ``sites`` coordinate.
+    site_ids
+        Site labels to remove.
+
+    Returns
+    -------
+    xarray.Dataset
+        Subset with the requested sites dropped.
+    """
     remove = {str(s) for s in site_ids}
     if not remove:
         return cases
@@ -174,7 +327,18 @@ def drop_sites(cases: xr.Dataset, site_ids: Iterable[str]) -> xr.Dataset:
 
 
 def removed_sites(goal: str | int) -> list[str]:
-    """Sites dropped at training time for *goal* (from ``split.json``)."""
+    """Return sites dropped at training time for one goal.
+
+    Parameters
+    ----------
+    goal
+        Goal id from ``Samoa_goals.json``.
+
+    Returns
+    -------
+    list[str]
+        Labels from ``split.json`` ``removed_sites``, or empty if missing.
+    """
     if not split_path(goal).exists():
         return []
     with split_path(goal).open(encoding="utf-8") as f:
@@ -205,7 +369,18 @@ def load_cases_goal(goal: str | int, *, apply_site_filter: bool = True) -> xr.Da
 
 
 def forcing_dataframe(cases: xr.Dataset) -> pd.DataFrame:
-    """MDA input columns for each LHS case (index ``case_num``)."""
+    """Build the MDA forcing table for each LHS case.
+
+    Parameters
+    ----------
+    cases
+        SnapWave LHS dataset with ``*_forcing`` variables.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Indexed by ``case_num``; columns match ``mda_inputs`` in config.
+    """
     cols = forcing_columns()
     df = cases[list(cols.values())].to_dataframe()
     df.columns = MDA_INPUTS
@@ -213,7 +388,18 @@ def forcing_dataframe(cases: xr.Dataset) -> pd.DataFrame:
 
 
 def load_split(goal: str | int) -> tuple[np.ndarray, np.ndarray]:
-    """Train and test ``case_num`` indices from ``split.json``."""
+    """Load train and test ``case_num`` indices from ``split.json``.
+
+    Parameters
+    ----------
+    goal
+        Goal id from ``Samoa_goals.json``.
+
+    Returns
+    -------
+    train_idx, test_idx
+        Integer arrays of case indices.
+    """
     with split_path(goal).open(encoding="utf-8") as f:
         split = json.load(f)
     return (
@@ -254,7 +440,22 @@ def load_context(goal: str | int) -> dict[str, Any]:
 def _missing_model_paths(
     goal: str | int, n: int, *, pca_variance: PcaVariance = None
 ) -> list[Path]:
-    """Return paths of missing GP/PCA model files for one goal and MDA size."""
+    """Return paths of missing GP/PCA model files for one goal and MDA size.
+
+    Parameters
+    ----------
+    goal
+        Goal id from ``Samoa_goals.json``.
+    n
+        MDA train size.
+    pca_variance
+        PCA variance override used when checking PCA artefact names.
+
+    Returns
+    -------
+    list[Path]
+        Missing pickle paths; empty when all models exist.
+    """
     missing: list[Path] = []
     if not gp_model_path(goal, n).exists():
         missing.append(gp_model_path(goal, n))
@@ -266,14 +467,44 @@ def _missing_model_paths(
 
 
 def models_exist(goal: str | int, n: int, *, pca_variance: PcaVariance = None) -> bool:
-    """Whether GP and all PCA pickles exist for *goal* and MDA size *n*."""
+    """Check whether GP and all PCA pickles exist for one goal and MDA size.
+
+    Parameters
+    ----------
+    goal
+        Goal id from ``Samoa_goals.json``.
+    n
+        MDA train size.
+    pca_variance
+        PCA variance override used when checking PCA artefact names.
+
+    Returns
+    -------
+    bool
+        ``True`` when no model files are missing.
+    """
     return not _missing_model_paths(goal, n, pca_variance=pca_variance)
 
 
 def require_models(
     goal: str | int, n: int, *, pca_variance: PcaVariance = None
 ) -> None:
-    """Raise :class:`ModelsNotFittedError` if any model file is missing."""
+    """Raise :class:`ModelsNotFittedError` if any model file is missing.
+
+    Parameters
+    ----------
+    goal
+        Goal id from ``Samoa_goals.json``.
+    n
+        MDA train size.
+    pca_variance
+        PCA variance override used when checking PCA artefact names.
+
+    Raises
+    ------
+    ModelsNotFittedError
+        If the GP or any PCA pickle is absent.
+    """
     missing = _missing_model_paths(goal, n, pca_variance=pca_variance)
     if missing:
         raise ModelsNotFittedError(
@@ -290,7 +521,22 @@ def require_models_all(
     *,
     pca_variance: PcaVariance = None,
 ) -> None:
-    """Call :func:`require_models` for every active goal."""
+    """Raise :class:`ModelsNotFittedError` if any goal is missing fitted models.
+
+    Parameters
+    ----------
+    n
+        MDA train size.
+    goals
+        Goals to check; default all configured goals.
+    pca_variance
+        PCA variance override used when checking PCA artefact names.
+
+    Raises
+    ------
+    ModelsNotFittedError
+        If any goal is missing GP or PCA pickles.
+    """
     for goal in _goals(goals):
         require_models(goal, n, pca_variance=pca_variance)
 
@@ -336,7 +582,18 @@ def load_models(
 
 
 def _goals(goals: Iterable[str | int] | None = None) -> list[str]:
-    """Active goal ids (default: all keys in ``Samoa_goals.json``)."""
+    """Return active goal ids.
+
+    Parameters
+    ----------
+    goals
+        Explicit goal ids; ``None`` uses all keys in ``Samoa_goals.json``.
+
+    Returns
+    -------
+    list[str]
+        Goal ids as strings.
+    """
     if goals is None:
         return list(load_goals().keys())
     return [str(g) for g in goals]
@@ -350,10 +607,19 @@ def _fit_mda(
     Applies ``site_filter``, fits MDA on offshore forcing columns, and writes
     ``mda.pkl`` plus ``split.json`` (train indices = centroid cases, rest = test).
 
+    Parameters
+    ----------
+    goal
+        Goal id from ``Samoa_goals.json``.
+    force_retrain
+        If ``True``, re-fit even when artefacts already exist.
+
     Returns
     -------
-    mda, train_idx, test_idx
-        Fitted MDA object and integer case indices.
+    mda
+        Fitted :class:`~bluemath_tk.datamining.mda.MDA` object.
+    train_idx, test_idx
+        Integer arrays of MDA centroid and holdout case indices.
     """
     goal = str(goal)
     path, split_file = mda_path(goal), split_path(goal)
@@ -410,7 +676,18 @@ def _fit_mda(
 
 
 def _stack_pcs(pcas: dict[str, Any]) -> pd.DataFrame:
-    """Concatenate per-variable PC columns for GP target matrix."""
+    """Concatenate per-variable PC columns into one GP target matrix.
+
+    Parameters
+    ----------
+    pcas
+        Mapping ``variable_name → fitted PCA`` object.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Columns named ``{variable}__{pc}``; one row per training case.
+    """
     frames = []
     for name in pcas:
         df = pcas[name].pcs_df.copy()
@@ -420,7 +697,20 @@ def _stack_pcs(pcas: dict[str, Any]) -> pd.DataFrame:
 
 
 def _split_pcs(pcs: np.ndarray, pcas: dict[str, Any]) -> dict[str, np.ndarray]:
-    """Split stacked GP output back into per-variable PC blocks."""
+    """Split stacked GP output back into per-variable PC blocks.
+
+    Parameters
+    ----------
+    pcs
+        GP prediction array with columns in :func:`_stack_pcs` order.
+    pcas
+        Mapping ``variable_name → fitted PCA`` object.
+
+    Returns
+    -------
+    dict[str, numpy.ndarray]
+        PC blocks keyed by variable name.
+    """
     blocks, offset = {}, 0
     for name in pcas:
         k = pcas[name].pcs_df.shape[1]
@@ -447,6 +737,8 @@ def _fit_models(
 
     Parameters
     ----------
+    goal
+        Goal id from ``Samoa_goals.json``.
     n
         Number of MDA centroids (must be in ``mda_candidates``).
     mda, train_idx
@@ -523,7 +815,21 @@ def fit(
     gp_epochs: int = 1000,
     pca_variance: PcaVariance = None,
 ) -> None:
-    """Train MDA + PCA + GP for one goal and all MDA candidate sizes."""
+    """Train MDA, PCA and GP models for one goal and all MDA candidate sizes.
+
+    Parameters
+    ----------
+    goal
+        Goal id from ``Samoa_goals.json``.
+    candidates
+        MDA train sizes to fit; default ``mda_candidates`` from config.
+    force_retrain
+        Re-fit even when artefacts already exist.
+    gp_epochs
+        GP optimisation iterations.
+    pca_variance
+        Override per-variable PCA variance; default from ``Samoa.json``.
+    """
     goal = str(goal)
     mda, train_idx, _ = _fit_mda(goal, force_retrain=force_retrain)
     for n in candidates or MDA_CANDIDATES:
@@ -546,7 +852,21 @@ def fit_all(
     gp_epochs: int = 1000,
     pca_variance: PcaVariance = None,
 ) -> None:
-    """Run :func:`fit` for every goal (default: all in ``Samoa_goals.json``)."""
+    """Train models for every goal via :func:`fit`.
+
+    Parameters
+    ----------
+    goals
+        Goals to fit; default all configured goals.
+    candidates
+        MDA train sizes to fit; default ``mda_candidates`` from config.
+    force_retrain
+        Re-fit even when artefacts already exist.
+    gp_epochs
+        GP optimisation iterations.
+    pca_variance
+        Override per-variable PCA variance; default from ``Samoa.json``.
+    """
     for goal in _goals(goals):
         fit(
             goal,
@@ -672,10 +992,17 @@ def predict(
 
 
 def common_model_sites(goals: Iterable[str | int] | None = None) -> list[str]:
-    """Intersection of site labels kept after ``site_filter`` in every goal.
+    """Return site labels present in every goal after ``site_filter``.
 
-    Use before multi-goal hindcast reconstruction so all goals predict the
-    same nearshore points.
+    Parameters
+    ----------
+    goals
+        Goals to intersect; default all configured goals.
+
+    Returns
+    -------
+    list[str]
+        Sorted intersection of site labels across goals.
     """
     active = _goals(goals)
     common = set(str(s) for s in load_cases_goal(active[0]).sites.values)
@@ -737,7 +1064,25 @@ def resolve_reconstruction_sites(
 
 
 def _reconstruction_partitions(spectral: bool, offshore: xr.Dataset) -> list[int]:
-    """``[-1]`` for bulk-only; ``[0, 1, 2, 3]`` for WHACS spectral partitions."""
+    """Return WHACS partition ids used for one reconstruction mode.
+
+    Parameters
+    ----------
+    spectral
+        If ``False``, return bulk partition ``-1`` only.
+    offshore
+        Offshore dataset used to verify spectral partition variables exist.
+
+    Returns
+    -------
+    list[int]
+        ``[-1]`` for bulk-only, else ``[0, 1, 2, 3]``.
+
+    Raises
+    ------
+    ValueError
+        If spectral mode is requested but partition variables are missing.
+    """
     if not spectral:
         return [BULK_PARTITION]
     missing = [i for i in SPECTRAL_PARTITIONS if f"phs{i}" not in offshore.data_vars]
@@ -754,7 +1099,22 @@ def _valid_timesteps(
     hs_offshore: xr.DataArray,
     partition: int,
 ) -> pd.Series:
-    """Boolean mask of timesteps with finite forcing (and ``phs > 0`` if not bulk)."""
+    """Return a boolean mask of usable hindcast timesteps.
+
+    Parameters
+    ----------
+    forcing_df
+        Offshore forcing indexed by time (or case id).
+    hs_offshore
+        Offshore significant height used for transfer-function scaling.
+    partition
+        WHACS partition id; bulk ``-1`` skips the ``phs > 0`` filter.
+
+    Returns
+    -------
+    pandas.Series
+        ``True`` where forcing is finite (and partition height is positive).
+    """
     valid = forcing_df[list(FORCING_COLS)].notna().all(axis=1)
     if partition == BULK_PARTITION:
         return valid
@@ -773,9 +1133,25 @@ def _offshore_forcing(
     partition: int,
     wl: float = 0.0,
 ) -> tuple[pd.DataFrame, xr.DataArray]:
-    """MDA forcing DataFrame and offshore ``hs`` scale for one goal × partition.
+    """Build MDA forcing and offshore ``hs`` scale for one goal and partition.
 
-    ``partition == -1``: bulk ``hs/tp/dir/spr``. ``0``–``3``: ``phs0``…``phs3`` renamed.
+    Parameters
+    ----------
+    offshore
+        Offshore dataset already selected on ``time``.
+    goal
+        Goal id from ``Samoa_goals.json``.
+    partition
+        Bulk ``-1`` uses ``hs/tp/dir/spr``; ``0``–``3`` use ``phs*`` variables.
+    wl
+        Constant water level appended to forcing (m).
+
+    Returns
+    -------
+    forcing_df
+        DataFrame with MDA input columns indexed by time.
+    hs_offshore
+        Offshore partition/bulk height aligned with forcing rows.
     """
     g = offshore.sel(goal=int(goal))
     if "seapoint" in g.coords:
@@ -803,8 +1179,35 @@ def _predict_offshore(
     partition: int,
     wl: float = 0.0,
     pca_variance: PcaVariance = None,
+    models: dict[str, Any] | None = None,
 ) -> xr.Dataset | None:
-    """Metamodel prediction for one goal × partition on valid timesteps only."""
+    """Predict nearshore bulk parameters for one goal, partition and time slice.
+
+    Parameters
+    ----------
+    offshore
+        Offshore dataset already selected on ``time``.
+    goal
+        Goal id from ``Samoa_goals.json``.
+    n
+        MDA train size used at fitting time.
+    site_ids
+        Nearshore site labels to predict.
+    partition
+        WHACS partition id (bulk ``-1`` or spectral ``0``–``3``).
+    wl
+        Constant water level passed to MDA forcing (m).
+    pca_variance
+        PCA variance override; must match fitted models.
+    models
+        Pre-loaded model dict from :func:`load_models`; loaded if omitted.
+
+    Returns
+    -------
+    xarray.Dataset or None
+        Predicted ``hs``, ``tp``, ``dir``, ``spr`` on ``(time, sites)``, or
+        ``None`` when no valid timesteps remain.
+    """
     forcing_df, hs_offshore = _offshore_forcing(
         offshore, goal, partition=partition, wl=wl
     )
@@ -816,6 +1219,7 @@ def _predict_offshore(
         goal,
         n,
         forcing_df.loc[valid],
+        models=models,
         pca_variance=pca_variance,
         sites=site_ids,
         row_dim="time",
@@ -828,7 +1232,22 @@ def _predict_offshore(
 def _wavespectra_sum(
     cube: xr.Dataset, site_ids: list[str], *, load: bool = True
 ) -> xr.Dataset:
-    """Jonswap × Cartwright linear sum over goal × partition for each site."""
+    """Linearly sum goal × partition spectra into bulk ``hs/tp/dir``.
+
+    Parameters
+    ----------
+    cube
+        Dataset with ``goal``, ``partition``, ``time`` and ``sites`` dimensions.
+    site_ids
+        Nearshore site labels to process.
+    load
+        Eager-load the output dataset.
+
+    Returns
+    -------
+    xarray.Dataset
+        Bulk parameters on ``(time, sites)``.
+    """
     out: list[xr.Dataset] = []
     for i, site in enumerate(site_ids, start=1):
         logger.info("Wavespectra site %3d / %d: %s", i, len(site_ids), site)
@@ -850,6 +1269,387 @@ def _wavespectra_sum(
     return result.load() if load else result
 
 
+# ---------------------------------------------------------------------------
+# Hindcast cache
+# ---------------------------------------------------------------------------
+
+
+def reconstruction_cache_dir() -> Path:
+    """Return the directory used for cached hindcast reconstructions.
+
+    Creates ``Samoa/tmp/reconstruct`` if it does not exist.
+
+    Returns
+    -------
+    Path
+        Absolute path to the reconstruction cache folder.
+    """
+    path = resolve("tmp/reconstruct")
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _time_label_for_cache(time: str | slice) -> str:
+    """Encode a time selector as a filesystem-safe label.
+
+    Parameters
+    ----------
+    time
+        xarray time selector (month string, year, or slice).
+
+    Returns
+    -------
+    str
+        Sanitized label used in cache filenames.
+    """
+    if isinstance(time, str):
+        return time.replace(":", "-")
+    if isinstance(time, slice):
+
+        def _fmt(value: Any) -> str:
+            if value is None:
+                return ""
+            return pd.Timestamp(value).strftime("%Y%m%dT%H%M")
+
+        return f"{_fmt(time.start)}_to_{_fmt(time.stop)}"
+    return str(time).replace(":", "-")
+
+
+def _pca_variance_label(pca_variance: PcaVariance) -> str:
+    """Encode PCA variance settings for cache filenames.
+
+    Parameters
+    ----------
+    pca_variance
+        PCA variance override passed to reconstruction.
+
+    Returns
+    -------
+    str
+        Compact, order-stable label.
+    """
+    if pca_variance is None:
+        return "default"
+    if isinstance(pca_variance, dict):
+        return "_".join(
+            f"{key}{value:g}" for key, value in sorted(pca_variance.items())
+        )
+    return f"{float(pca_variance):g}"
+
+
+def _goals_label(goals: Iterable[str | int] | None) -> str:
+    """Encode goal selection for cache filenames.
+
+    Parameters
+    ----------
+    goals
+        Goal ids passed to reconstruction; ``None`` means all goals.
+
+    Returns
+    -------
+    str
+        ``"all"`` or a hyphen-separated goal list.
+    """
+    if goals is None:
+        return "all"
+    return "-".join(str(goal) for goal in _goals(goals))
+
+
+def _sanitize_cache_stem(stem: str, *, max_len: int = 220) -> str:
+    """Sanitize and optionally truncate a cache filename stem.
+
+    Parameters
+    ----------
+    stem
+        Raw filename stem built from reconstruction parameters.
+    max_len
+        Maximum allowed stem length before appending a hash suffix.
+
+    Returns
+    -------
+    str
+        Filesystem-safe stem.
+    """
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", stem).strip("_")
+    if len(safe) <= max_len:
+        return safe
+    digest = hashlib.sha1(stem.encode()).hexdigest()[:10]
+    return f"{safe[: max_len - 11]}_{digest}"
+
+
+def reconstruction_cache_path(
+    time_label: str | slice,
+    n: int,
+    *,
+    spectral: bool,
+    offshore_name: str,
+    goals: Iterable[str | int] | None,
+    wl: float,
+    site_ids: list[str],
+    pca_variance: PcaVariance,
+) -> Path:
+    """Build the NetCDF cache path for one reconstruction request.
+
+    The filename encodes offshore source, MDA size, spectral mode, goals,
+    water level, resolved site list, PCA settings and time span.
+
+    Parameters
+    ----------
+    time_label
+        Time selector for this cache entry (month or full period).
+    n
+        MDA train size.
+    spectral
+        ``True`` for spectral partition sum; ``False`` for bulk only.
+    offshore_name
+        Processed hindcast key in ``Samoa.json``.
+    goals
+        Goals included in reconstruction.
+    wl
+        Constant water level (m).
+    site_ids
+        Resolved nearshore site labels.
+    pca_variance
+        PCA variance override used for prediction.
+
+    Returns
+    -------
+    Path
+        Target ``.nc`` path under ``tmp/reconstruct`` (not created on disk).
+    """
+    stem = (
+        f"reconstruct__offshore-{offshore_name}__n-{n}__"
+        f"{'spectral' if spectral else 'bulk'}__"
+        f"goals-{_goals_label(goals)}__wl-{wl:g}__"
+        f"sites-{'-'.join(sorted(site_ids))}__"
+        f"pca-{_pca_variance_label(pca_variance)}__"
+        f"time-{_time_label_for_cache(time_label)}"
+    )
+    return resolve("tmp/reconstruct") / f"{_sanitize_cache_stem(stem)}.nc"
+
+
+def _load_reconstruction_cache(path: Path, *, load: bool) -> xr.Dataset | None:
+    """Load one reconstruction cache file if present.
+
+    Parameters
+    ----------
+    path
+        NetCDF cache path from :func:`reconstruction_cache_path`.
+    load
+        Eager-load arrays into memory.
+
+    Returns
+    -------
+    xarray.Dataset or None
+        Cached dataset, or ``None`` if *path* does not exist.
+    """
+    if not path.is_file():
+        return None
+    logger.info("Loading reconstruction cache: %s", path.name)
+    ds = xr.open_dataset(path)
+    return ds.load() if load else ds
+
+
+def _save_reconstruction_cache(ds: xr.Dataset, path: Path) -> None:
+    """Write one reconstruction result to the cache.
+
+    Parameters
+    ----------
+    ds
+        Reconstructed dataset on ``(time, sites)``.
+    path
+        Target NetCDF path from :func:`reconstruction_cache_path`.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    ds.to_netcdf(path)
+    logger.info(
+        "Saved reconstruction cache: %s (%.2f MB)",
+        path.name,
+        path.stat().st_size * 1e-6,
+    )
+
+
+def _month_periods(time: str | slice, offshore: xr.Dataset) -> list[str | slice]:
+    """Split a time selector into calendar months when needed.
+
+    Parameters
+    ----------
+    time
+        User time selector passed to :func:`reconstruct`.
+    offshore
+        Offshore dataset used only to inspect available timesteps.
+
+    Returns
+    -------
+    list
+        Single-element list for one month; otherwise month strings such as
+        ``"2020-05"``.
+    """
+    subset = offshore.sel(time=time)
+    if subset.sizes.get("time", 0) <= 1:
+        return [time]
+    months = pd.DatetimeIndex(subset.time.values).to_period("M").unique()
+    if len(months) <= 1:
+        return [time]
+    return [str(period) for period in months]
+
+
+def _load_models_by_goal(
+    active: list[str],
+    n: int,
+    *,
+    pca_variance: PcaVariance = None,
+) -> dict[str, dict[str, Any]]:
+    """Load fitted models once per goal for hindcast reconstruction.
+
+    Parameters
+    ----------
+    active
+        Goal ids to load.
+    n
+        MDA train size.
+    pca_variance
+        PCA variance override; must match fitted models.
+
+    Returns
+    -------
+    dict[str, dict]
+        Mapping ``goal_id → load_models(...)`` dict.
+    """
+    logger.info("Loading metamodels for goals %s", active)
+    return {
+        str(goal): load_models(goal, n, pca_variance=pca_variance) for goal in active
+    }
+
+
+def _reconstruct_period(
+    offshore: xr.Dataset,
+    n: int,
+    *,
+    time_label: str | slice,
+    active: list[str],
+    site_ids: list[str],
+    spectral: bool = True,
+    offshore_name: str = "WHACS",
+    pca_variance: PcaVariance = None,
+    wl: float = 0.0,
+    load: bool = True,
+    models_by_goal: dict[str, dict[str, Any]] | None = None,
+    cache_path: Path | None = None,
+    recompute: bool = False,
+    use_cache: bool = True,
+) -> xr.Dataset:
+    """Reconstruct one offshore time slice already selected with ``.sel(time=...)``.
+
+    Parameters
+    ----------
+    offshore
+        Offshore forcing for the period to reconstruct.
+    n
+        MDA train size.
+    time_label
+        Time label used for logging and cache lookup.
+    active
+        Goal ids included in reconstruction.
+    site_ids
+        Resolved nearshore site labels (shared across goals).
+    spectral
+        ``True`` for WHACS partitions ``0``–``3``; ``False`` for bulk only.
+    offshore_name
+        Processed hindcast key in ``Samoa.json``.
+    pca_variance
+        PCA variance override used for prediction.
+    wl
+        Constant water level passed to MDA forcing (m).
+    load
+        Eager-load the output dataset.
+    models_by_goal
+        Pre-loaded models per goal; loaded on demand if omitted.
+    cache_path
+        Optional explicit cache path; built from parameters if omitted.
+    recompute
+        If ``True``, ignore any existing cache file.
+    use_cache
+        If ``False``, skip cache read and write.
+
+    Returns
+    -------
+    xarray.Dataset
+        Bulk ``hs``, ``tp``, ``dir`` on ``(time, sites)``.
+
+    Raises
+    ------
+    ValueError
+        If no goal × partition produced valid predictions.
+    """
+    if cache_path is None:
+        cache_path = reconstruction_cache_path(
+            time_label,
+            n,
+            spectral=spectral,
+            offshore_name=offshore_name,
+            goals=active,
+            wl=wl,
+            site_ids=site_ids,
+            pca_variance=pca_variance,
+        )
+    part_ids = _reconstruction_partitions(spectral, offshore)
+
+    if use_cache and not recompute:
+        cached = _load_reconstruction_cache(cache_path, load=load)
+        if cached is not None:
+            return cached
+
+    logger.info(
+        "Reconstruct time=%r n=%d goals=%s partitions=%s sites=%d",
+        time_label,
+        n,
+        active,
+        part_ids,
+        len(site_ids),
+    )
+
+    if models_by_goal is None:
+        models_by_goal = _load_models_by_goal(active, n, pca_variance=pca_variance)
+
+    chunks: list[xr.Dataset] = []
+    for goal in active:
+        goal_models = models_by_goal[str(goal)]
+        for part in part_ids:
+            pred = _predict_offshore(
+                offshore,
+                goal,
+                n,
+                site_ids,
+                partition=part,
+                wl=wl,
+                pca_variance=pca_variance,
+                models=goal_models,
+            )
+            if pred is None:
+                logger.debug(
+                    "Goal %s partition %s: no valid timesteps in %r",
+                    goal,
+                    part,
+                    time_label,
+                )
+                continue
+            chunks.append(pred.expand_dims(goal=[int(goal)], partition=[part]).load())
+
+    if not chunks:
+        raise ValueError(f"Reconstruction produced no data for {time_label!r}")
+
+    result = _wavespectra_sum(xr.merge(chunks), site_ids, load=load)
+    if use_cache:
+        _save_reconstruction_cache(result, cache_path)
+    logger.info(
+        "Reconstruction done: %d site(s), %.2f MB",
+        result.sizes["sites"],
+        result.nbytes * 1e-6,
+    )
+    return result
+
+
 def reconstruct(
     time: str | slice,
     n: int,
@@ -861,13 +1661,19 @@ def reconstruct(
     sites: str | Iterable[str] | None = None,
     pca_variance: PcaVariance = None,
     load: bool = True,
+    recompute: bool = False,
+    use_cache: bool = True,
 ) -> xr.Dataset:
-    """Reconstruct nearshore waves: metamodel per goal × partition, wavespectra sum.
+    """Reconstruct nearshore waves from offshore hindcast forcing.
+
+    Runs the metamodel for each goal and WHACS partition, then linearly sums
+    partition spectra with wavespectra. Long periods are processed month by
+    month to limit GPU memory. Results are cached under ``tmp/reconstruct``.
 
     Parameters
     ----------
     time
-        Period passed to the offshore zarr (e.g. ``"2020-05"``).
+        Period passed to the offshore zarr (e.g. ``"2020-05"`` or ``"2020"``).
     n
         MDA train size; fitted models must exist for every active goal.
     spectral
@@ -876,7 +1682,7 @@ def reconstruct(
     offshore_name
         Processed hindcast key in ``Samoa.json``.
     goals
-        Goals to include; default all.
+        Goals to include; default all configured goals.
     wl
         Constant water level for MDA forcing (m).
     sites
@@ -885,59 +1691,124 @@ def reconstruct(
         PCA fractions used at fit time.
     load
         Eager-load the output dataset.
+    recompute
+        If ``True``, ignore and overwrite any matching cache file.
+    use_cache
+        If ``False``, skip reading and writing cache files.
 
     Returns
     -------
     xarray.Dataset
         ``(time, sites)`` with ``hs``, ``tp``, ``dir``.
+
+    Raises
+    ------
+    ModelsNotFittedError
+        If fitted models are missing for any active goal.
+    ValueError
+        If reconstruction produces no valid data for the requested period.
     """
     active = _goals(goals)
     require_models_all(n, active, pca_variance=pca_variance)
 
-    offshore = open_offshore_waves(offshore_name).sel(time=time)
     template = load_cases_goal(active[0])
     site_ids = resolve_reconstruction_sites(template, sites, goals=active)
-    part_ids = _reconstruction_partitions(spectral, offshore)
 
-    logger.info(
-        "Reconstruct time=%r n=%d goals=%s partitions=%s sites=%d",
-        time,
-        n,
-        active,
-        part_ids,
-        len(site_ids),
+    cache_kw = dict(
+        n=n,
+        spectral=spectral,
+        offshore_name=offshore_name,
+        goals=goals,
+        wl=wl,
+        site_ids=site_ids,
+        pca_variance=pca_variance,
+    )
+    full_cache_path = reconstruction_cache_path(time, **cache_kw)
+    if use_cache and not recompute:
+        cached = _load_reconstruction_cache(full_cache_path, load=load)
+        if cached is not None:
+            return cached
+
+    offshore_store = open_offshore_waves(offshore_name)
+    periods = _month_periods(time, offshore_store)
+    models_by_goal: dict[str, dict[str, Any]] | None = None
+
+    period_kw = dict(
+        active=active,
+        site_ids=site_ids,
+        spectral=spectral,
+        offshore_name=offshore_name,
+        pca_variance=pca_variance,
+        wl=wl,
+        recompute=recompute,
+        use_cache=use_cache,
     )
 
-    chunks: list[xr.Dataset] = []
-    for goal in active:
-        for part in part_ids:
-            pred = _predict_offshore(
-                offshore,
-                goal,
-                n,
-                site_ids,
-                partition=part,
-                wl=wl,
-                pca_variance=pca_variance,
-            )
-            if pred is None:
-                logger.debug(
-                    "Goal %s partition %s: no valid timesteps in %r",
-                    goal,
-                    part,
-                    time,
-                )
-                continue
-            chunks.append(pred.expand_dims(goal=[int(goal)], partition=[part]).load())
+    if len(periods) == 1:
+        period = periods[0]
+        result = _reconstruct_period(
+            offshore_store.sel(time=period),
+            n,
+            time_label=period,
+            load=load,
+            models_by_goal=models_by_goal,
+            cache_path=reconstruction_cache_path(period, **cache_kw),
+            **period_kw,
+        )
+        if use_cache and _time_label_for_cache(period) != _time_label_for_cache(time):
+            _save_reconstruction_cache(result, full_cache_path)
+        return result
 
-    if not chunks:
+    logger.info(
+        "Reconstruct time=%r spans %d month(s) — processing month by month",
+        time,
+        len(periods),
+    )
+    monthly: list[xr.Dataset] = []
+    for i, period in enumerate(periods, start=1):
+        offshore = offshore_store.sel(time=period)
+        if offshore.sizes.get("time", 0) == 0:
+            logger.debug(
+                "Month %d/%d %r: no timesteps — skipped", i, len(periods), period
+            )
+            continue
+        month_path = reconstruction_cache_path(period, **cache_kw)
+        if use_cache and not recompute:
+            cached_month = _load_reconstruction_cache(month_path, load=False)
+            if cached_month is not None:
+                logger.info(
+                    "Reconstruct month %d/%d: %r (cache)", i, len(periods), period
+                )
+                monthly.append(cached_month)
+                continue
+        if models_by_goal is None:
+            models_by_goal = _load_models_by_goal(active, n, pca_variance=pca_variance)
+        logger.info("Reconstruct month %d/%d: %r", i, len(periods), period)
+        monthly.append(
+            _reconstruct_period(
+                offshore,
+                n,
+                time_label=period,
+                load=False,
+                models_by_goal=models_by_goal,
+                cache_path=month_path,
+                **period_kw,
+            )
+        )
+
+    if not monthly:
         raise ValueError("Reconstruction produced no data (check time range)")
 
-    result = _wavespectra_sum(xr.merge(chunks), site_ids, load=load)
+    result = xr.concat(monthly, dim="time")
+    if load:
+        result = result.load()
+    if use_cache:
+        _save_reconstruction_cache(result, full_cache_path)
     logger.info(
-        "Reconstruction done: %d site(s), %.2f MB",
+        "Reconstruction done: %d site(s), %.2f MB (%d months)",
         result.sizes["sites"],
         result.nbytes * 1e-6,
+        len(monthly),
     )
     return result
 
@@ -962,6 +1833,8 @@ __all__ = [
     "logger",
     "predict",
     "reconstruct",
+    "reconstruction_cache_dir",
+    "reconstruction_cache_path",
     "require_models",
     "require_models_all",
     "resolve_reconstruction_sites",

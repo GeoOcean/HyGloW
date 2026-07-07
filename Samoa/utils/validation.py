@@ -1174,21 +1174,44 @@ def plot_buoy_timeseries(
     for ax, key in zip(axes, keys, strict=True):
         spec = PARAMETERS[key]
         ref = ref_site[key]
-        ref.plot(
-            ax=ax,
-            label=reference_label,
-            color=_MODEL_COLORS.get(reference_label, "black"),
-            lw=1.2,
-        )
-        for i, (name, est) in enumerate(estimates.items()):
-            est_aligned, _ = xr.align(est.sel(sites=site)[key], ref, join="inner")
-            est_aligned.plot(
-                ax=ax,
-                label=name,
-                color=_MODEL_COLORS.get(name, f"C{i}"),
-                lw=1.0,
-                alpha=0.9,
+        if spec["circular"]:
+            ax.scatter(
+                ref.time.values,
+                ref.values,
+                label=reference_label,
+                color=_MODEL_COLORS.get(reference_label, "black"),
+                s=8,
+                alpha=0.75,
+                zorder=3,
             )
+            for i, (name, est) in enumerate(estimates.items()):
+                est_aligned, _ = xr.align(est.sel(sites=site)[key], ref, join="inner")
+                ax.scatter(
+                    est_aligned.time.values,
+                    est_aligned.values,
+                    label=name,
+                    color=_MODEL_COLORS.get(name, f"C{i}"),
+                    s=6,
+                    alpha=0.65,
+                    zorder=2,
+                )
+            ax.set_ylim(0.0, 360.0)
+        else:
+            ref.plot(
+                ax=ax,
+                label=reference_label,
+                color=_MODEL_COLORS.get(reference_label, "black"),
+                lw=1.2,
+            )
+            for i, (name, est) in enumerate(estimates.items()):
+                est_aligned, _ = xr.align(est.sel(sites=site)[key], ref, join="inner")
+                est_aligned.plot(
+                    ax=ax,
+                    label=name,
+                    color=_MODEL_COLORS.get(name, f"C{i}"),
+                    lw=1.0,
+                    alpha=0.9,
+                )
         ax.set_ylabel(f"{spec['label']} [{spec['units']}]")
         ax.grid(True, alpha=0.3)
         ax.legend(loc="upper right", fontsize=8)
