@@ -24,7 +24,7 @@ import rioxarray  # noqa: F401
 import shapely
 import xarray as xr
 from shapely.geometry import MultiPolygon, Polygon
-from utils import observations as obs
+from utils.observation import onshore_sites as obs
 from utils.config import OUTPUT_SITES_CONFIG, PATHS, resolve
 
 _X_NAMES = ("x", "lon", "longitude")

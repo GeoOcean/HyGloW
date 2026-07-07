@@ -38,7 +38,7 @@ from utils.config import (
     resolve,
 )
 from utils.directions import in_nautical_sector
-from utils.sites import SITE_META, resolve_sites
+from utils.geometry.sites import SITE_META, resolve_sites
 from wavespectra.construct import construct_partition
 
 LOGGER_NAME = "Samoa.metamodel"

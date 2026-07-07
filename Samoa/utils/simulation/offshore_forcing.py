@@ -59,3 +59,10 @@ def boundary_parameters(offshore: xr.Dataset) -> dict[str, list]:
         "spr_goals": [offshore.spr.isel(time=i).values.tolist() for i in range(n_time)],
         "tref": pd.to_datetime(offshore.time.values).strftime("%Y%m%d %H%M%S").tolist(),
     }
+
+
+__all__ = [
+    "BOUNDARY_VARS",
+    "GOAL_DIM",
+    "boundary_parameters",
+]

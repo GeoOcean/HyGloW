@@ -23,7 +23,7 @@ import xarray as xr
 from bluemath_tk.wrappers._base_wrappers import BaseModelWrapper
 from bluemath_tk.wrappers._utils_wrappers import write_array_in_file
 from shapely.geometry import MultiPolygon, Polygon
-from utils.contours import compute_output_sites, write_output_sites
+from utils.geometry.output_sites import compute_output_sites, write_output_sites
 from utils.directions import nautical_sector_to_wedge_angles
 
 # SnapWave history NetCDF → HyGloW names
@@ -430,3 +430,15 @@ class SnapWaveDynamicModelWrapper(SnapWaveModelWrapper):
         """
         self.logger.info("Joining postprocessed files along time.")
         return xr.concat(postprocessed_files, dim="time")
+
+
+__all__ = [
+    "FORCING_VARS",
+    "POINT_VARS",
+    "SITE_COORDS",
+    "SnapWaveDynamicModelWrapper",
+    "SnapWaveMetaModelWrapper",
+    "SnapWaveModelWrapper",
+    "read_polygon_from_shp_file",
+    "write_polygon_vertices_to_txt",
+]

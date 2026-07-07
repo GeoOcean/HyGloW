@@ -21,8 +21,8 @@ are in **`utils/`**; each stage has a numbered Jupyter notebook.
 **Imports** (consistent across validation notebooks):
 
 ```python
-from utils import metamodel as mm
-from utils import validation as val
+from utils.model import metamodel as mm
+from utils.evaluation import validation as val
 from utils.config import resolve, load_goals, METAMODEL, SIMULATIONS
 ```
 
@@ -33,7 +33,7 @@ from utils.config import resolve, load_goals, METAMODEL, SIMULATIONS
 | Step | Notebook | Purpose |
 |------|----------|---------|
 | 01 | `01_Generate_tif_From_GEBCO.ipynb` | Download GEBCO, clip to AoI, write topobathy GeoTIFF |
-| 02 | `02_Create_Mesh_By_pymesh2d.ipynb` | Gradient-limited mesh sizing (`hfunfun`) → SnapWave mesh |
+| 02 | `02_Create_Mesh_By_pymesh2d.ipynb` | Gradient-limited mesh sizing (`utils.mesh.mesh_sizing`) → SnapWave mesh |
 | 03 | `03_Generate_Observations_Configuration.ipynb` | Onshore sites GeoJSON (buoys, gauges, …) |
 | 04 | `04_Select_Goals_by_Hindcasts.ipynb` | Place metamodel goals in AoI buffer ring → `Samoa_goals.json` |
 | 05 | `05_Metamodel_Cases_Generation.ipynb` | LHS propagation cases (500 per goal) → per-goal NetCDF |
@@ -66,7 +66,7 @@ and the AoI shapefile used everywhere else.
 
 ### 02 — Computational mesh
 
-Uses `utils.hfunfun.precalc_hfuns` to limit bathymetry gradients, then pymesh2d
+Uses `utils.mesh.mesh_sizing.precalc_hfuns` to limit bathymetry gradients, then pymesh2d
 to build `inputs/GRID/Samoa_mesh.nc`. The mesh resolution drives SnapWave cost
 for all later runs.
 
@@ -78,7 +78,7 @@ sites when `include_buoys: true` in `output_sites_config`.
 
 ### 04 — Metamodel goals
 
-`utils.hindcasts` places random targets in the inland buffer ring, snaps each goal
+`utils.geometry.sectors` places random targets in the inland buffer ring, snaps each goal
 to hindcast catalog nodes (WHACS, etc.), and saves:
 
 - `inputs/goals/Samoa_goals.json` — targets, **nautical** direction sectors (`[left, right]` clockwise from N; see `utils/directions.py`), hindcast snaps
@@ -88,7 +88,7 @@ Goals define **where** offshore forcing enters the domain (boundary nodes + sect
 
 ### 05 — Metamodel LHS cases
 
-For each goal, `utils.simulations.generate_cases` builds 500 Latin Hypercube samples
+For each goal, `utils.simulation.lhs_cases.generate_cases` builds 500 Latin Hypercube samples
 of `(tp, dir, spr, wl)` within bounds in `Samoa.json`. Wave direction `dir` is sampled
 in nautical degrees inside each goal's sector (`angles` in the goals JSON), then
 normalized to `[0, 360)`. `SnapWaveMetaModelWrapper` runs propagation and writes
@@ -125,7 +125,7 @@ Open via `utils.config.open_offshore_waves("WHACS")`.
 
 ### 08 — Dynamic SnapWave cases
 
-`SnapWaveDynamicModelWrapper` forces SnapWave with the full offshore time series
+`utils.simulation.snapwave_wrappers.SnapWaveDynamicModelWrapper` forces SnapWave with the full offshore time series
 for a chosen `period`. Output: joined NetCDF under `SnapWave_CASES_Dynamic/`
 (e.g. `Dynamic_Cases_WHACS_fullaso.nc`).
 
@@ -172,17 +172,18 @@ Key metamodel fields:
 | Module | Responsibility |
 |--------|----------------|
 | `config.py` | Load `Samoa.json`, `resolve()`, offshore zarr I/O |
-| `hfunfun.py` | Mesh sizing function (gradient-limited h) |
-| `hindcasts.py` | Goal placement, buffer ring, catalog snaps |
-| `observations.py` | Onshore GeoJSON I/O |
-| `contours.py` | Isobaths + mesh nodes + buoys → output sites table |
-| `simulations.py` | LHS case generation |
-| `snapwave_wrapper.py` | SnapWave case build/run/postprocess |
-| `offshore_waves.py` | Offshore → dynamic template parameters |
-| `sites.py` | Site metadata, groups (`10m`, `Apia`, buoys), `resolve_sites` |
-| `metamodel.py` | Fit, predict, `reconstruct` (hindcast) |
-| `validation.py` | Metrics, holdout/buoy comparison, plots |
-| `plotting.py` | Case maps and validation site maps |
+| `directions.py` | Nautical direction and sector convention helpers |
+| `mesh.mesh_sizing` | Mesh sizing function (gradient-limited h) |
+| `geometry.sectors` | Goal placement, buffer ring, catalog snaps |
+| `observation.onshore_sites` | Onshore GeoJSON I/O |
+| `geometry.output_sites` | Isobaths + mesh nodes + buoys → output sites table |
+| `simulation.lhs_cases` | LHS case generation |
+| `simulation.snapwave_wrappers` | SnapWave case build/run/postprocess |
+| `simulation.offshore_forcing` | Offshore → dynamic template parameters |
+| `geometry.sites` | Site metadata, groups (`10m`, `Apia`, buoys), `resolve_sites` |
+| `model.metamodel` | Fit, predict, `reconstruct` (hindcast) |
+| `evaluation.validation` | Metrics, holdout/buoy comparison, plots |
+| `viz.case_plots` | Case maps and validation site maps |
 
 ---
 
@@ -198,7 +199,7 @@ Key metamodel fields:
 - **Period alignment** — notebook 10 will silently mis-compare if buoy, dynamic,
   and reconstruction periods differ.
 - **Site selectors** — `mm.resolve_sites(ds, "10m")`, `"buoy"`, `"Apia"`, or a
-  site id; see `utils.sites.metric_groups`.
+  site id; see `utils.geometry.sites.metric_groups`.
 - **Clear notebook outputs** before committing large validation notebooks (keeps
   git diffs small).
 
@@ -212,11 +213,11 @@ These are not blockers — suggestions from the code review:
    many points per depth; check SnapWave cost and whether coarser spacing is enough
    for validation.
 
-2. **`contours.get_isobath_points`** — uses Matplotlib contouring (headless-safe).
+2. **`geometry.output_sites.get_isobath_points`** — uses Matplotlib contouring (headless-safe).
    For very high-resolution rasters, consider `skimage` or `contourpy` if profiling
    shows a bottleneck (unlikely compared to SnapWave itself).
 
-3. **SnapWave launcher path** — hard-coded in `snapwave_wrapper.py`
+3. **SnapWave launcher path** — hard-coded in `simulation/snapwave_wrappers.py`
    (`available_launchers`); consider moving to `Samoa.json` for portability.
 
 4. **`Samoa_goals copy.json`** — duplicate goals file in `inputs/goals/`; remove or
@@ -228,10 +229,7 @@ These are not blockers — suggestions from the code review:
 6. **Dynamic case storage** — full-period dynamic runs grow quickly; document which
    `period` slices you keep for validation vs archive.
 
-7. **`utils/output_sites.csv`** — if present, confirm it is generated/exported from
-   `compute_output_sites` and not edited by hand (row order matters for SnapWave).
-
-8. **Enclosure files** — `build_case` has enclosure writing commented out; verify
+7. **Enclosure files** — `build_case` has enclosure writing commented out; verify
    this matches your SnapWave template expectations for the Samoa domain.
 
 ---
@@ -261,7 +259,7 @@ Samoa/
 ## Reproducing hindcast reconstruction in code
 
 ```python
-from utils import metamodel as mm
+from utils.model import metamodel as mm
 
 ds = mm.reconstruct(
     "2020-05",           # period for offshore zarr

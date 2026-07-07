@@ -27,8 +27,8 @@ from bluemath_tk.core.logging import get_file_logger
 from bluemath_tk.core.metrics import bias, r2, rmse
 from bluemath_tk.core.plotting.old_scatter import density_scatter
 from matplotlib.figure import Figure
-from utils import metamodel as mm
-from utils import observations as obs
+from utils.model import metamodel as mm
+from utils.observation import onshore_sites as obs
 from utils.config import (
     METAMODEL,
     OFFSHORE_WAVES,
@@ -38,7 +38,7 @@ from utils.config import (
     open_offshore_waves,
     resolve,
 )
-from utils.sites import (
+from utils.geometry.sites import (
     SITE_META,
     attach_site_meta,
     find_group,
@@ -171,7 +171,7 @@ def compute_metrics(
 
 
 # ---------------------------------------------------------------------------
-# Site groups (re-exported from utils.sites)
+# Site groups (re-exported from utils.geometry.sites)
 # ---------------------------------------------------------------------------
 
 
@@ -1004,7 +1004,7 @@ def plot_map(
     ax: plt.Axes | None = None,
 ) -> tuple[Figure, plt.Axes]:
     """Map of validation sites coloured by source / depth label."""
-    from utils.plotting import plot_base_map, plot_validation_sites
+    from utils.viz.case_plots import plot_base_map, plot_validation_sites
 
     subset = estimate.sel(sites=site_ids)
     if ax is None:
@@ -1037,7 +1037,7 @@ def plot_group(
     cmap: str = "viridis",
 ) -> Figure:
     """Map + density scatters for one validation group."""
-    from utils.plotting import plot_base_map, plot_validation_sites
+    from utils.viz.case_plots import plot_base_map, plot_validation_sites
 
     keys = _metrics_variables(variables)
     fig = plt.figure(figsize=figsize)
@@ -1315,7 +1315,7 @@ def aggregate_sweep(
 
 
 def _sweep_line_color(name: str, source: str = "") -> str:
-    from utils.plotting import DEFAULT_POINT_COLOR, ISOBATH_COLORS, MESH_COLORS
+    from utils.viz.case_plots import DEFAULT_POINT_COLOR, ISOBATH_COLORS, MESH_COLORS
 
     if name in ISOBATH_COLORS:
         return ISOBATH_COLORS[name]

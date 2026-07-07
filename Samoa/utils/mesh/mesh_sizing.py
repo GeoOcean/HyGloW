@@ -302,3 +302,10 @@ def plot_hfun(
     if show:
         plt.show()
     return fig, axes
+
+
+__all__ = [
+    "extent_lonlat_bbox",
+    "plot_hfun",
+    "precalc_hfuns",
+]

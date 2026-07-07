@@ -396,5 +396,20 @@ def plot_validation_sites(
                 fontsize=ANNOTATE_FONTSIZE,
                 zorder=7,
             )
-
     ax.legend(loc="lower left", fontsize=8, framealpha=0.9)
+
+
+__all__ = [
+    "DEFAULT_POINT_COLOR",
+    "HINDCAST_COLORS",
+    "ISOBATH_COLORS",
+    "MESH_COLORS",
+    "SITE_SOURCE_MARKERS",
+    "plot_base_map",
+    "plot_case_map",
+    "plot_land",
+    "plot_points",
+    "plot_ring",
+    "plot_sectors",
+    "plot_validation_sites",
+]

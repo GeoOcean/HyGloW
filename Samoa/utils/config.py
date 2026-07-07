@@ -235,3 +235,26 @@ def reload() -> dict[str, Any]:
     METAMODEL = CONFIG.get("metamodel", {})
 
     return CONFIG
+
+
+__all__ = [
+    "CASE_CONFIG_PATH",
+    "CASE_DIR",
+    "CONFIG",
+    "METAMODEL",
+    "OFFSHORE_WAVES",
+    "ONSHORE_WAVES",
+    "OUTPUT_SITES",
+    "OUTPUT_SITES_CONFIG",
+    "PATHS",
+    "SIMULATIONS",
+    "forcing_columns",
+    "get_offshore_wave",
+    "goals_for_snapwave",
+    "load_goals",
+    "mda_max_points",
+    "offshore_catalog_key",
+    "open_offshore_waves",
+    "reload",
+    "resolve",
+]
