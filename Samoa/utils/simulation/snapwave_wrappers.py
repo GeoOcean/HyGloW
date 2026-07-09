@@ -34,6 +34,7 @@ POINT_VARS = {
     "point_hm0": "hs",
     "point_tp": "tp",
     "point_wavdir": "dir",
+    "point_dirspr": "spr",
 }
 
 # Metamodel LHS forcing stored as ``{name}_forcing`` on postprocessed output
@@ -417,6 +418,12 @@ class SnapWaveModelWrapper(BaseModelWrapper):
             self.enclosure_polygon, os.path.join(case_dir, "enclosure.txt")
         )
         write_output_sites(self.output_sites_df, case_dir, filename=self._sites_txt)
+        if case_context["save_map"]:
+            case_context["map_file"] = "output_map.nc"
+            case_context["map_dirspr"] = 1
+        else:
+            case_context["map_file"] = ""
+            case_context["map_dirspr"] = 0
 
     def run_case(
         self,
@@ -509,7 +516,11 @@ class SnapWaveMetaModelWrapper(SnapWaveModelWrapper):
         -------
         matplotlib.figure.Figure
         """
-        df = cases_df if cases_df is not None else pd.DataFrame(self.metamodel_parameters)
+        df = (
+            cases_df
+            if cases_df is not None
+            else pd.DataFrame(self.metamodel_parameters)
+        )
         fig = plot.plot_metamodel_configuration(
             aoi_gdf=self.aoi_gdf,
             enclosure_polygon=self.enclosure_polygon,
@@ -528,6 +539,30 @@ class SnapWaveMetaModelWrapper(SnapWaveModelWrapper):
         )
         plt.show()
         return fig
+
+    def plot_case(
+        self,
+        goal: int,
+        case_num: int,
+        *,
+        time_index: int = 0,
+        show_map: bool = True,
+        map_variable: str = "hs",
+        style=None,
+        show: bool = True,
+    ) -> plt.Figure:
+        """Plot one finished metamodel case folder (``goal/case_num``)."""
+        from utils.viz.snapwave_case_plots import plot_metamodel_case
+
+        case_dir = Path(self.output_dir) / f"{int(goal):02}" / f"{int(case_num):04}"
+        return plot_metamodel_case(
+            case_dir,
+            time_index=time_index,
+            show_map=show_map,
+            map_variable=map_variable,
+            style=style,
+            show=show,
+        )
 
     def postprocess_case(
         self, case_num: int, case_dir: str, case_context: dict
@@ -568,6 +603,28 @@ class SnapWaveMetaModelWrapper(SnapWaveModelWrapper):
 
 class SnapWaveDynamicModelWrapper(SnapWaveModelWrapper):
     """Offshore-forced SnapWave cases — postprocess with ``time``, concat on time."""
+
+    def plot_case(
+        self,
+        case_dir: str | Path,
+        *,
+        time_index: int = 0,
+        show_map: bool = True,
+        map_variable: str = "hs",
+        style=None,
+        show: bool = True,
+    ) -> plt.Figure:
+        """Plot one finished dynamic case folder."""
+        from utils.viz.snapwave_case_plots import plot_dynamic_case
+
+        return plot_dynamic_case(
+            case_dir,
+            time_index=time_index,
+            show_map=show_map,
+            map_variable=map_variable,
+            style=style,
+            show=show,
+        )
 
     def postprocess_case(
         self, case_num: int, case_dir: str, case_context: dict
