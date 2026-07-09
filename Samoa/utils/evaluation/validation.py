@@ -27,8 +27,7 @@ from bluemath_tk.core.logging import get_file_logger
 from bluemath_tk.core.metrics import bias, r2, rmse
 from bluemath_tk.core.plotting.old_scatter import density_scatter
 from matplotlib.figure import Figure
-from utils.model import metamodel as mm
-from utils.observation import onshore_sites as obs
+
 from utils.config import (
     METAMODEL,
     OFFSHORE_WAVES,
@@ -46,6 +45,8 @@ from utils.geometry.sites import (
     per_site_coord,
     resolve_sites,
 )
+from utils.model import metamodel as mm
+from utils.observation import onshore_sites as obs
 
 # Config mirrors metamodel module (case config → metamodel)
 METRICS_VARIABLES = METAMODEL["validation"]["metrics_variables"]
@@ -64,6 +65,7 @@ PARAMETERS: dict[str, dict[str, Any]] = {
     "hs": {"label": "Hs", "units": "m", "circular": False},
     "tp": {"label": "Tp", "units": "s", "circular": False},
     "dir": {"label": "Dir", "units": "deg", "circular": True},
+    "spr": {"label": "Spr", "units": "deg", "circular": False},
 }
 
 # LauriBuoys processed pickles (see ``03_Generate_Observations_Configuration.ipynb``)
@@ -82,9 +84,34 @@ def _metrics_variables(variables: Iterable[str] | None) -> list[str]:
     Returns
     -------
     list[str]
-        Variable keys (e.g. ``hs``, ``tp``, ``dir``).
+        Variable keys (e.g. ``hs``, ``tp``, ``dir``, ``spr``).
     """
     return list(variables) if variables is not None else list(METRICS_VARIABLES)
+
+
+def _available_metrics_variables(
+    estimate: xr.Dataset,
+    reference: xr.Dataset | None = None,
+    variables: Iterable[str] | None = None,
+) -> list[str]:
+    """Return configured metrics variables present in estimate/reference datasets."""
+    keys = _metrics_variables(variables)
+    keys = [k for k in keys if k in PARAMETERS and k in estimate.data_vars]
+    if reference is not None:
+        keys = [k for k in keys if k in reference.data_vars]
+    return keys
+
+
+def _scatter_grid_shape(n: int) -> tuple[int, int]:
+    """Return ``(nrows, ncols)`` for up to four scatter panels in a 2×2 grid."""
+    if n <= 1:
+        return 1, 1
+    if n == 2:
+        return 1, 2
+    if n <= 4:
+        return 2, 2
+    ncols = min(4, int(np.ceil(np.sqrt(n))))
+    return int(np.ceil(n / ncols)), ncols
 
 
 # ---------------------------------------------------------------------------
@@ -202,7 +229,7 @@ def metrics_table(
         Columns include ``group``, ``site_source``, ``variable``, ``bias``,
         ``rmse``, ``r2``, ``n``.
     """
-    params = _metrics_variables(variables)
+    params = _available_metrics_variables(estimate, reference, variables)
     rows: list[dict[str, Any]] = []
 
     for group_name, site_source, site_ids in metric_groups(estimate):
@@ -718,7 +745,8 @@ def _holdout_pair(
         models=models,
         pca_variance=pca_variance,
     )
-    reference = cases.isel(case_num=idx)[["hs", "tp", "dir"]].assign(
+    vars_ = [v for v in _metrics_variables(None) if v in cases.data_vars]
+    reference = cases.isel(case_num=idx)[vars_].assign(
         **{name: cases[name] for name in SITE_META if name in cases}
     )
     return estimate, reference, len(test_idx)
@@ -969,16 +997,18 @@ def plot_scatter(
     variables: Iterable[str] | None = None,
     estimate_label: str = "Estimate",
     reference_label: str = "Reference",
-    figsize: tuple[float, float] = (12, 4),
+    figsize: tuple[float, float] | None = None,
     cmap: str = "viridis",
 ) -> Figure:
     """Density scatter panels for one validation group."""
-    keys = _metrics_variables(variables)
-    fig, axes = plt.subplots(1, len(keys), figsize=figsize)
-    if len(keys) == 1:
-        axes = [axes]
+    keys = _available_metrics_variables(estimate, reference, variables)
+    nrows, ncols = _scatter_grid_shape(len(keys))
+    if figsize is None:
+        figsize = (4.2 * ncols, 3.8 * nrows)
+    fig, axes = plt.subplots(nrows, ncols, figsize=figsize)
+    axes_flat = np.atleast_1d(axes).ravel()
 
-    for ax, key in zip(axes, keys, strict=True):
+    for ax, key in zip(axes_flat, keys, strict=True):
         est, ref = _paired_values(estimate, reference, key, site_ids)
         _scatter_panel(
             ax,
@@ -989,6 +1019,9 @@ def plot_scatter(
             reference_label=reference_label,
             cmap=cmap,
         )
+
+    for ax in axes_flat[len(keys) :]:
+        ax.set_visible(False)
 
     fig.suptitle(group_name, fontsize=11)
     fig.tight_layout()
@@ -1033,16 +1066,24 @@ def plot_group(
     variables: Iterable[str] | None = None,
     estimate_label: str = "Estimate",
     reference_label: str = "Reference",
-    figsize: tuple[float, float] = (14, 9),
+    figsize: tuple[float, float] | None = None,
     cmap: str = "viridis",
 ) -> Figure:
     """Map + density scatters for one validation group."""
     from utils.viz.case_plots import plot_base_map, plot_validation_sites
 
-    keys = _metrics_variables(variables)
+    keys = _available_metrics_variables(estimate, reference, variables)
+    scatter_rows, scatter_cols = _scatter_grid_shape(len(keys))
+    if figsize is None:
+        figsize = (4.5 * scatter_cols, 3.0 + 3.5 * scatter_rows)
+
     fig = plt.figure(figsize=figsize)
     gs = fig.add_gridspec(
-        2, len(keys), height_ratios=[1.25, 1.0], hspace=0.3, wspace=0.3
+        1 + scatter_rows,
+        scatter_cols,
+        height_ratios=[1.25] + [1.0] * scatter_rows,
+        hspace=0.3,
+        wspace=0.3,
     )
     ax_map = fig.add_subplot(gs[0, :])
 
@@ -1058,8 +1099,8 @@ def plot_group(
     )
     ax_map.set_title(group_name, fontsize=11)
 
-    for col, key in enumerate(keys):
-        ax = fig.add_subplot(gs[1, col])
+    for i, key in enumerate(keys):
+        ax = fig.add_subplot(gs[1 + i // scatter_cols, i % scatter_cols])
         est, ref = _paired_values(estimate, reference, key, site_ids)
         _scatter_panel(
             ax,
@@ -1119,7 +1160,7 @@ def plot_timeseries(
 ) -> Figure:
     """Line plot of estimate vs reference at one site."""
     site = str(site)
-    keys = _metrics_variables(variables)
+    keys = _available_metrics_variables(estimate, reference, variables)
     fig, axes = plt.subplots(len(keys), 1, figsize=figsize, sharex=True)
     if len(keys) == 1:
         axes = [axes]
@@ -1165,6 +1206,8 @@ def plot_buoy_timeseries(
     """Time series at one buoy: observations vs all model estimates."""
     site = str(site)
     keys = _metrics_variables(variables)
+    keys = [k for k in keys if k in PARAMETERS and k in reference.data_vars]
+    keys = [k for k in keys if all(k in est.data_vars for est in estimates.values())]
     fig, axes = plt.subplots(len(keys), 1, figsize=figsize, sharex=True)
     if len(keys) == 1:
         axes = [axes]
@@ -1354,7 +1397,7 @@ def plot_sweep(
 ) -> Figure:
     """Line plots of bias / RMSE / R² vs MDA size.
 
-    Rows = metrics, columns = variables (hs, tp, dir). One line per series
+    Rows = metrics, columns = variables (hs, tp, dir, spr). One line per series
     defined by ``by`` (bulk, source, group, label, or buoy).
     """
     vars_ = _metrics_variables(variables)

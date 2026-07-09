@@ -14,7 +14,7 @@
         "dynamic_templates": "templates-dynamic",
         "metamodel_cases": "SnapWave_CASES_Metamodel",
         "dynamic_cases": "SnapWave_CASES_Dynamic",
-        "num_samples_per_goal": 5,
+        "num_samples_per_goal": 500,
         "bounds": {
             "tp": [
                 1,
@@ -63,5 +63,56 @@
             "clip_to_aoi": true
         }
     },
-    "metamodel": {}
+    "metamodel": {
+        "mda_candidates": [
+            450
+        ],
+        "mda_inputs": [
+            "tp",
+            "dir",
+            "spr",
+            "wl"
+        ],
+        "mda_directional_variables": [
+            "dir"
+        ],
+        "vars_to_predict": {
+            "hs": {
+                "vars_to_stack": [
+                    "hs"
+                ],
+                "pca_variance": 0.99
+            },
+            "tp": "raw",
+            "dir": {
+                "vars_to_stack": [
+                    "dir_u",
+                    "dir_v"
+                ],
+                "pca_variance": 0.99
+            },
+            "spr": {
+                "vars_to_stack": [
+                    "spr"
+                ],
+                "pca_variance": 0.99
+            }
+        },
+        "site_filter": {
+            "hs_max": 10.0,
+            "tp_min": 0.5
+        },
+        "validation": {
+            "metrics_variables": [
+                "hs",
+                "tp",
+                "dir",
+                "spr"
+            ]
+        },
+        "paths": {
+            "pca_dir": "outputs/{goal}/pca_{mda_candidate}",
+            "gp_dir": "outputs/{goal}/gp_{mda_candidate}"
+        }
+    }
 }

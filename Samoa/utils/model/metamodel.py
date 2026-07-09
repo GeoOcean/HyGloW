@@ -28,6 +28,8 @@ from bluemath_tk.core.operations import get_degrees_from_uv, get_uv_components
 from bluemath_tk.datamining.mda import MDA
 from bluemath_tk.datamining.pca import PCA
 from bluemath_tk.interpolation.gps import ExactGPInterpolation
+from wavespectra.construct import construct_partition
+
 from utils.config import (
     METAMODEL,
     SIMULATIONS,
@@ -39,7 +41,6 @@ from utils.config import (
 )
 from utils.directions import in_nautical_sector
 from utils.geometry.sites import SITE_META, resolve_sites
-from wavespectra.construct import construct_partition
 
 LOGGER_NAME = "hyglow.metamodel"
 logger = get_file_logger(
@@ -67,6 +68,19 @@ SPECTRAL_DIR = np.arange(0.0, 360.0, 5)
 # WHACS: bulk = partition -1; wind sea + swells = 0–3 (see offshore_waves.py)
 BULK_PARTITION = -1
 SPECTRAL_PARTITIONS = (0, 1, 2, 3)
+
+VALUE_TO_REPLACE_NANS = {
+    "hs": 0.0,
+    "dir_u": 0.0,
+    "dir_v": 0.0,
+    "spr": 0.0,
+}
+NAN_THRESHOLD_TO_DROP = {
+    "hs": 0.99,
+    "dir_u": 0.99,
+    "dir_v": 0.99,
+    "spr": 0.99,
+}
 
 
 class ModelsNotFittedError(FileNotFoundError):
@@ -811,6 +825,8 @@ def _fit_models(
             vars_to_stack=stack,
             coords_to_stack=["sites"],
             pca_dim_for_rows="case_num",
+            value_to_replace_nans=VALUE_TO_REPLACE_NANS,
+            nan_threshold_to_drop=NAN_THRESHOLD_TO_DROP,
         )
         path = pca_model_path(goal, n, name, variance)
         path.parent.mkdir(parents=True, exist_ok=True)
