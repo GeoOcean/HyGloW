@@ -6,7 +6,8 @@ one NetCDF per goal).
 :class:`SnapWaveDynamicModelWrapper` — offshore-waves forcing (``time`` dim,
 concatenated time series).
 
-Both produce site-labelled outputs ``hs``, ``tp``, ``dir`` on ``sites``.
+Both produce site-labelled outputs ``hs``, ``tp``, ``dir`` (and ``spr`` when
+present in SnapWave postprocess) on ``sites``.
 """
 
 from __future__ import annotations
@@ -269,11 +270,12 @@ def _standardize_postprocessed(
 
 def _read_sites_nc(case_dir: str, sites_nc: str) -> xr.Dataset:
     """Open a SnapWave sites NetCDF from a case directory."""
-    return (
-        xr.open_dataset(os.path.join(case_dir, sites_nc))
-        .drop_dims(["runtime"])
-        .drop_vars(["crs", "station_id"], errors="ignore")
-    )
+    with xr.open_dataset(os.path.join(case_dir, sites_nc)) as ds:
+        return (
+            ds.drop_dims(["runtime"])
+            .drop_vars(["crs", "station_id"], errors="ignore")
+            .load()
+        )
 
 
 class SnapWaveModelWrapper(BaseModelWrapper):

@@ -66,6 +66,7 @@ PARAMETERS: dict[str, dict[str, Any]] = {
     "hs": {"label": "Hs", "units": "m", "circular": False},
     "tp": {"label": "Tp", "units": "s", "circular": False},
     "dir": {"label": "Dir", "units": "deg", "circular": True},
+    # Directional spread (degrees); linear metrics — not periodic like dir.
     "spr": {"label": "Spr", "units": "deg", "circular": False},
 }
 

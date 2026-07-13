@@ -1,4 +1,9 @@
-"""Post-run SnapWave case diagnostics read directly from a case folder."""
+"""Post-run SnapWave case diagnostics read directly from a case folder.
+
+Layout: top row ``hs``, ``tp``, ``dir`` site panels; bottom row full-width domain
+map. ``spr`` is omitted from the default layout (see :data:`TOP_VARS`) to keep a
+compact 2×3 grid; forcing files still list ``spr`` for metamodel cases.
+"""
 
 from __future__ import annotations
 
@@ -35,6 +40,7 @@ FORCING_FILES = {
     "wl": "wl.txt",
 }
 
+# Default site panels for case diagnostics (spr omitted — 3-panel + map layout).
 TOP_VARS = ("hs", "tp", "dir")
 
 
@@ -92,10 +98,17 @@ def resolve_wave_variable(
     time_index: int = 0,
     site_dim: str | None = None,
 ) -> tuple[str, xr.DataArray]:
-    """Resolve canonical ``hs`` / ``tp`` / ``dir`` inside a SnapWave output dataset."""
+    """Resolve canonical wave variable inside a SnapWave output dataset.
+
+    Supports ``hs``, ``tp``, ``dir`` for site/map panels. ``spr`` is available
+    in forcing files but not in the default :data:`TOP_VARS` layout.
+    """
     key = name.strip().lower()
     if key not in WAVE_VAR_ALIASES:
-        raise KeyError(f"Unknown canonical variable {name!r}; expected hs/tp/dir")
+        raise KeyError(
+            f"Unknown canonical variable {name!r}; expected one of "
+            f"{sorted(WAVE_VAR_ALIASES)}"
+        )
 
     candidates = (key, *WAVE_VAR_ALIASES[key])
     var_name = next((c for c in candidates if c in ds.data_vars), None)
@@ -167,6 +180,11 @@ def infer_goal_from_path(case_dir: str | Path) -> int | None:
 
 
 def _resolve_map_file(case_dir: Path, inp: dict[str, str]) -> Path | None:
+    """Return domain map NetCDF for a case directory.
+
+    Uses ``map_file`` from ``snapwave.inp`` when set and present; otherwise
+    falls back to ``output_map.nc`` in the case folder.
+    """
     map_name = (inp.get("map_file") or "").strip()
     if map_name:
         candidate = case_dir / map_name
