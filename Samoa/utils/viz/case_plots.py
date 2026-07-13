@@ -10,13 +10,19 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import rioxarray
+import xarray as xr
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.gridspec import GridSpec
 from matplotlib.patches import Wedge
 from shapely.geometry import MultiPolygon, Polygon
 from utils.config import PATHS, display_title, resolve
-from utils.directions import nautical_sector_to_wedge_angles, normalize_nautical
+from utils.directions import (
+    in_nautical_sector,
+    nautical_sector_to_wedge_angles,
+    normalize_nautical,
+)
+from utils.simulation.offshore_forcing import BOUNDARY_VARS
 
 FIGSIZE = (9, 7)
 TOPOBATHY_VMIN, TOPOBATHY_VMAX = -200, 0
@@ -446,13 +452,40 @@ def _sector_spans(left: float, right: float) -> list[tuple[float, float]]:
     return [(left_n, right_n)]
 
 
+def _offshore_bulk_long(offshore: xr.Dataset) -> pd.DataFrame:
+    """Melt ``(time, goal)`` offshore bulk forcing to one row per timestep."""
+    if not isinstance(offshore, xr.Dataset):
+        raise TypeError(f"offshore must be xarray.Dataset, got {type(offshore)!r}")
+    missing = [v for v in BOUNDARY_VARS if v not in offshore]
+    if missing:
+        raise KeyError(f"offshore missing variables: {missing}")
+    if "goal" not in offshore.dims:
+        raise KeyError(f"offshore must have a 'goal' dimension; got {dict(offshore.sizes)}")
+
+    df = offshore[list(BOUNDARY_VARS)].to_dataframe().reset_index()
+    df["goal"] = df["goal"].astype(int)
+    return df
+
+
+def _frac_dirs_outside_sector(
+    dirs: np.ndarray, left: float, right: float
+) -> float:
+    """Share of directions outside a nautical propagation sector."""
+    inside = in_nautical_sector(dirs, left, right)
+    return float(1.0 - np.mean(inside))
+
+
 def _plot_goal_dir_range_bars(
     ax: Axes,
     cases: pd.DataFrame,
     goals_config: dict[str, dict[str, Any]],
     colors: dict[int, Any],
+    *,
+    title: str = "Sampled direction ranges per goal",
+    max_dir_marks: int = 200,
+    annotate_tp: bool = True,
 ) -> None:
-    """Horizontal bars: propagation sector (light) and sampled dir range (solid)."""
+    """Horizontal bars: propagation sector (light) and observed dir range (solid)."""
     goal_ids = sorted(cases["goal"].unique())
     y_positions = np.arange(len(goal_ids))
 
@@ -486,31 +519,37 @@ def _plot_goal_dir_range_bars(
             edgecolor="white",
             linewidth=0.5,
         )
+        mark_dirs = dirs
+        if len(mark_dirs) > max_dir_marks:
+            mark_dirs = np.random.default_rng(0).choice(
+                mark_dirs, size=max_dir_marks, replace=False
+            )
         ax.scatter(
-            dirs,
-            np.full(len(dirs), y),
+            mark_dirs,
+            np.full(len(mark_dirs), y),
             marker="|",
             s=90,
             color=color,
             linewidths=1.2,
             zorder=4,
         )
-        ax.text(
-            362,
-            y,
-            f"tp {sub['tp'].min():.1f}-{sub['tp'].max():.1f}s",
-            va="center",
-            ha="left",
-            fontsize=8,
-            color="#333333",
-        )
+        if annotate_tp:
+            ax.text(
+                362,
+                y,
+                f"tp {sub['tp'].min():.1f}-{sub['tp'].max():.1f}s",
+                va="center",
+                ha="left",
+                fontsize=8,
+                color="#333333",
+            )
 
     ax.set_yticks(y_positions)
     ax.set_yticklabels([f"G{gid}" for gid in goal_ids])
     ax.set_xlim(0, 395)
     ax.set_xticks(np.arange(0, 361, 45))
     ax.set_xlabel("wave-from direction (° nautical)")
-    ax.set_title("Sampled direction ranges per goal")
+    ax.set_title(title)
     ax.grid(axis="x", alpha=0.25)
     ax.invert_yaxis()
 
@@ -698,6 +737,218 @@ def plot_metamodel_configuration(
     return fig
 
 
+def plot_dynamic_configuration(
+    *,
+    aoi_gdf: gpd.GeoDataFrame,
+    enclosure_polygon: Polygon | MultiPolygon,
+    goals_config: dict[str, dict[str, Any]],
+    offshore: xr.Dataset,
+    output_sites_df: pd.DataFrame,
+    offshore_name: str | None = None,
+    mesh_file: str | None = None,
+    enclosure_buffer_m: float | None = None,
+    sector_radius_deg: float = 0.35,
+    arrow_scale_deg: float = 0.15,
+    max_arrows_per_goal: int = 25,
+    max_dir_marks: int = 200,
+    show_topobathy: bool = True,
+    maps_to_save: int | None = None,
+    title: str = "Dynamic pre-run diagnostic",
+) -> Figure:
+    """
+    Multi-panel diagnostic before building or running dynamic SnapWave cases.
+
+    Shows propagation sectors from the goals JSON, observed bulk forcing ranges
+    from offshore reanalysis (``hs``, ``tp``, ``dir``, ``spr``), and highlights
+    when wave-from directions fall outside the nominal goal sectors.
+
+    Layout: map and direction-range bars on the left; text summary on the right.
+    """
+    cases = _offshore_bulk_long(offshore)
+    goal_ids = sorted(cases["goal"].unique())
+    colors = _goal_colors(goal_ids)
+    n_time = int(offshore.sizes.get("time", len(cases) // max(len(goal_ids), 1)))
+
+    fig = plt.figure(figsize=(15, 10), constrained_layout=True)
+    gs = GridSpec(2, 2, figure=fig, width_ratios=[2.1, 1.0], height_ratios=[1.5, 0.75])
+    ax_map = fig.add_subplot(gs[0, 0])
+    ax_bars = fig.add_subplot(gs[1, 0])
+    ax_info = fig.add_subplot(gs[:, 1])
+    ax_info.axis("off")
+
+    plot_base_map(ax=ax_map, title=title, show_topobathy=show_topobathy)
+    gpd.GeoDataFrame(geometry=[enclosure_polygon], crs="EPSG:4326").boundary.plot(
+        ax=ax_map,
+        color="#d62728",
+        linestyle="--",
+        linewidth=1.4,
+        label="enclosure",
+    )
+
+    for goal_key in sorted(goals_config, key=int):
+        vals = goals_config[goal_key]
+        lon, lat = vals["lon"], vals["lat"]
+        left, right = vals["angles"]
+        color = colors.get(int(goal_key), DEFAULT_POINT_COLOR)
+        theta1, theta2 = nautical_sector_to_wedge_angles(left, right)
+        ax_map.add_patch(
+            Wedge(
+                (lon, lat),
+                sector_radius_deg,
+                theta1,
+                theta2,
+                facecolor=color,
+                edgecolor=color,
+                alpha=SECTOR_ALPHA,
+                linewidth=0.8,
+                zorder=4,
+            )
+        )
+        ax_map.plot(lon, lat, marker="*", color=color, markersize=12, zorder=6)
+        ax_map.text(
+            lon,
+            lat,
+            f" G{goal_key}",
+            fontsize=9,
+            color="black",
+            weight="bold",
+            zorder=7,
+            va="bottom",
+        )
+
+        sub = cases[cases["goal"] == int(goal_key)]
+        if len(sub) > max_arrows_per_goal:
+            sub = sub.sample(max_arrows_per_goal, random_state=0)
+        for _, row in sub.iterrows():
+            props, xytext, xy = _wave_from_arrowprops(
+                lon,
+                lat,
+                row["dir"],
+                scale_deg=arrow_scale_deg,
+                color=color,
+                alpha=0.55,
+            )
+            ax_map.annotate("", xy=xy, xytext=xytext, arrowprops=props, zorder=5)
+
+    if not output_sites_df.empty:
+        sites_gdf = gpd.GeoDataFrame(
+            output_sites_df,
+            geometry=gpd.points_from_xy(
+                output_sites_df["lon"], output_sites_df["lat"]
+            ),
+            crs="EPSG:4326",
+        )
+        for source, group in sites_gdf.groupby("source"):
+            marker = SITE_SOURCE_MARKERS.get(str(source), "o")
+            group.plot(
+                ax=ax_map,
+                marker=marker,
+                color=SITE_SOURCE_COLORS.get(str(source), DEFAULT_POINT_COLOR),
+                markersize=18 if source == "buoy" else 10,
+                edgecolor="white",
+                linewidth=0.4,
+                alpha=0.85,
+                label=f"sites: {source}",
+                zorder=3,
+            )
+
+    minx, miny, maxx, maxy = gpd.GeoDataFrame(
+        geometry=[enclosure_polygon], crs="EPSG:4326"
+    ).total_bounds
+    pad = 0.08
+    ax_map.set_xlim(minx - pad, maxx + pad)
+    ax_map.set_ylim(miny - pad, maxy + pad)
+    ax_map.set_aspect("equal", adjustable="box")
+    ax_map.legend(loc="upper right", fontsize=7, framealpha=0.9)
+
+    _plot_goal_dir_range_bars(
+        ax_bars,
+        cases,
+        goals_config,
+        colors,
+        title="Observed direction ranges per goal (reanalysis)",
+        max_dir_marks=max_dir_marks,
+    )
+
+    time_vals = pd.to_datetime(offshore["time"].values) if "time" in offshore else None
+    lines = [
+        display_title("Dynamic summary"),
+        "",
+        f"Offshore source   : {offshore_name or 'processed offshore waves'}",
+        f"Goals per case    : {len(goal_ids)}",
+        f"Timesteps         : {n_time}",
+        f"Total cases       : {n_time}",
+        f"Output sites      : {len(output_sites_df)}",
+    ]
+    if time_vals is not None and len(time_vals):
+        lines.append(
+            f"Period            : {time_vals[0]:%Y-%m-%d %H:%M} → "
+            f"{time_vals[-1]:%Y-%m-%d %H:%M}"
+        )
+    if enclosure_buffer_m is not None:
+        lines.append(f"Enclosure buffer  : {enclosure_buffer_m / 1000:g} km")
+    if mesh_file:
+        lines.append(f"Mesh              : {Path(mesh_file).name}")
+    if maps_to_save is not None:
+        lines.append(f"Maps to save      : {maps_to_save} / {n_time}")
+
+    lines.extend(
+        [
+            "",
+            "Global bulk ranges (all goals, all timesteps):",
+            f"  hs  : [{cases['hs'].min():.3f}, {cases['hs'].max():.3f}] m",
+            f"  tp  : [{cases['tp'].min():.2f}, {cases['tp'].max():.2f}] s",
+            f"  dir : [{cases['dir'].min():.1f}, {cases['dir'].max():.1f}]°",
+            f"  spr : [{cases['spr'].min():.1f}, {cases['spr'].max():.1f}]°",
+            "",
+            "Per goal — sector vs observed dir (nautical):",
+        ]
+    )
+    for goal_key in sorted(goals_config, key=int):
+        ang = goals_config[goal_key]["angles"]
+        sub = cases[cases["goal"] == int(goal_key)]
+        dirs = sub["dir"].to_numpy(float)
+        outside = _frac_dirs_outside_sector(dirs, ang[0], ang[1]) * 100.0
+        flag = "  ! outside sector" if outside > 0 else ""
+        lines.append(
+            f"  G{goal_key}: sector {ang}  "
+            f"dir [{dirs.min():.0f}, {dirs.max():.0f}]°  "
+            f"({outside:.1f}% outside){flag}"
+        )
+        lines.append(
+            f"         hs [{sub['hs'].min():.2f}, {sub['hs'].max():.2f}] m  "
+            f"tp [{sub['tp'].min():.1f}, {sub['tp'].max():.1f}] s  "
+            f"spr [{sub['spr'].min():.0f}, {sub['spr'].max():.0f}]°"
+        )
+
+    lines.extend(
+        [
+            "",
+            "Map legend:",
+            "  shaded wedge = propagation sector (goals JSON)",
+            "  arrows = subsampled reanalysis wave-from directions",
+            "  dashed red = SnapWave enclosure",
+            "",
+            "Bar panel:",
+            "  light bar = allowed sector",
+            "  solid bar = observed dir range",
+            "  ticks = subsampled timesteps (if many)",
+        ]
+    )
+    ax_info.text(
+        0.02,
+        0.98,
+        "\n".join(lines),
+        va="top",
+        ha="left",
+        fontsize=8.5,
+        family="monospace",
+        transform=ax_info.transAxes,
+    )
+
+    return fig
+
+
 __all__ = [
     "DEFAULT_POINT_COLOR",
     "HINDCAST_COLORS",
@@ -706,6 +957,7 @@ __all__ = [
     "SITE_SOURCE_MARKERS",
     "plot_base_map",
     "plot_case_map",
+    "plot_dynamic_configuration",
     "plot_land",
     "plot_metamodel_configuration",
     "plot_points",

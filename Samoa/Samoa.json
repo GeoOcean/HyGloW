@@ -7,7 +7,12 @@
         "mesh_file": "inputs/GRID/Samoa_mesh.nc"
     },
     "onshore_waves": "inputs/Observations/Samoa_observations.json",
-    "offshore_waves": [],
+    "offshore_waves": [
+        {
+            "name": "WHACS",
+            "data_path": "inputs/WHACS/processed/Samoa_WHACS_goal.zarr"
+        }
+    ],
     "simulations": {
         "goals_file": "inputs/Goals/Samoa_Goals.json",
         "metamodel_templates": "templates-metamodel",

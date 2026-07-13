@@ -1,8 +1,7 @@
 """Post-run SnapWave case diagnostics read directly from a case folder.
 
-Layout: top row ``hs``, ``tp``, ``dir`` site panels; bottom row full-width domain
-map. ``spr`` is omitted from the default layout (see :data:`TOP_VARS`) to keep a
-compact 2×3 grid; forcing files still list ``spr`` for metamodel cases.
+Layout (validation-style): full-width domain map on top; 2×2 site panels for
+``hs``, ``tp``, ``dir``, ``spr`` below.
 """
 
 from __future__ import annotations
@@ -30,6 +29,7 @@ WAVE_VAR_ALIASES: dict[str, tuple[str, ...]] = {
     "hs": ("point_hm0", "hm0", "Hs", "hm"),
     "tp": ("point_tp", "tp", "Tm"),
     "dir": ("point_wavdir", "wd", "wavdir", "dir", "ThetaM"),
+    "spr": ("point_dirspr", "dirspr", "spr"),
 }
 
 FORCING_FILES = {
@@ -40,8 +40,8 @@ FORCING_FILES = {
     "wl": "wl.txt",
 }
 
-# Default site panels for case diagnostics (spr omitted — 3-panel + map layout).
-TOP_VARS = ("hs", "tp", "dir")
+# Default site panels for case diagnostics (2×2 under the domain map).
+TOP_VARS = ("hs", "tp", "dir", "spr")
 
 
 @dataclass
@@ -53,6 +53,7 @@ class CasePlotStyle:
             "hs": "viridis",
             "tp": "plasma",
             "dir": "twilight_shifted",
+            "spr": "cividis",
         }
     )
     metamodel_cmaps: dict[str, str] = field(
@@ -60,6 +61,7 @@ class CasePlotStyle:
             "hs": "Blues_r",
             "tp": "plasma",
             "dir": "twilight_shifted",
+            "spr": "cividis",
         }
     )
     metamodel_vlims: dict[str, tuple[float, float]] = field(
@@ -100,8 +102,7 @@ def resolve_wave_variable(
 ) -> tuple[str, xr.DataArray]:
     """Resolve canonical wave variable inside a SnapWave output dataset.
 
-    Supports ``hs``, ``tp``, ``dir`` for site/map panels. ``spr`` is available
-    in forcing files but not in the default :data:`TOP_VARS` layout.
+    Supports ``hs``, ``tp``, ``dir``, ``spr`` for site/map panels.
     """
     key = name.strip().lower()
     if key not in WAVE_VAR_ALIASES:
@@ -313,10 +314,15 @@ def _build_case_title(
     user_title: str | None,
 ) -> tuple[str, str]:
     """Return main title and subtitle with forcing summary."""
-    goal = f"G{ctx.goal_id}" if ctx.goal_id is not None else "G?"
-    main = user_title or display_title(
-        f"SnapWave {mode} · {goal} · case {ctx.case_dir.name}"
-    )
+    if user_title:
+        main = user_title
+    elif mode == "metamodel":
+        goal = f"G{ctx.goal_id}" if ctx.goal_id is not None else "G?"
+        main = display_title(
+            f"SnapWave {mode} · {goal} · case {ctx.case_dir.name}"
+        )
+    else:
+        main = display_title(f"SnapWave {mode} · case {ctx.case_dir.name}")
 
     parts: list[str] = []
     if mode == "metamodel":
@@ -580,25 +586,47 @@ def _plot_case_figure(
         user_title=title,
     )
 
-    fig = plt.figure(figsize=(16, 9))
-    gs = GridSpec(2, 3, figure=fig, height_ratios=[1.0, 1.2], hspace=0.3, wspace=0.22)
-    axes_top = [fig.add_subplot(gs[0, i]) for i in range(3)]
-    ax_map = fig.add_subplot(gs[1, :])
+    vars_ = style.top_vars
+    panel_rows, panel_cols = 2, 2
+    fig = plt.figure(figsize=(11, 11))
+    gs = GridSpec(
+        1 + panel_rows,
+        panel_cols,
+        figure=fig,
+        height_ratios=[1.25, 1.0, 1.0],
+        hspace=0.32,
+        wspace=0.22,
+    )
+    ax_map = fig.add_subplot(gs[0, :])
 
     if sites_ds is None:
-        for ax in axes_top:
+        for i in range(len(vars_)):
+            ax = fig.add_subplot(gs[1 + i // panel_cols, i % panel_cols])
             ax.text(0.5, 0.5, "output_sites.nc missing", ha="center", va="center")
+            ax.set_axis_off()
     else:
-        for ax, var in zip(axes_top, style.top_vars):
-            _plot_site_field(
-                ax,
-                sites_ds,
-                var,
-                time_index=time_index,
-                style=style,
-                extent=extent,
-                mode=mode,
-            )
+        for i, var in enumerate(vars_):
+            ax = fig.add_subplot(gs[1 + i // panel_cols, i % panel_cols])
+            try:
+                _plot_site_field(
+                    ax,
+                    sites_ds,
+                    var,
+                    time_index=time_index,
+                    style=style,
+                    extent=extent,
+                    mode=mode,
+                )
+            except KeyError:
+                ax.text(
+                    0.5,
+                    0.5,
+                    f"{var} not in output",
+                    ha="center",
+                    va="center",
+                    transform=ax.transAxes,
+                )
+                ax.set_axis_off()
 
     _plot_domain_panel(
         ax_map,

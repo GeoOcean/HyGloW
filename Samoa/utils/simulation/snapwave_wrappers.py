@@ -606,6 +606,67 @@ class SnapWaveMetaModelWrapper(SnapWaveModelWrapper):
 class SnapWaveDynamicModelWrapper(SnapWaveModelWrapper):
     """Offshore-forced SnapWave cases — postprocess with ``time``, concat on time."""
 
+    def plot_configuration(
+        self,
+        *,
+        offshore: xr.Dataset,
+        offshore_name: str | None = None,
+        sector_radius_deg: float = 0.35,
+        arrow_scale_deg: float = 0.15,
+        max_arrows_per_goal: int = 25,
+        max_dir_marks: int = 200,
+        show_topobathy: bool = True,
+        show: bool = True,
+    ) -> plt.Figure:
+        """
+        Pre-run diagnostic for dynamic case generation.
+
+        Shows propagation sectors, observed reanalysis bulk forcing ranges,
+        subsampled wave-from directions, output sites, and a text summary.
+
+        Parameters
+        ----------
+        offshore
+            Processed offshore dataset with dims ``(time, goal)`` and bulk
+            variables ``hs``, ``tp``, ``dir``, ``spr``.
+        offshore_name
+            Optional catalog label (e.g. ``"WHACS"``) for the summary panel.
+        sector_radius_deg, arrow_scale_deg, max_arrows_per_goal, max_dir_marks
+            Map and bar-panel styling controls.
+        show_topobathy
+            Draw bathymetry under the map panel.
+        show
+            Call ``plt.show()`` when ``True``.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+        """
+        fig = plot.plot_dynamic_configuration(
+            aoi_gdf=self.aoi_gdf,
+            enclosure_polygon=self.enclosure_polygon,
+            goals_config=self.goals_config,
+            offshore=offshore,
+            output_sites_df=self.output_sites_df,
+            offshore_name=offshore_name,
+            mesh_file=self.fixed_parameters.get("gridfile"),
+            enclosure_buffer_m=self.enclosure_buffer_m,
+            sector_radius_deg=sector_radius_deg,
+            arrow_scale_deg=arrow_scale_deg,
+            max_arrows_per_goal=max_arrows_per_goal,
+            max_dir_marks=max_dir_marks,
+            show_topobathy=show_topobathy,
+            title="Dynamic pre-run diagnostic",
+            maps_to_save=(
+                int(sum(self.metamodel_parameters["save_map"]))
+                if self.metamodel_parameters.get("save_map")
+                else None
+            ),
+        )
+        if show:
+            plt.show()
+        return fig
+
     def plot_case(
         self,
         case_dir: str | Path,
