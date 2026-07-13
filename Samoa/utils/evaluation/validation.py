@@ -36,6 +36,7 @@ from utils.config import (
     offshore_catalog_key,
     open_offshore_waves,
     resolve,
+    validate_metamodel_config,
 )
 from utils.geometry.sites import (
     SITE_META,
@@ -745,7 +746,17 @@ def _holdout_pair(
         models=models,
         pca_variance=pca_variance,
     )
-    vars_ = [v for v in _metrics_variables(None) if v in cases.data_vars]
+    configured = _metrics_variables(None)
+    vars_ = _available_metrics_variables(estimate, cases, variables=None)
+    missing = [v for v in configured if v in PARAMETERS and v not in vars_]
+    if missing:
+        logger.warning(
+            "Goal %s / n=%d: configured metrics variables missing from "
+            "estimate or reference: %s",
+            goal,
+            mda_candidate,
+            missing,
+        )
     reference = cases.isel(case_num=idx)[vars_].assign(
         **{name: cases[name] for name in SITE_META if name in cases}
     )
@@ -831,6 +842,7 @@ def validate(
     """
     goal = str(goal)
     n = int(n)
+    validate_metamodel_config()
     estimate, reference, n_test = _holdout_pair(goal, n, pca_variance=pca_variance)
     table = _tag_metrics(
         metrics_table(estimate, reference, variables=variables),
@@ -948,8 +960,13 @@ def _scatter_panel(
         ax.set_title(f"{spec['label']} (no data)")
         return
 
-    xs, ys, density = density_scatter(est, ref)
-    ax.scatter(xs, ys, c=density, s=10, cmap=cmap, edgecolors="none", alpha=0.9)
+    try:
+        xs, ys, density = density_scatter(est, ref)
+        ax.scatter(xs, ys, c=density, s=10, cmap=cmap, edgecolors="none", alpha=0.9)
+    except (np.linalg.LinAlgError, ValueError) as exc:
+        logger.debug("density_scatter failed (%s); using plain scatter", exc)
+        ax.scatter(est, ref, s=10, color="steelblue", edgecolors="none", alpha=0.5)
+        xs, ys = est, ref
 
     if spec["circular"]:
         lo, hi = 0.0, 360.0

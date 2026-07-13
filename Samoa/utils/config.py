@@ -268,6 +268,96 @@ def open_offshore_waves(
     return xr.open_zarr(resolve(path))
 
 
+def validate_metamodel_config(config: dict[str, Any] | None = None) -> None:
+    """Validate required ``metamodel`` keys in the case config JSON.
+
+    Raises
+    ------
+    ValueError
+        If a required section or key is missing or malformed.
+    TypeError
+        If a value has the wrong type.
+    """
+    cfg = CONFIG if config is None else config
+    mm = cfg.get("metamodel")
+    if not isinstance(mm, dict):
+        raise ValueError("config missing 'metamodel' section")
+
+    candidates = mm.get("mda_candidates")
+    if not isinstance(candidates, list) or not candidates:
+        raise ValueError("metamodel.mda_candidates must be a non-empty list")
+    for n in candidates:
+        if not isinstance(n, int) or n <= 0:
+            raise ValueError(f"metamodel.mda_candidates entry must be positive int, got {n!r}")
+
+    inputs = mm.get("mda_inputs")
+    if not isinstance(inputs, list) or not inputs:
+        raise ValueError("metamodel.mda_inputs must be a non-empty list")
+    if not all(isinstance(c, str) for c in inputs):
+        raise TypeError("metamodel.mda_inputs must be a list of strings")
+
+    directional = mm.get("mda_directional_variables", [])
+    if not isinstance(directional, list):
+        raise TypeError("metamodel.mda_directional_variables must be a list")
+    unknown_dir = set(directional) - set(inputs)
+    if unknown_dir:
+        raise ValueError(
+            f"metamodel.mda_directional_variables not in mda_inputs: {sorted(unknown_dir)}"
+        )
+
+    vars_ = mm.get("vars_to_predict")
+    if not isinstance(vars_, dict) or not vars_:
+        raise ValueError("metamodel.vars_to_predict must be a non-empty dict")
+    for name, spec in vars_.items():
+        if spec == "raw":
+            continue
+        if not isinstance(spec, dict):
+            raise ValueError(f"metamodel.vars_to_predict[{name!r}] must be 'raw' or a dict")
+        stack = spec.get("vars_to_stack")
+        if not isinstance(stack, list) or not stack:
+            raise ValueError(f"metamodel.vars_to_predict[{name!r}].vars_to_stack must be a list")
+        variance = spec.get("pca_variance")
+        if not isinstance(variance, (int, float)) or not 0 < float(variance) <= 1:
+            raise ValueError(
+                f"metamodel.vars_to_predict[{name!r}].pca_variance must be in (0, 1]"
+            )
+
+    site_filter = mm.get("site_filter", {})
+    if not isinstance(site_filter, dict):
+        raise TypeError("metamodel.site_filter must be a dict")
+    for key in site_filter:
+        if not (key.endswith("_max") or key.endswith("_min")):
+            raise ValueError(
+                f"metamodel.site_filter key {key!r} must end with '_max' or '_min'"
+            )
+
+    pca_pp = mm.get("pca_preprocessing", {})
+    if pca_pp:
+        if not isinstance(pca_pp, dict):
+            raise TypeError("metamodel.pca_preprocessing must be a dict")
+        for section in ("nan_threshold_to_drop", "value_to_replace_nans"):
+            block = pca_pp.get(section, {})
+            if block and not isinstance(block, dict):
+                raise TypeError(f"metamodel.pca_preprocessing.{section} must be a dict")
+
+    validation = mm.get("validation", {})
+    metrics = validation.get("metrics_variables")
+    if not isinstance(metrics, list) or not metrics:
+        raise ValueError("metamodel.validation.metrics_variables must be a non-empty list")
+    predict_names = set(vars_)
+    missing_metrics = [v for v in metrics if v not in predict_names]
+    if missing_metrics:
+        raise ValueError(
+            "metamodel.validation.metrics_variables not in vars_to_predict: "
+            f"{missing_metrics}"
+        )
+
+    paths = mm.get("paths", {})
+    for key in ("pca_dir", "gp_dir"):
+        if key not in paths or not isinstance(paths[key], str):
+            raise ValueError(f"metamodel.paths.{key} must be a template string")
+
+
 def reload() -> dict[str, Any]:
     """
     Re-read the case config JSON and refresh module globals.
@@ -305,4 +395,5 @@ __all__ = [
     "open_offshore_waves",
     "reload",
     "resolve",
+    "validate_metamodel_config",
 ]

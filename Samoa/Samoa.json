@@ -65,6 +65,10 @@
     },
     "metamodel": {
         "mda_candidates": [
+            50,
+            100,
+            150,
+            250,
             450
         ],
         "mda_inputs": [
@@ -101,6 +105,20 @@
         "site_filter": {
             "hs_max": 10.0,
             "tp_min": 0.5
+        },
+        "pca_preprocessing": {
+            "nan_threshold_to_drop": {
+                "hs": 0.99,
+                "dir_u": 0.99,
+                "dir_v": 0.99,
+                "spr": 0.99
+            },
+            "value_to_replace_nans": {
+                "hs": 0.0,
+                "dir_u": 0.0,
+                "dir_v": 0.0,
+                "spr": 0.0
+            }
         },
         "validation": {
             "metrics_variables": [

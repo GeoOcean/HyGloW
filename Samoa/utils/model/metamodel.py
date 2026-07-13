@@ -38,6 +38,7 @@ from utils.config import (
     mda_max_points,
     open_offshore_waves,
     resolve,
+    validate_metamodel_config,
 )
 from utils.directions import in_nautical_sector
 from utils.geometry.sites import SITE_META, resolve_sites
@@ -60,27 +61,37 @@ MDA_INPUTS = METAMODEL["mda_inputs"]
 MDA_DIRECTIONAL = METAMODEL["mda_directional_variables"]
 MDA_CANDIDATES = METAMODEL["mda_candidates"]
 SITE_FILTER = METAMODEL["site_filter"]
-FORCING_COLS = tuple(c for c in MDA_INPUTS if c != "wl")  # MDA inputs passed through GP
+FORCING_COLS = tuple(c for c in MDA_INPUTS if c != "wl")  # validity mask for hindcast rows (wl optional)
 
-# Wavespectra grid and WHACS partition ids (see offshore_waves.py)
-SPECTRAL_FREQ = np.logspace(np.log10(0.035), np.log10(0.5), 29)
-SPECTRAL_DIR = np.arange(0.0, 360.0, 5)
-# WHACS: bulk = partition -1; wind sea + swells = 0–3 (see offshore_waves.py)
-BULK_PARTITION = -1
-SPECTRAL_PARTITIONS = (0, 1, 2, 3)
+# Default PCA NaN handling (overridden by metamodel.pca_preprocessing in case JSON)
+_DEFAULT_PCA_PREPROCESSING = {
+    "nan_threshold_to_drop": {
+        "hs": 0.99,
+        "dir_u": 0.99,
+        "dir_v": 0.99,
+        "spr": 0.99,
+    },
+    "value_to_replace_nans": {
+        "hs": 0.0,
+        "dir_u": 0.0,
+        "dir_v": 0.0,
+        "spr": 0.0,
+    },
+}
 
-VALUE_TO_REPLACE_NANS = {
-    "hs": 0.0,
-    "dir_u": 0.0,
-    "dir_v": 0.0,
-    "spr": 0.0,
-}
-NAN_THRESHOLD_TO_DROP = {
-    "hs": 0.99,
-    "dir_u": 0.99,
-    "dir_v": 0.99,
-    "spr": 0.99,
-}
+
+def _pca_preprocessing() -> tuple[dict[str, float], dict[str, float]]:
+    """Return PCA NaN settings from case config (with code defaults)."""
+    cfg = METAMODEL.get("pca_preprocessing", {})
+    replace = {
+        **_DEFAULT_PCA_PREPROCESSING["value_to_replace_nans"],
+        **cfg.get("value_to_replace_nans", {}),
+    }
+    drop = {
+        **_DEFAULT_PCA_PREPROCESSING["nan_threshold_to_drop"],
+        **cfg.get("nan_threshold_to_drop", {}),
+    }
+    return replace, drop
 
 
 class ModelsNotFittedError(FileNotFoundError):
@@ -294,29 +305,45 @@ def pca_model_path(goal: str | int, n: int, variable: str, variance: float) -> P
 def detect_removed_sites(cases: xr.Dataset) -> list[str]:
     """Return site labels that fail ``METAMODEL.site_filter`` on SnapWave cases.
 
+    Each ``site_filter`` key must end with ``_max`` or ``_min``:
+
+    - ``{var}_max`` — drop sites whose maximum over ``case_num`` exceeds the threshold.
+    - ``{var}_min`` — drop sites whose minimum over ``case_num`` falls below the threshold.
+
     Parameters
     ----------
     cases
-        SnapWave LHS dataset with ``hs`` and ``tp`` on ``(case_num, sites)``.
+        SnapWave LHS dataset with variables on ``(case_num, sites)``.
 
     Returns
     -------
     list[str]
-        Sorted site labels exceeding ``hs_max`` or below ``tp_min``.
+        Sorted site labels failing any configured rule.
     """
     bad: set[str] = set()
-    if "hs_max" in SITE_FILTER:
-        peak = cases["hs"].max("case_num")
-        bad.update(
-            str(s)
-            for s in peak.where(peak > SITE_FILTER["hs_max"], drop=True).sites.values
-        )
-    if "tp_min" in SITE_FILTER:
-        low = cases["tp"].min("case_num")
-        bad.update(
-            str(s)
-            for s in low.where(low < SITE_FILTER["tp_min"], drop=True).sites.values
-        )
+    for key, threshold in SITE_FILTER.items():
+        if key.endswith("_max"):
+            var = key[:-4]
+            op = "max"
+        elif key.endswith("_min"):
+            var = key[:-4]
+            op = "min"
+        else:
+            logger.warning(
+                "Ignoring site_filter key %r (expected {var}_max or {var}_min)",
+                key,
+            )
+            continue
+        if var not in cases.data_vars:
+            logger.warning("site_filter %r: variable %r not in cases", key, var)
+            continue
+        if op == "max":
+            agg = cases[var].max("case_num")
+            offenders = agg.where(agg > float(threshold), drop=True)
+        else:
+            agg = cases[var].min("case_num")
+            offenders = agg.where(agg < float(threshold), drop=True)
+        bad.update(str(s) for s in offenders.sites.values)
     return sorted(bad)
 
 
@@ -376,12 +403,12 @@ def load_cases_goal(goal: str | int, *, apply_site_filter: bool = True) -> xr.Da
     xarray.Dataset
         Dimensions ``(case_num, sites)``; variables ``hs``, ``tp``, ``dir``, …
     """
-    ds = xr.open_dataset(cases_path(goal))
-    u, v = get_uv_components(ds["dir"])
-    ds = ds.assign(dir_u=u, dir_v=v)
+    with xr.open_dataset(cases_path(goal)) as ds:
+        u, v = get_uv_components(ds["dir"])
+        out = ds.assign(dir_u=u, dir_v=v).load()
     if apply_site_filter:
-        ds = drop_sites(ds, removed_sites(goal))
-    return ds
+        out = drop_sites(out, removed_sites(goal))
+    return out
 
 
 def forcing_dataframe(cases: xr.Dataset) -> pd.DataFrame:
@@ -416,12 +443,87 @@ def load_split(goal: str | int) -> tuple[np.ndarray, np.ndarray]:
     train_idx, test_idx
         Integer arrays of case indices.
     """
-    with split_path(goal).open(encoding="utf-8") as f:
-        split = json.load(f)
+    split = _read_split_dict(goal)
     return (
         np.asarray(split["train_idx"], dtype=int),
         np.asarray(split["test_idx"], dtype=int),
     )
+
+
+def _read_split_dict(goal: str | int) -> dict[str, Any]:
+    """Load the full ``split.json`` payload for one goal."""
+    with split_path(goal).open(encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _write_split_dict(goal: str | int, data: dict[str, Any]) -> None:
+    """Write ``split.json`` for one goal."""
+    path = split_path(goal)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+
+def load_fit_summary(goal: str | int, n: int | None = None) -> dict[str, Any]:
+    """Return persisted PCA/GP fit summary from ``split.json``.
+
+    Parameters
+    ----------
+    goal
+        Goal id from the case goals JSON.
+    n
+        MDA train size. If ``None``, return the full ``fit_by_mda`` mapping.
+
+    Returns
+    -------
+    dict
+        Fit summary for one MDA size, or all sizes when *n* is ``None``.
+    """
+    fit_by = _read_split_dict(goal).get("fit_by_mda", {})
+    if n is None:
+        return fit_by
+    return fit_by.get(str(int(n)), {})
+
+
+def _pca_kept_site_labels(pca: Any) -> dict[str, list[str]]:
+    """Map stacked variable name → site labels kept by PCA NaN threshold."""
+    sites = np.asarray(pca.coords_values.get("sites", []))
+    if sites.size == 0:
+        return {}
+    out: dict[str, list[str]] = {}
+    for var, positions in getattr(pca, "not_nan_positions", {}).items():
+        idx = np.asarray(positions, dtype=int)
+        out[var] = [str(sites[i]) for i in idx]
+    return out
+
+
+def _consolidated_pca_sites(
+    kept_by_stack: dict[str, list[str]], stack: list[str]
+) -> list[str]:
+    """Intersection of kept sites across all stacked variables for one PCA target."""
+    if not stack:
+        return []
+    sets = [set(kept_by_stack.get(v, [])) for v in stack]
+    if not sets or not sets[0]:
+        return kept_by_stack.get(stack[0], [])
+    consolidated = sets[0]
+    for other in sets[1:]:
+        consolidated &= other
+    return sorted(consolidated)
+
+
+def _persist_fit_summary(goal: str | int, n: int, summary: dict[str, Any]) -> None:
+    """Merge one MDA-size fit summary into ``split.json``."""
+    data = _read_split_dict(goal)
+    if "pca_nan_policy" not in data:
+        value_replace, nan_drop = _pca_preprocessing()
+        data["pca_nan_policy"] = {
+            "value_to_replace_nans": value_replace,
+            "nan_threshold_to_drop": nan_drop,
+        }
+    fit_by = data.setdefault("fit_by_mda", {})
+    fit_by[str(int(n))] = summary
+    _write_split_dict(goal, data)
 
 
 def load_context(goal: str | int) -> dict[str, Any]:
@@ -703,6 +805,7 @@ def _fit_mda(
 
     path.parent.mkdir(parents=True, exist_ok=True)
     mda.save_model(path)
+    value_replace, nan_drop = _pca_preprocessing()
     with split_file.open("w", encoding="utf-8") as f:
         json.dump(
             {
@@ -711,6 +814,11 @@ def _fit_mda(
                 "num_centers": num_centers,
                 "removed_sites": dropped,
                 "site_filter": SITE_FILTER,
+                "pca_nan_policy": {
+                    "value_to_replace_nans": value_replace,
+                    "nan_threshold_to_drop": nan_drop,
+                },
+                "fit_by_mda": {},
             },
             f,
             indent=2,
@@ -817,22 +925,75 @@ def _fit_models(
         mda, train_idx, _ = _fit_mda(goal, force_retrain=force_retrain)
 
     cases = load_cases_goal(goal).isel(case_num=train_idx[:n])
+    value_replace, nan_drop = _pca_preprocessing()
+    n_requested = n
+    n_cases = int(cases.sizes["case_num"])
+    n_sites = int(cases.sizes["sites"])
+    if n_cases < n_requested:
+        logger.warning(
+            "Goal %s / n=%d: only %d training cases available",
+            goal,
+            n_requested,
+            n_cases,
+        )
     pcas: dict[str, Any] = {}
+    pca_sites_kept: dict[str, list[str]] = {}
+    pca_sites_kept_by_stack: dict[str, list[str]] = {}
+    pca_sites_dropped: dict[str, int] = {}
     for name, variance, stack in _pca_variables(pca_variance):
+        logger.info(
+            "Goal %s / n=%d: fitting PCA %s (%d cases × %d sites; "
+            "nan_threshold=%s)",
+            goal,
+            n,
+            name,
+            n_cases,
+            n_sites,
+            {k: nan_drop.get(k) for k in stack},
+        )
         pca = PCA(n_components=variance)
         pca.fit_transform(
             data=cases,
             vars_to_stack=stack,
             coords_to_stack=["sites"],
             pca_dim_for_rows="case_num",
-            value_to_replace_nans=VALUE_TO_REPLACE_NANS,
-            nan_threshold_to_drop=NAN_THRESHOLD_TO_DROP,
+            value_to_replace_nans=value_replace,
+            nan_threshold_to_drop=nan_drop,
+        )
+        kept_by_stack = _pca_kept_site_labels(pca)
+        kept = _consolidated_pca_sites(kept_by_stack, stack)
+        pca_sites_kept[name] = kept
+        for var in stack:
+            if var in kept_by_stack:
+                pca_sites_kept_by_stack[var] = kept_by_stack[var]
+        n_dropped = n_sites - len(kept)
+        pca_sites_dropped[name] = n_dropped
+        logger.info(
+            "Goal %s / n=%d: PCA %s kept %d/%d sites (%d dropped by nan threshold)",
+            goal,
+            n,
+            name,
+            len(kept),
+            n_sites,
+            n_dropped,
         )
         path = pca_model_path(goal, n, name, variance)
         path.parent.mkdir(parents=True, exist_ok=True)
         pca.save_model(path)
         pcas[name] = pca
         logger.info("Goal %s / n=%d: saved %s", goal, n, path.name)
+
+    forcing = forcing_dataframe(cases)
+    centroids = mda.centroids[MDA_INPUTS].iloc[:n]
+    if forcing.shape != centroids.shape:
+        raise ValueError(
+            f"GP training: forcing shape {forcing.shape} != centroids {centroids.shape}"
+        )
+    if not np.allclose(forcing.values, centroids.values, rtol=1e-5, atol=1e-8):
+        diff = float(np.nanmax(np.abs(forcing.values - centroids.values)))
+        raise ValueError(
+            f"GP training: forcing != MDA centroids (max |Δ|={diff:.4g})"
+        )
 
     target = _stack_pcs(pcas)
     gp = ExactGPInterpolation(epochs=gp_epochs)
@@ -845,6 +1006,21 @@ def _fit_models(
     gp_p.parent.mkdir(parents=True, exist_ok=True)
     gp.save_model(gp_p)
     logger.info("Goal %s / n=%d: GP saved (%d PCs)", goal, n, target.shape[1])
+
+    _persist_fit_summary(
+        goal,
+        n,
+        {
+            "n_cases_requested": n_requested,
+            "n_cases_used": n_cases,
+            "n_sites_before_pca": n_sites,
+            "pca_sites_kept": pca_sites_kept,
+            "pca_sites_kept_by_stack": pca_sites_kept_by_stack,
+            "pca_sites_dropped": pca_sites_dropped,
+            "pca_variances": resolved_pca_variances(pca_variance),
+            "n_gp_components": int(target.shape[1]),
+        },
+    )
 
     return {
         "mda": mda,
@@ -879,6 +1055,7 @@ def fit(
         Override per-variable PCA variance; default from the case config JSON.
     """
     goal = str(goal)
+    validate_metamodel_config()
     mda, train_idx, _ = _fit_mda(goal, force_retrain=force_retrain)
     for n in candidates or MDA_CANDIDATES:
         _fit_models(
