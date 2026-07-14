@@ -61,7 +61,43 @@ MDA_INPUTS = METAMODEL["mda_inputs"]
 MDA_DIRECTIONAL = METAMODEL["mda_directional_variables"]
 MDA_CANDIDATES = METAMODEL["mda_candidates"]
 SITE_FILTER = METAMODEL["site_filter"]
-FORCING_COLS = tuple(c for c in MDA_INPUTS if c != "wl")  # validity mask for hindcast rows (wl optional)
+FORCING_COLS = tuple(
+    c for c in MDA_INPUTS if c != "wl"
+)  # validity mask for hindcast rows (wl optional)
+
+# WHACS: bulk = partition -1; wind sea + swells = 0–3 (see offshore_waves.py)
+BULK_PARTITION = -1
+SPECTRAL_PARTITIONS = (0, 1, 2, 3)
+
+# Fixed frequency/direction grids for wavespectra linear summation (reconstruct)
+SPECTRAL_FREQ = np.logspace(np.log10(0.035), np.log10(0.5), 29)
+SPECTRAL_DIR = np.arange(0.0, 360.0, 5)
+
+
+def _set_gp_device(gp: Any, device: str) -> None:
+    """Move a fitted :class:`~bluemath_tk.interpolation.gps.ExactGPInterpolation` to *device*."""
+    import torch
+
+    dev = torch.device(device)
+    gp.device = dev
+    for model in gp._models.values():
+        model.to(dev)
+    for likelihood in gp._likelihoods.values():
+        likelihood.to(dev)
+
+
+def _release_gp_memory() -> None:
+    """Best-effort CUDA cache flush after unloading GP models."""
+    import gc
+
+    gc.collect()
+    try:
+        import torch
+    except ImportError:
+        return
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
 
 # Default PCA NaN handling (overridden by metamodel.pca_preprocessing in case JSON)
 _DEFAULT_PCA_PREPROCESSING = {
@@ -722,7 +758,11 @@ def require_models_all(
 
 
 def load_models(
-    goal: str | int, n: int, *, pca_variance: PcaVariance = None
+    goal: str | int,
+    n: int,
+    *,
+    pca_variance: PcaVariance = None,
+    device: str | None = None,
 ) -> dict[str, Any]:
     """Load fitted MDA, GP and per-variable PCA models from disk.
 
@@ -732,6 +772,8 @@ def load_models(
         Goal id and MDA train size (must match saved artefacts).
     pca_variance
         Override PCA variance fractions; default uses the case config JSON.
+    device
+        Optional PyTorch device for GP inference (e.g. ``"cpu"`` on small GPUs).
 
     Returns
     -------
@@ -748,9 +790,12 @@ def load_models(
         name: load_model(pca_model_path(goal, n, name, var))
         for name, var, _ in _pca_variables(pca_variance)
     }
+    gp = load_model(gp_model_path(goal, n))
+    if device is not None:
+        _set_gp_device(gp, device)
     return {
         "mda": load_model(mda_path(goal)),
-        "gp": load_model(gp_model_path(goal, n)),
+        "gp": gp,
         "pcas": pcas,
         "pca_variances": resolved_pca_variances(pca_variance),
     }
@@ -1004,8 +1049,7 @@ def _fit_models(
     pca_sites_dropped: dict[str, int] = {}
     for name, variance, stack in _pca_variables(pca_variance):
         logger.info(
-            "Goal %s / n=%d: fitting PCA %s (%d cases × %d sites; "
-            "nan_threshold=%s)",
+            "Goal %s / n=%d: fitting PCA %s (%d cases × %d sites; nan_threshold=%s)",
             goal,
             n,
             name,
@@ -1053,9 +1097,7 @@ def _fit_models(
         )
     if not np.allclose(forcing.values, centroids.values, rtol=1e-5, atol=1e-8):
         diff = float(np.nanmax(np.abs(forcing.values - centroids.values)))
-        raise ValueError(
-            f"GP training: forcing != MDA centroids (max |Δ|={diff:.4g})"
-        )
+        raise ValueError(f"GP training: forcing != MDA centroids (max |Δ|={diff:.4g})")
 
     target = _stack_pcs(pcas)
     gp = ExactGPInterpolation(epochs=gp_epochs)
@@ -1178,6 +1220,7 @@ def predict(
     pca_variance: PcaVariance = None,
     sites: Iterable[str] | None = None,
     row_dim: str = "case_num",
+    device: str | None = None,
 ) -> xr.Dataset:
     """
     Map offshore forcing rows to nearshore wave fields via GP → PCA inverse.
@@ -1202,6 +1245,8 @@ def predict(
     row_dim
         Name of the output row dimension (``case_num`` for LHS holdout,
         ``time`` for hindcast).
+    device
+        Optional PyTorch device for GP inference when models are loaded here.
 
     Returns
     -------
@@ -1219,7 +1264,7 @@ def predict(
 
     goal = str(goal)
     if models is None:
-        models = load_models(goal, n, pca_variance=pca_variance)
+        models = load_models(goal, n, pca_variance=pca_variance, device=device)
 
     # PCA inverse_transform expects the row dimension to be named case_num
     if forcing.index.name != "case_num":
@@ -1479,6 +1524,7 @@ def _predict_offshore(
     wl: float = 0.0,
     pca_variance: PcaVariance = None,
     models: dict[str, Any] | None = None,
+    device: str | None = None,
 ) -> xr.Dataset | None:
     """Predict nearshore bulk parameters for one goal, partition and time slice.
 
@@ -1522,6 +1568,7 @@ def _predict_offshore(
         pca_variance=pca_variance,
         sites=site_ids,
         row_dim="time",
+        device=device,
     )
     # Scale hs by offshore partition/bulk height (transfer function)
     pred["hs"] = pred["hs"] * hs_offshore.sel(time=pred.coords["time"])
@@ -1856,6 +1903,7 @@ def _reconstruct_period(
     cache_path: Path | None = None,
     recompute: bool = False,
     use_cache: bool = True,
+    device: str | None = None,
 ) -> xr.Dataset:
     """Reconstruct one offshore time slice already selected with ``.sel(time=...)``.
 
@@ -1882,13 +1930,16 @@ def _reconstruct_period(
     load
         Eager-load the output dataset.
     models_by_goal
-        Pre-loaded models per goal; loaded on demand if omitted.
+        Pre-loaded models per goal. When omitted, each goal is loaded only for
+        its own predictions and released before the next (saves GPU memory).
     cache_path
         Optional explicit cache path; built from parameters if omitted.
     recompute
         If ``True``, ignore any existing cache file.
     use_cache
         If ``False``, skip cache read and write.
+    device
+        Optional PyTorch device for GP inference (``"cpu"`` on small GPUs).
 
     Returns
     -------
@@ -1927,32 +1978,42 @@ def _reconstruct_period(
         len(site_ids),
     )
 
-    if models_by_goal is None:
-        models_by_goal = _load_models_by_goal(active, n, pca_variance=pca_variance)
-
     chunks: list[xr.Dataset] = []
     for goal in active:
-        goal_models = models_by_goal[str(goal)]
-        for part in part_ids:
-            pred = _predict_offshore(
-                offshore,
-                goal,
-                n,
-                site_ids,
-                partition=part,
-                wl=wl,
-                pca_variance=pca_variance,
-                models=goal_models,
-            )
-            if pred is None:
-                logger.debug(
-                    "Goal %s partition %s: no valid timesteps in %r",
+        lazy_load = models_by_goal is None
+        goal_models = (
+            models_by_goal[str(goal)]
+            if models_by_goal is not None
+            else load_models(goal, n, pca_variance=pca_variance, device=device)
+        )
+        try:
+            for part in part_ids:
+                pred = _predict_offshore(
+                    offshore,
                     goal,
-                    part,
-                    time_label,
+                    n,
+                    site_ids,
+                    partition=part,
+                    wl=wl,
+                    pca_variance=pca_variance,
+                    models=goal_models,
+                    device=device,
                 )
-                continue
-            chunks.append(pred.expand_dims(goal=[int(goal)], partition=[part]).load())
+                if pred is None:
+                    logger.debug(
+                        "Goal %s partition %s: no valid timesteps in %r",
+                        goal,
+                        part,
+                        time_label,
+                    )
+                    continue
+                chunks.append(
+                    pred.expand_dims(goal=[int(goal)], partition=[part]).load()
+                )
+        finally:
+            if lazy_load:
+                del goal_models
+                _release_gp_memory()
 
     if not chunks:
         raise ValueError(f"Reconstruction produced no data for {time_label!r}")
@@ -1981,14 +2042,16 @@ def reconstruct(
     load: bool = True,
     recompute: bool = False,
     use_cache: bool = True,
+    device: str | None = None,
 ) -> xr.Dataset:
     """Reconstruct nearshore waves from offshore hindcast forcing.
 
     Runs the metamodel for each goal and WHACS partition, then linearly sums
     partition spectra with wavespectra. Each goal is only evaluated for
     timesteps whose offshore direction lies inside that goal's nautical sector
-    (from the case goals JSON). Long periods are processed month by month to
-    limit GPU memory. Results are cached under ``tmp/reconstruct``.
+    (from the case goals JSON). Long periods are split month by month for
+    offshore I/O and caching; GP models are loaded one goal at a time to limit
+    GPU memory. Results are cached under ``tmp/reconstruct``.
 
     Parameters
     ----------
@@ -2017,6 +2080,9 @@ def reconstruct(
         retraining models or changing ``site_filter`` / ``pca_preprocessing``.
     use_cache
         If ``False``, skip reading and writing cache files.
+    device
+        Optional PyTorch device for GP inference. Use ``"cpu"`` when CUDA runs
+        out of memory (each goal holds ~100+ exact GPs at ``n=450``).
 
     Returns
     -------
@@ -2061,7 +2127,6 @@ def reconstruct(
 
     offshore_store = open_offshore_waves(offshore_name)
     periods = _month_periods(time, offshore_store)
-    models_by_goal: dict[str, dict[str, Any]] | None = None
 
     period_kw = dict(
         active=active,
@@ -2072,6 +2137,7 @@ def reconstruct(
         wl=wl,
         recompute=recompute,
         use_cache=use_cache,
+        device=device,
     )
 
     if len(periods) == 1:
@@ -2081,7 +2147,6 @@ def reconstruct(
             n,
             time_label=period,
             load=load,
-            models_by_goal=models_by_goal,
             cache_path=reconstruction_cache_path(period, **cache_kw),
             **period_kw,
         )
@@ -2111,8 +2176,6 @@ def reconstruct(
                 )
                 monthly.append(cached_month)
                 continue
-        if models_by_goal is None:
-            models_by_goal = _load_models_by_goal(active, n, pca_variance=pca_variance)
         logger.info("Reconstruct month %d/%d: %r", i, len(periods), period)
         monthly.append(
             _reconstruct_period(
@@ -2120,7 +2183,6 @@ def reconstruct(
                 n,
                 time_label=period,
                 load=False,
-                models_by_goal=models_by_goal,
                 cache_path=month_path,
                 **period_kw,
             )

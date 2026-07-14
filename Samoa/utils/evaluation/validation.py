@@ -1026,7 +1026,7 @@ def plot_scatter(
     fig, axes = plt.subplots(nrows, ncols, figsize=figsize)
     axes_flat = np.atleast_1d(axes).ravel()
 
-    for ax, key in zip(axes_flat, keys, strict=True):
+    for ax, key in zip(axes_flat, keys):
         est, ref = _paired_values(estimate, reference, key, site_ids)
         _scatter_panel(
             ax,
