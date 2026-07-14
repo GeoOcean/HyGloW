@@ -55,7 +55,8 @@ Goals → LHS cases (05) → fit metamodel (06) → WHACS (07) → dynamic (08) 
 | `dir` | PCA (`dir_u`, `dir_v`) | yes |
 | `spr` | PCA | yes |
 
-Buoy validation (10) uses `hs`, `tp`, `dir` only — no `spr` observations.
+Buoy validation (10) requests `hs`, `tp`, `dir`, and `spr`; variables missing from buoy
+records or models are skipped automatically.
 
 ### Fit
 
@@ -166,10 +167,16 @@ ds = mm.reconstruct(
 )
 ```
 
-- **Output:** bulk `hs`, `tp`, `dir` on `(time, sites)` — not `spr`
-- **`spr`** is used inside wavespectra construction; bulk sum omits spread stats
-- **Cache:** `tmp/reconstruct/`; filename includes PCA settings + config fingerprint
-  (`site_filter` + `pca_preprocessing`). Use `recompute=True` after refit.
+- **Output:** HyGloW variables on `(time, sites)` from required
+  `metamodel.reconstruction.variables` (HyGloW name → wavespectra stat, e.g.
+  `hs→hs`, `tp→tp`, `dir→dm`, `spr→dspr`). All wavespectra bulk stats are computed
+  per site; only the mapped names are returned.
+- **`save_spectra`:** required bool in `metamodel.reconstruction`. When `true`, cache
+  summed `efth` on `(time, sites, freq, dir)` as `{bulk_cache}__spectra.nc`, or pass
+  `save_spectra=True` to `mm.reconstruct()`. Expensive for many sites/long periods.
+- **Cache:** `tmp/reconstruct/` (version `reconstruct-v4`); filename includes the
+  variable mapping, PCA settings + config fingerprint. Use `recompute=True` after refit
+  or config change.
 - Warns if `offshore_waves` is empty in config
 
 Same `pca_variance` override as at fit time.
@@ -255,7 +262,7 @@ Check `logs/validation.log` for missing-variable warnings.
 
 - [ ] Notebook 08: dynamic cases for chosen period
 - [ ] Notebook 09: `mm.reconstruct(..., recompute=True)` vs dynamic
-- [ ] Notebook 10: buoy comparison (`hs/tp/dir`)
+- [ ] Notebook 10: buoy comparison (`hs/tp/dir/spr` when available)
 
 ### 6. Before git commit
 

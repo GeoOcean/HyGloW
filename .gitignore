@@ -181,6 +181,7 @@ cython_debug/
 *.xml
 *.zarr
 *.tiff
+*.pkl
 
 # Data directories
 *logs/

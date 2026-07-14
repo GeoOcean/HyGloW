@@ -288,7 +288,9 @@ def validate_metamodel_config(config: dict[str, Any] | None = None) -> None:
         raise ValueError("metamodel.mda_candidates must be a non-empty list")
     for n in candidates:
         if not isinstance(n, int) or n <= 0:
-            raise ValueError(f"metamodel.mda_candidates entry must be positive int, got {n!r}")
+            raise ValueError(
+                f"metamodel.mda_candidates entry must be positive int, got {n!r}"
+            )
 
     inputs = mm.get("mda_inputs")
     if not isinstance(inputs, list) or not inputs:
@@ -312,10 +314,14 @@ def validate_metamodel_config(config: dict[str, Any] | None = None) -> None:
         if spec == "raw":
             continue
         if not isinstance(spec, dict):
-            raise ValueError(f"metamodel.vars_to_predict[{name!r}] must be 'raw' or a dict")
+            raise ValueError(
+                f"metamodel.vars_to_predict[{name!r}] must be 'raw' or a dict"
+            )
         stack = spec.get("vars_to_stack")
         if not isinstance(stack, list) or not stack:
-            raise ValueError(f"metamodel.vars_to_predict[{name!r}].vars_to_stack must be a list")
+            raise ValueError(
+                f"metamodel.vars_to_predict[{name!r}].vars_to_stack must be a list"
+            )
         variance = spec.get("pca_variance")
         if not isinstance(variance, (int, float)) or not 0 < float(variance) <= 1:
             raise ValueError(
@@ -343,7 +349,9 @@ def validate_metamodel_config(config: dict[str, Any] | None = None) -> None:
     validation = mm.get("validation", {})
     metrics = validation.get("metrics_variables")
     if not isinstance(metrics, list) or not metrics:
-        raise ValueError("metamodel.validation.metrics_variables must be a non-empty list")
+        raise ValueError(
+            "metamodel.validation.metrics_variables must be a non-empty list"
+        )
     predict_names = set(vars_)
     missing_metrics = [v for v in metrics if v not in predict_names]
     if missing_metrics:
@@ -351,6 +359,37 @@ def validate_metamodel_config(config: dict[str, Any] | None = None) -> None:
             "metamodel.validation.metrics_variables not in vars_to_predict: "
             f"{missing_metrics}"
         )
+
+    recon = mm.get("reconstruction")
+    if not isinstance(recon, dict):
+        raise ValueError("metamodel.reconstruction must be a dict")
+
+    from wavespectra.construct import STATS as WAVESPECTRA_STATS
+
+    if "variables" not in recon:
+        raise ValueError("metamodel.reconstruction.variables is required")
+    var_map = recon["variables"]
+    if not isinstance(var_map, dict) or not var_map:
+        raise ValueError(
+            "metamodel.reconstruction.variables must be a non-empty dict "
+            "(HyGloW name → wavespectra stat)"
+        )
+    unknown_stat = [s for s in var_map.values() if s not in WAVESPECTRA_STATS]
+    if unknown_stat:
+        raise ValueError(
+            "metamodel.reconstruction.variables uses unsupported wavespectra stats: "
+            f"{unknown_stat}; allowed: {WAVESPECTRA_STATS}"
+        )
+    missing_vars = [v for v in var_map if v not in predict_names]
+    if missing_vars:
+        raise ValueError(
+            "metamodel.reconstruction.variables keys not in vars_to_predict: "
+            f"{missing_vars}"
+        )
+    if "save_spectra" not in recon:
+        raise ValueError("metamodel.reconstruction.save_spectra is required")
+    if not isinstance(recon["save_spectra"], bool):
+        raise TypeError("metamodel.reconstruction.save_spectra must be a bool")
 
     paths = mm.get("paths", {})
     for key in ("pca_dir", "gp_dir"):

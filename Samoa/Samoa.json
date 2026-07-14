@@ -133,6 +133,15 @@
                 "spr"
             ]
         },
+        "reconstruction": {
+            "variables": {
+                "hs": "hs",
+                "tp": "tp",
+                "dir": "dm",
+                "spr": "dspr"
+            },
+            "save_spectra": true
+        },
         "paths": {
             "pca_dir": "outputs/{goal}/pca_{mda_candidate}",
             "gp_dir": "outputs/{goal}/gp_{mda_candidate}"

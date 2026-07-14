@@ -104,6 +104,53 @@ def _available_metrics_variables(
     return keys
 
 
+def resolve_comparison_variables(
+    *datasets: xr.Dataset,
+    variables: Iterable[str] | None = None,
+) -> list[str]:
+    """Return metric variables present in every dataset (preserving request order).
+
+    Use this before :func:`compare` or :func:`compare_all` when the requested
+    list (``hs``, ``tp``, ``dir``, ``spr``) may not exist in all inputs — e.g.
+    buoy pickles without ``spr``, or models missing a variable.
+
+    Parameters
+    ----------
+    *datasets
+        Two or more aligned datasets (reference, estimate, …).
+    variables
+        Requested variables; default ``metamodel.validation.metrics_variables``.
+
+    Returns
+    -------
+    list[str]
+        Subset of *variables* found in every dataset.
+
+    Raises
+    ------
+    ValueError
+        If no datasets are passed or no requested variable is shared.
+    """
+    if not datasets:
+        raise ValueError("resolve_comparison_variables requires at least one dataset")
+    requested = _metrics_variables(variables)
+    available = requested
+    for ds in datasets:
+        available = [v for v in available if v in PARAMETERS and v in ds.data_vars]
+    skipped = [v for v in requested if v not in available]
+    if skipped:
+        logger.info(
+            "Comparison skipping variables not in all datasets: %s",
+            skipped,
+        )
+    if not available:
+        raise ValueError(
+            "No comparison variables shared by all datasets; "
+            f"requested={requested}, datasets={[list(d.data_vars) for d in datasets]}"
+        )
+    return available
+
+
 def _scatter_grid_shape(n: int) -> tuple[int, int]:
     """Return ``(nrows, ncols)`` for up to four scatter panels in a 2×2 grid."""
     if n <= 1:
@@ -281,7 +328,7 @@ def _buoy_site_id(name: str) -> str:
 
 
 def _buoy_pickle_to_dataset(frame: pd.DataFrame, site: str) -> xr.Dataset:
-    """One LauriBuoys bulk pickle → ``(time, sites)`` with ``hs`` / ``tp`` / ``dir``."""
+    """One LauriBuoys bulk pickle → ``(time, sites)`` with ``hs`` / ``tp`` / ``dir`` / ``spr``."""
     df = frame.copy()
     if "time" in df.columns:
         df = df.set_index("time")
@@ -299,6 +346,8 @@ def _buoy_pickle_to_dataset(frame: pd.DataFrame, site: str) -> xr.Dataset:
         vars_out["tp"] = (("time",), df["tm10"].to_numpy())
     if "dir" in df.columns:
         vars_out["dir"] = (("time",), df["dir"].to_numpy())
+    if "spr" in df.columns:
+        vars_out["spr"] = (("time",), df["spr"].to_numpy())
 
     if "hs" not in vars_out:
         raise ValueError(f"Buoy pickle for {site!r} has no hs column")
@@ -324,7 +373,7 @@ def load_buoy_observations(
     Returns
     -------
     xarray.Dataset
-        Variables ``hs``, ``tp`` and ``dir`` when present in the pickles.
+        Variables ``hs``, ``tp``, ``dir`` and ``spr`` when present in the files.
     """
     chunks: list[xr.Dataset] = []
     for site_key, path in buoy_files.items():
@@ -1541,6 +1590,7 @@ __all__ = [
     "metric_groups",
     "metrics_summary",
     "metrics_table",
+    "resolve_comparison_variables",
     "aggregate_sweep",
     "load_sweep_metrics",
     "plot_all_groups",

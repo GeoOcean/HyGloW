@@ -36,6 +36,21 @@ class TestValidationHelpers(unittest.TestCase):
         )
         self.assertEqual(keys, ["hs", "tp"])
 
+    def test_resolve_comparison_variables(self) -> None:
+        buoy = xr.Dataset({"hs": (("x",), [1.0]), "tp": (("x",), [8.0])})
+        model = xr.Dataset(
+            {
+                "hs": (("x",), [1.0]),
+                "tp": (("x",), [8.0]),
+                "dir": (("x",), [270.0]),
+                "spr": (("x",), [30.0]),
+            }
+        )
+        keys = val.resolve_comparison_variables(
+            buoy, model, variables=["hs", "tp", "dir", "spr"]
+        )
+        self.assertEqual(keys, ["hs", "tp"])
+
     def test_metrics_table_circular_dir(self) -> None:
         n = 100
         ref_dir = np.linspace(0.0, 360.0, n, endpoint=False)
