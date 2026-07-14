@@ -5,16 +5,17 @@ test cases (requires :func:`utils.metamodel.fit`).
 
 Generic comparison (:func:`compare`) — any aligned estimate/reference pair.
 
-Buoy validation (:func:`load_buoy_observations`, :func:`load_offshore_hindcast_at_buoys`,
-:func:`compare_all`) — bulk / spectral reconstruction, dynamic SnapWave, and closest-goal
-offshore hindcast vs Lauri buoy records (``10_Validate_Buoy_Observations.ipynb``).
+Buoy validation (:func:`load_offshore_hindcast_at_buoys`, :func:`compare_all`) —
+bulk / spectral reconstruction, dynamic SnapWave, and closest-goal offshore
+hindcast vs processed buoy datasets (``10_Validate_Buoy_Observations.ipynb``).
+Buoy site metadata comes from the onshore-waves GeoJSON
+(:mod:`utils.observation.onshore_sites`).
 
 Site grouping: :mod:`utils.sites` (re-exported here for notebook convenience).
 """
 
 from __future__ import annotations
 
-import pickle
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Mapping
@@ -69,9 +70,6 @@ PARAMETERS: dict[str, dict[str, Any]] = {
     # Directional spread (degrees); linear metrics — not periodic like dir.
     "spr": {"label": "Spr", "units": "deg", "circular": False},
 }
-
-# LauriBuoys processed pickles (see ``03_Generate_Observations_Configuration.ipynb``)
-BUOY_OBS_DIR = Path("inputs/LauriBuoys/processed")
 
 
 def _metrics_variables(variables: Iterable[str] | None) -> list[str]:
@@ -316,96 +314,6 @@ def validation_metrics_path(goal: str | int) -> Path:
     return mm.goal_output_dir(goal) / "validation_metrics.csv"
 
 
-# ---------------------------------------------------------------------------
-# Buoy observations
-# ---------------------------------------------------------------------------
-
-
-def _buoy_site_id(name: str) -> str:
-    """SnapWave site label (``buoy_<instrument_id>``)."""
-    text = str(name)
-    return text if text.startswith("buoy_") else f"buoy_{text}"
-
-
-def _buoy_pickle_to_dataset(frame: pd.DataFrame, site: str) -> xr.Dataset:
-    """One LauriBuoys bulk pickle → ``(time, sites)`` with ``hs`` / ``tp`` / ``dir`` / ``spr``."""
-    df = frame.copy()
-    if "time" in df.columns:
-        df = df.set_index("time")
-    if not isinstance(df.index, pd.DatetimeIndex):
-        raise ValueError(
-            f"Buoy data for {site!r} needs a datetime index or time column"
-        )
-
-    vars_out: dict[str, xr.DataArray] = {}
-    if "hs" in df.columns:
-        vars_out["hs"] = (("time",), df["hs"].to_numpy())
-    if "tp" in df.columns:
-        vars_out["tp"] = (("time",), df["tp"].to_numpy())
-    elif "tm10" in df.columns:
-        vars_out["tp"] = (("time",), df["tm10"].to_numpy())
-    if "dir" in df.columns:
-        vars_out["dir"] = (("time",), df["dir"].to_numpy())
-    if "spr" in df.columns:
-        vars_out["spr"] = (("time",), df["spr"].to_numpy())
-
-    if "hs" not in vars_out:
-        raise ValueError(f"Buoy pickle for {site!r} has no hs column")
-
-    ds = xr.Dataset(vars_out, coords={"time": df.index})
-    return ds.expand_dims(sites=[site]).transpose("time", "sites")
-
-
-def load_buoy_observations(
-    buoy_files: Mapping[str, str | Path],
-    *,
-    time: str | slice | None = None,
-) -> xr.Dataset:
-    """Load processed Lauri buoy pickles as ``(time, sites)``.
-
-    Parameters
-    ----------
-    buoy_files
-        SnapWave site id (or instrument id) → path to a ``.pkl`` bulk file.
-    time
-        Optional slice applied after concat (e.g. ``"1990-05"``).
-
-    Returns
-    -------
-    xarray.Dataset
-        Variables ``hs``, ``tp``, ``dir`` and ``spr`` when present in the files.
-    """
-    chunks: list[xr.Dataset] = []
-    for site_key, path in buoy_files.items():
-        site = _buoy_site_id(site_key)
-        p = resolve(path)
-        if not p.is_file():
-            logger.warning("Buoy file not found: %s", p)
-            continue
-        frame = pickle.loads(p.read_bytes())
-        chunks.append(_buoy_pickle_to_dataset(frame, site))
-
-    if not chunks:
-        raise FileNotFoundError(
-            "No buoy observation files loaded — check buoy_files paths"
-        )
-
-    out = xr.concat(chunks, dim="sites")
-    if time is not None:
-        out = out.sel(time=time)
-    logger.info(
-        "Loaded buoy data: %d site(s), %d time step(s)",
-        out.sizes["sites"],
-        out.sizes.get("time", 0),
-    )
-    return out
-
-
-def _instrument_id(site: str) -> str:
-    """Strip the ``buoy_`` prefix from a SnapWave site label."""
-    return str(site).removeprefix("buoy_")
-
-
 def _haversine_m(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
     """Great-circle distance in metres between two lon/lat points."""
     radius = 6_371_000.0
@@ -455,8 +363,8 @@ def closest_goals_table(
 
     rows: list[dict[str, Any]] = []
     for site in sites:
-        site = _buoy_site_id(site)
-        iid = _instrument_id(site)
+        site = obs.snapwave_site_id(site)
+        iid = obs.instrument_id(site)
         if iid not in buoy_coords:
             raise KeyError(
                 f"Buoy {site!r} not in onshore-waves GeoJSON (instrument {iid!r})"
@@ -494,7 +402,7 @@ def load_offshore_hindcast_at_buoys(
     One entry per configured offshore source (e.g. WHACS). Each dataset has
     ``(time, sites)`` with ``hs``, ``tp``, ``dir`` when present in the zarr.
     """
-    site_ids = [_buoy_site_id(s) for s in sites]
+    site_ids = [obs.snapwave_site_id(s) for s in sites]
     mapping = closest_goals_table(site_ids, offshore_names=offshore_names, goals=goals)
     vars_ = [v for v in _metrics_variables(variables) if v in PARAMETERS]
 
@@ -1574,7 +1482,6 @@ def plot_sweep_suite(
 
 
 __all__ = [
-    "BUOY_OBS_DIR",
     "LOGGER_NAME",
     "ComparisonResult",
     "HoldoutValidationResult",
@@ -1584,7 +1491,6 @@ __all__ = [
     "compare",
     "compare_all",
     "compute_metrics",
-    "load_buoy_observations",
     "load_offshore_hindcast_at_buoys",
     "logger",
     "metric_groups",
