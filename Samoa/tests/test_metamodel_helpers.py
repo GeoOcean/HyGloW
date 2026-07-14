@@ -44,7 +44,12 @@ class TestMetamodelHelpers(unittest.TestCase):
     def test_reconstruction_save_spectra_from_config(self) -> None:
         self.assertTrue(mm._reconstruction_save_spectra())
 
-    def test_wavespectra_sum_includes_spr(self) -> None:
+    def test_pca_variance_label_includes_config_defaults(self) -> None:
+        label = mm._pca_variance_label({"hs": 0.99, "dir": 0.99})
+        self.assertIn("spr0.99", label)
+        self.assertIn("hs0.99", label)
+        self.assertIn("dir0.99", label)
+
         n_time, n_goals, n_parts = 2, 2, 1
         site = "test_site"
         times = pd.date_range("2020-01-01", periods=n_time, freq="h")

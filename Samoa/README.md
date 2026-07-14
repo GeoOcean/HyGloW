@@ -7,7 +7,7 @@ timestep.
 
 - **Config:** `Samoa.json` (auto-loaded by `utils.config`)
 - **Code:** `utils/` + numbered notebooks
-- **Backlog:** `TODO.md` (deferred refactors only)
+- **Observations catalogue:** `inputs/Observations/Samoa_observations.json` (GeoJSON; notebook 03)
 
 **Environment:** conda `bluemath-311-dev`; run notebooks with `Samoa/` as cwd.
 
@@ -19,6 +19,7 @@ timestep.
 from utils.model import metamodel as mm
 from utils.evaluation import validation as val
 from utils.config import METAMODEL, load_goals, validate_metamodel_config
+from utils.observation import onshore_sites as obs
 ```
 
 After editing `Samoa.json`: restart kernel or `utils.config.reload()`.
@@ -30,16 +31,19 @@ After editing `Samoa.json`: restart kernel or `utils.config.reload()`.
 | Step | Notebook | Purpose |
 |------|----------|---------|
 | 01–04 | Mesh, observations, goals | Static setup |
+| 03 | `03_Generate_Observations_Configuration.ipynb` | Onshore buoy/site GeoJSON |
 | 05 | `05_Metamodel_Cases_Generation.ipynb` | 500 LHS cases / goal |
 | 06 | `06_Validate_Metamodel.ipynb` | Fit, holdout validation, MDA sweep |
 | 07 | `07_Download_Process_WHACS.ipynb` | Offshore zarr |
 | 08 | `08_Dynamic_Cases_Generation.ipynb` | Dynamic reference runs |
-| 09 | `09_Validate_Linear_Summation.ipynb` | Spectral reconstruct vs dynamic |
-| 10 | `10_Validate_Buoy_Observations.ipynb` | Buoy comparison |
+| 09 | `09_Validate_Linear_Summation.ipynb` | Spectral reconstruct vs dynamic (bulk stats) |
+| 10 | `10_Validate_Buoy_Observations.ipynb` | Buoy bulk comparison |
+| 11 | `11_Validate_Spectra.ipynb` | Buoy vs model spectra (in progress) |
 
 ```
-Goals → LHS cases (05) → fit metamodel (06) → WHACS (07) → dynamic (08) → validate (09–10)
-                                              → mm.reconstruct() hindcast
+Goals → LHS (05) → fit (06) → WHACS (07) → dynamic (08)
+                              → mm.reconstruct() hindcast
+                              → validate bulk (09–10) → validate spectra (11)
 ```
 
 ---
@@ -54,9 +58,6 @@ Goals → LHS cases (05) → fit metamodel (06) → WHACS (07) → dynamic (08) 
 | `tp` | **raw** (GP passthrough) | yes |
 | `dir` | PCA (`dir_u`, `dir_v`) | yes |
 | `spr` | PCA | yes |
-
-Buoy validation (10) requests `hs`, `tp`, `dir`, and `spr`; variables missing from buoy
-records or models are skipped automatically.
 
 ### Fit
 
@@ -88,7 +89,7 @@ result.plot_all()
 ```
 
 Validation loads saved models only. `validate_metamodel_config()` runs at
-`fit()` and `validate()`.
+`fit()`, `validate()`, and `reconstruct()`.
 
 ### Training stages (per goal)
 
@@ -118,18 +119,23 @@ Logs: `logs/metamodel.log`, `logs/validation.log`.
 
 | Section | Role |
 |---------|------|
+| `onshore_waves` | Path to observations GeoJSON (notebook 03) |
 | `simulations` | LHS bounds, case dirs, `output_sites_config` |
 | `metamodel.mda_candidates` | Train sizes, e.g. `[50, 100, 150, 250, 450]` |
 | `metamodel.vars_to_predict` | PCA vs raw per variable |
 | `metamodel.site_filter` | Pre-MDA rules (`{var}_max`, `{var}_min`) |
 | `metamodel.pca_preprocessing` | PCA NaN thresholds + zero-fill |
 | `metamodel.validation.metrics_variables` | Holdout scoring |
+| `metamodel.reconstruction.variables` | HyGloW name → wavespectra stat for `reconstruct()` |
+| `metamodel.reconstruction.save_spectra` | Cache summed `efth` spectra (bool, required) |
+
+`validate_metamodel_config()` enforces required reconstruction keys — no code defaults.
 
 ---
 
 ## Data quality & NaN handling
 
-> Two mechanisms in `metamodel` config — see `TODO.md` if changing behaviour.
+Two mechanisms in `metamodel` config:
 
 ### 1. Site filter (before MDA/PCA)
 
@@ -149,8 +155,7 @@ Dry / low water level NaNs at shallow nodes.
 1. `nan_threshold_to_drop` — drop site columns with too many case NaNs (default 0.99)
 2. `value_to_replace_nans` — fill remaining NaNs with `0.0`
 
-Sites kept per PCA variable → `fit_by_mda[n].pca_sites_kept`. **Predict does not
-yet subset to PCA-kept sites** (under review after refit).
+Sites kept per PCA variable → `fit_by_mda[n].pca_sites_kept`.
 
 ---
 
@@ -158,28 +163,42 @@ yet subset to PCA-kept sites** (under review after refit).
 
 ```python
 ds = mm.reconstruct(
-    "2020-05",
+    "2020-07",
     n=450,
     spectral=True,
     offshore_name="WHACS",
-    sites="10m",
+    sites="buoy_Aunuu_Buoy",
     recompute=True,   # after retraining or config change
 )
 ```
 
 - **Output:** HyGloW variables on `(time, sites)` from required
-  `metamodel.reconstruction.variables` (HyGloW name → wavespectra stat, e.g.
-  `hs→hs`, `tp→tp`, `dir→dm`, `spr→dspr`). All wavespectra bulk stats are computed
-  per site; only the mapped names are returned.
-- **`save_spectra`:** required bool in `metamodel.reconstruction`. When `true`, cache
-  summed `efth` on `(time, sites, freq, dir)` as `{bulk_cache}__spectra.nc`, or pass
-  `save_spectra=True` to `mm.reconstruct()`. Expensive for many sites/long periods.
-- **Cache:** `tmp/reconstruct/` (version `reconstruct-v4`); filename includes the
-  variable mapping, PCA settings + config fingerprint. Use `recompute=True` after refit
-  or config change.
+  `metamodel.reconstruction.variables` (e.g. `hs→hs`, `tp→tp`, `dir→dm`, `spr→dspr`).
+  All wavespectra bulk stats are computed per site; only the mapped names are returned.
+- **`save_spectra`:** when `true`, cache summed `efth` on `(time, sites, freq, dir)` as
+  `{bulk_cache}__spectra.nc`. Load with `mm.load_reconstruction_spectra(...)`.
+- **Cache:** `tmp/reconstruct/` (`reconstruct-v5`); use `recompute=True` after refit or
+  config change.
 - Warns if `offshore_waves` is empty in config
 
 Same `pca_variance` override as at fit time.
+
+---
+
+## Buoy observations (notebooks 03, 10, 11)
+
+1. **Catalogue** — `03_Generate_Observations_Configuration.ipynb` writes
+   `inputs/Observations/Samoa_observations.json` (`instrument_id`, lon/lat, …).
+2. **SnapWave site ids** — `obs.snapwave_site_id("Aunuu_Buoy")` → `buoy_Aunuu_Buoy`
+   (same convention as mesh output sites).
+3. **Processed files** — user prepares NetCDF under `inputs/Observations/processed/`
+   (bulk or spectral). Notebook 10 loads, derives bulk stats if needed, and builds a
+   `(time, sites)` dataset for `val.compare_all()`.
+4. **Site metadata** — `obs.attach_buoy_site_meta(ds, site_id)` adds map/plot coords
+   from the GeoJSON.
+
+Buoy validation requests `hs`, `tp`, `dir`, `spr`; `val.resolve_comparison_variables()`
+keeps only variables present in buoy and all models.
 
 ---
 
@@ -187,7 +206,7 @@ Same `pca_variance` override as at fit time.
 
 `utils.viz.snapwave_case_plots` — post-run SnapWave case check:
 
-- Layout: **hs / tp / dir** panels + full-width map (`spr` omitted by design)
+- Layout: full-width domain map + 2×2 site panels (`hs`, `tp`, `dir`, `spr`)
 - Map file: `snapwave.inp` → `map_file`, else `output_map.nc`
 
 ---
@@ -199,6 +218,7 @@ Same `pca_variance` override as at fit time.
 | `config.py` | JSON load, `resolve()`, `validate_metamodel_config()` |
 | `model.metamodel` | Fit, predict, reconstruct, `report_training_data` |
 | `evaluation.validation` | Holdout metrics/plots, buoy comparison |
+| `observation.onshore_sites` | Observations GeoJSON I/O, buoy site ids |
 | `simulation.snapwave_wrappers` | SnapWave case build/run |
 | `viz.snapwave_case_plots` | Case folder diagnostics |
 | `geometry.sites` | Site groups (`10m`, `Apia`, buoys) |
@@ -213,23 +233,23 @@ From `Samoa/`:
 python -m unittest discover -s tests -v
 ```
 
-Covers scatter grid shape, metrics variable filtering, site filter, PCA config.
+Covers scatter grid shape, comparison variable resolution, site filter, PCA config,
+onshore buoy site helpers.
 
 ---
 
 ## Commit & full re-run checklist
 
-Use this after pulling these changes or before a clean validation commit.
-
 ### 1. Config
 
-- [ ] `Samoa.json` reviewed (`mda_candidates`, `site_filter`, `pca_preprocessing`)
+- [ ] `Samoa.json` reviewed (`mda_candidates`, `site_filter`, `pca_preprocessing`, `reconstruction`)
 - [ ] `utils.config.reload()` or kernel restart
 
 ### 2. Prerequisites (if not already done)
 
 - [ ] Notebooks 01–05: mesh, goals, LHS cases exist
-- [ ] Notebook 07: WHACS zarr (for 08–10)
+- [ ] Notebook 03: observations GeoJSON
+- [ ] Notebook 07: WHACS zarr (for 08–11)
 
 ### 3. Refit metamodel
 
@@ -237,32 +257,20 @@ Use this after pulling these changes or before a clean validation commit.
 mm.fit_all(gp_epochs=1500, force_retrain=True)
 ```
 
-Per goal only: `mm.fit("1", force_retrain=True)`
-
-Verify:
-
-```python
-summary = mm.load_fit_summary("1", 450)
-assert summary["n_cases_used"] == 450
-assert "hs" in summary["pca_sites_kept"]
-mm.report_training_data("1", n=450)
-```
-
 ### 4. Holdout validation
 
 ```python
-val.sweep_all()                          # all goals → validation_metrics.csv
+val.sweep_all()
 result = val.validate("1", n=450)
 result.plot_all()
 ```
 
-Check `logs/validation.log` for missing-variable warnings.
-
-### 5. Hindcast validation (optional)
+### 5. Hindcast validation
 
 - [ ] Notebook 08: dynamic cases for chosen period
-- [ ] Notebook 09: `mm.reconstruct(..., recompute=True)` vs dynamic
-- [ ] Notebook 10: buoy comparison (`hs/tp/dir/spr` when available)
+- [ ] Notebook 09: `mm.reconstruct(..., spectral=True, recompute=True)` vs dynamic
+- [ ] Notebook 10: process buoy NetCDF → `val.compare_all()`
+- [ ] Notebook 11: spectral comparison (buoy `Efth` vs `mm.load_reconstruction_spectra()`)
 
 ### 6. Before git commit
 
@@ -274,10 +282,8 @@ Check `logs/validation.log` for missing-variable warnings.
 
 Code + config + docs:
 
-- `utils/model/metamodel.py`, `utils/evaluation/validation.py`, `utils/config.py`
-- `utils/viz/snapwave_case_plots.py`, `utils/simulation/snapwave_wrappers.py`
-- `Samoa.json`, `README.md`, `TODO.md`
-- `tests/`, notebook intro cells (06, 09, 10)
+- `utils/`, `Samoa.json`, `README.md`, `tests/`
+- Notebook intro/config cells (06, 09, 10, 11)
 
 Artefacts (`outputs/`, `logs/`) — commit only if you want frozen validation results in the repo.
 
@@ -287,8 +293,9 @@ Artefacts (`outputs/`, `logs/`) — commit only if you want frozen validation re
 
 - **MDA sweep:** compare all `mda_candidates`; largest ≠ always best
 - **PCA variance:** same override in fit, predict, reconstruct, validate
-- **Period alignment:** notebook 10 requires matching buoy / dynamic / reconstruct periods
+- **Period alignment:** use the same `period` in notebooks 08–11
 - **Site selectors:** `resolve_sites(ds, "10m")`, `"buoy"`, `"Apia"`, or site id
+- **New case:** copy `Samoa/` folder, rename JSON, update `onshore_waves` and paths
 
 ---
 

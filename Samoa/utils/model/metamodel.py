@@ -10,7 +10,7 @@ wavespectra bulk stats; ``save_spectra`` caches summed spectra).
 Long hindcast periods are processed month by month; results are cached under
 ``tmp/reconstruct``.
 
-Site grouping and selection: :mod:`utils.sites`.
+Site grouping and selection: :mod:`utils.geometry.sites`.
 """
 
 from __future__ import annotations
@@ -1829,6 +1829,9 @@ def _metamodel_cache_label() -> str:
 def _pca_variance_label(pca_variance: PcaVariance) -> str:
     """Encode PCA variance settings for cache filenames.
 
+    Uses :func:`resolved_pca_variances` so every stacked variable from the case
+    config appears in the label, not only keys present in a partial override dict.
+
     Parameters
     ----------
     pca_variance
@@ -1841,11 +1844,8 @@ def _pca_variance_label(pca_variance: PcaVariance) -> str:
     """
     if pca_variance is None:
         return "default"
-    if isinstance(pca_variance, dict):
-        return "_".join(
-            f"{key}{value:g}" for key, value in sorted(pca_variance.items())
-        )
-    return f"{float(pca_variance):g}"
+    resolved = resolved_pca_variances(pca_variance)
+    return "_".join(f"{key}{value:g}" for key, value in sorted(resolved.items()))
 
 
 def _goals_label(goals: Iterable[str | int] | None) -> str:
@@ -1957,7 +1957,7 @@ def reconstruction_cache_path(
     """
     var_map = _reconstruction_variables(override=variables)
     stem = (
-        "reconstruct-v4__"
+        "reconstruct-v5__"
         f"reconstruct__offshore-{offshore_name}__n-{n}__"
         f"{'spectral' if spectral else 'bulk'}__"
         f"goals-{_goals_label(goals)}__wl-{wl:g}__"
@@ -1976,8 +1976,8 @@ def load_reconstruction_spectra(
     *,
     spectral: bool,
     offshore_name: str,
-    goals: Iterable[str | int] | None,
-    wl: float,
+    goals: Iterable[str | int] | None = None,
+    wl: float = 0.0,
     site_ids: list[str],
     pca_variance: PcaVariance,
     variables: Mapping[str, str] | None = None,

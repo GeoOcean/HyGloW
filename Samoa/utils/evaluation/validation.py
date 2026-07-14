@@ -1,17 +1,18 @@
 """Compare wave datasets: metrics and plots.
 
 Holdout validation (:func:`validate`, :func:`sweep`) — metamodel vs SnapWave on MDA
-test cases (requires :func:`utils.metamodel.fit`).
+test cases (requires :func:`utils.model.metamodel.fit`).
 
-Generic comparison (:func:`compare`) — any aligned estimate/reference pair.
+Generic comparison (:func:`compare`, :func:`resolve_comparison_variables`) — any
+aligned estimate/reference pair on ``(time, sites)`` bulk variables.
 
 Buoy validation (:func:`load_offshore_hindcast_at_buoys`, :func:`compare_all`) —
 bulk / spectral reconstruction, dynamic SnapWave, and closest-goal offshore
-hindcast vs processed buoy datasets (``10_Validate_Buoy_Observations.ipynb``).
-Buoy site metadata comes from the onshore-waves GeoJSON
+hindcast vs user-processed buoy datasets (``10_Validate_Buoy_Observations.ipynb``).
+Buoy site coordinates and labels come from the onshore-waves GeoJSON
 (:mod:`utils.observation.onshore_sites`).
 
-Site grouping: :mod:`utils.sites` (re-exported here for notebook convenience).
+Site grouping for plots and metrics tables: :mod:`utils.geometry.sites`.
 """
 
 from __future__ import annotations
@@ -110,7 +111,7 @@ def resolve_comparison_variables(
 
     Use this before :func:`compare` or :func:`compare_all` when the requested
     list (``hs``, ``tp``, ``dir``, ``spr``) may not exist in all inputs — e.g.
-    buoy pickles without ``spr``, or models missing a variable.
+    processed buoy NetCDF without ``spr``, or models missing a variable.
 
     Parameters
     ----------
@@ -250,7 +251,7 @@ def compute_metrics(
 
 
 def _find_group(ds: xr.Dataset, group: str) -> tuple[str, str, list[str]]:
-    """Alias for :func:`utils.sites.find_group`."""
+    """Alias for :func:`utils.geometry.sites.find_group`."""
     return find_group(ds, group)
 
 
@@ -400,7 +401,7 @@ def load_offshore_hindcast_at_buoys(
     """Bulk offshore hindcast at each buoy's closest goal node.
 
     One entry per configured offshore source (e.g. WHACS). Each dataset has
-    ``(time, sites)`` with ``hs``, ``tp``, ``dir`` when present in the zarr.
+    ``(time, sites)`` with the requested bulk variables present in the zarr.
     """
     site_ids = [obs.snapwave_site_id(s) for s in sites]
     mapping = closest_goals_table(site_ids, offshore_names=offshore_names, goals=goals)
@@ -473,6 +474,7 @@ def compare_all(
     time: str | slice | None = None,
     variables: Iterable[str] | None = None,
     reference_label: str = "Buoy",
+    pca_variance: mm.PcaVariance = None,
 ) -> dict[str, ComparisonResult]:
     """Run :func:`compare` for several models against the same buoy reference."""
     results: dict[str, ComparisonResult] = {}
@@ -484,6 +486,7 @@ def compare_all(
             variables=variables,
             estimate_label=name,
             reference_label=reference_label,
+            pca_variance=pca_variance,
         )
     return results
 
@@ -673,7 +676,7 @@ class HoldoutValidationResult(ComparisonResult):
         )
 
 
-# HoldoutValidationResult alias (notebooks may import either name)
+# Backward-compatible alias for holdout validation results.
 ValidationResult = HoldoutValidationResult
 
 
@@ -728,6 +731,7 @@ def compare(
     variables: Iterable[str] | None = None,
     estimate_label: str = "Estimate",
     reference_label: str = "Reference",
+    pca_variance: mm.PcaVariance = None,
 ) -> ComparisonResult:
     """
     Compare aligned estimate and reference datasets.
@@ -740,6 +744,10 @@ def compare(
         Metrics variables to score.
     estimate_label, reference_label
         Labels stored on the metrics table and used in plots.
+    pca_variance
+        When set, adds a ``pca_variances`` column with the fully resolved PCA
+        fractions (including config defaults for variables omitted from a
+        partial override dict).
 
     Returns
     -------
@@ -747,6 +755,8 @@ def compare(
         Metrics plus plot helpers.
     """
     table = metrics_table(estimate, reference, variables=variables)
+    if pca_variance is not None:
+        table.insert(0, "pca_variances", str(mm.resolved_pca_variances(pca_variance)))
     if estimate_label != "Estimate" or reference_label != "Reference":
         table = table.copy()
         table["estimate_label"] = estimate_label

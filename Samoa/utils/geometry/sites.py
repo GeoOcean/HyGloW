@@ -1,7 +1,8 @@
 """SnapWave output-site metadata, grouping, and selection.
 
 Site groups (isobath depth, mesh polygon, buoy id) are shared by
-:mod:`utils.metamodel`, :mod:`utils.validation`, and the validation notebooks.
+:mod:`utils.model.metamodel`, :mod:`utils.evaluation.validation`, and the
+validation notebooks.
 """
 
 from __future__ import annotations
