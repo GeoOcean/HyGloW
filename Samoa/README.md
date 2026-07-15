@@ -28,17 +28,18 @@ After editing `Samoa.json`: restart kernel or `utils.config.reload()`.
 
 ## Pipeline (notebooks)
 
-| Step | Notebook | Purpose |
-|------|----------|---------|
-| 01–04 | Mesh, observations, goals | Static setup |
-| 03 | `03_Generate_Observations_Configuration.ipynb` | Onshore buoy/site GeoJSON |
-| 05 | `05_Metamodel_Cases_Generation.ipynb` | 500 LHS cases / goal |
-| 06 | `06_Validate_Metamodel.ipynb` | Fit, holdout validation, MDA sweep |
-| 07 | `07_Download_Process_WHACS.ipynb` | Offshore zarr |
-| 08 | `08_Dynamic_Cases_Generation.ipynb` | Dynamic reference runs |
-| 09 | `09_Validate_Linear_Summation.ipynb` | Spectral reconstruct vs dynamic (bulk stats) |
-| 10 | `10_Validate_Buoy_Observations.ipynb` | Buoy bulk comparison |
-| 11 | `11_Validate_Spectra.ipynb` | Buoy vs model spectra (in progress) |
+| Step  | Notebook                                       | Purpose                                      |
+| ----- | ---------------------------------------------- | -------------------------------------------- |
+| 00    | `00_Course_Figures.ipynb`                      | Slide-ready PNGs for teaching                |
+| 01–04 | Mesh, observations, goals                      | Static setup                                 |
+| 03    | `03_Generate_Observations_Configuration.ipynb` | Onshore buoy/site GeoJSON                    |
+| 05    | `05_Metamodel_Cases_Generation.ipynb`          | 500 LHS cases / goal                         |
+| 06    | `06_Validate_Metamodel.ipynb`                  | Fit, holdout validation, MDA sweep           |
+| 07    | `07_Download_Process_WHACS.ipynb`              | Offshore zarr                                |
+| 08    | `08_Dynamic_Cases_Generation.ipynb`            | Dynamic reference runs                       |
+| 09    | `09_Validate_Linear_Summation.ipynb`           | Spectral reconstruct vs dynamic (bulk stats) |
+| 10    | `10_Validate_Buoy_Observations.ipynb`          | Buoy bulk comparison                         |
+| 11    | `11_Validate_Spectra.ipynb`                    | Buoy vs model spectra (in progress)          |
 
 ```
 Goals → LHS (05) → fit (06) → WHACS (07) → dynamic (08)
@@ -53,11 +54,11 @@ Goals → LHS (05) → fit (06) → WHACS (07) → dynamic (08)
 ### Variables
 
 | Variable | Training (`vars_to_predict`) | Holdout metrics |
-|----------|---------------------------|-----------------|
-| `hs` | PCA | yes |
-| `tp` | **raw** (GP passthrough) | yes |
-| `dir` | PCA (`dir_u`, `dir_v`) | yes |
-| `spr` | PCA | yes |
+| -------- | ---------------------------- | --------------- |
+| `hs`     | PCA                          | yes             |
+| `tp`     | **raw** (GP passthrough)     | yes             |
+| `dir`    | PCA (`dir_u`, `dir_v`)       | yes             |
+| `spr`    | PCA                          | yes             |
 
 ### Fit
 
@@ -101,12 +102,12 @@ Validation loads saved models only. `validate_metamodel_config()` runs at
 
 ### Outputs (`outputs/goal_XX/`)
 
-| File | Contents |
-|------|----------|
-| `mda.pkl` | MDA object |
-| `split.json` | Indices, `removed_sites`, `pca_nan_policy`, `fit_by_mda` |
-| `pca_{n}/`, `gp_{n}/` | Fitted models |
-| `validation_metrics.csv` | Holdout sweep |
+| File                     | Contents                                                 |
+| ------------------------ | -------------------------------------------------------- |
+| `mda.pkl`                | MDA object                                               |
+| `split.json`             | Indices, `removed_sites`, `pca_nan_policy`, `fit_by_mda` |
+| `pca_{n}/`, `gp_{n}/`    | Fitted models                                            |
+| `validation_metrics.csv` | Holdout sweep                                            |
 
 **`split.json` → `fit_by_mda["450"]`:** `n_cases_used`, `pca_sites_kept`,
 `pca_sites_dropped`, `pca_variances`, `n_gp_components`.
@@ -117,17 +118,17 @@ Logs: `logs/metamodel.log`, `logs/validation.log`.
 
 ## Configuration (`Samoa.json`)
 
-| Section | Role |
-|---------|------|
-| `onshore_waves` | Path to observations GeoJSON (notebook 03) |
-| `simulations` | LHS bounds, case dirs, `output_sites_config` |
-| `metamodel.mda_candidates` | Train sizes, e.g. `[50, 100, 150, 250, 450]` |
-| `metamodel.vars_to_predict` | PCA vs raw per variable |
-| `metamodel.site_filter` | Pre-MDA rules (`{var}_max`, `{var}_min`) |
-| `metamodel.pca_preprocessing` | PCA NaN thresholds + zero-fill |
-| `metamodel.validation.metrics_variables` | Holdout scoring |
-| `metamodel.reconstruction.variables` | HyGloW name → wavespectra stat for `reconstruct()` |
-| `metamodel.reconstruction.save_spectra` | Cache summed `efth` spectra (bool, required) |
+| Section                                  | Role                                               |
+| ---------------------------------------- | -------------------------------------------------- |
+| `onshore_waves`                          | Path to observations GeoJSON (notebook 03)         |
+| `simulations`                            | LHS bounds, case dirs, `output_sites_config`       |
+| `metamodel.mda_candidates`               | Train sizes, e.g. `[50, 100, 150, 250, 450]`       |
+| `metamodel.vars_to_predict`              | PCA vs raw per variable                            |
+| `metamodel.site_filter`                  | Pre-MDA rules (`{var}_max`, `{var}_min`)           |
+| `metamodel.pca_preprocessing`            | PCA NaN thresholds + zero-fill                     |
+| `metamodel.validation.metrics_variables` | Holdout scoring                                    |
+| `metamodel.reconstruction.variables`     | HyGloW name → wavespectra stat for `reconstruct()` |
+| `metamodel.reconstruction.save_spectra`  | Cache summed `efth` spectra (bool, required)       |
 
 `validate_metamodel_config()` enforces required reconstruction keys — no code defaults.
 
@@ -141,10 +142,10 @@ Two mechanisms in `metamodel` config:
 
 Numerical inconsistencies from extreme LHS forcing.
 
-| Key | Rule |
-|-----|------|
-| `hs_max: 10.0` | drop site if any case has Hs > 10 m |
-| `tp_min: 0.5` | drop site if any case has Tp < 0.5 s |
+| Key            | Rule                                 |
+| -------------- | ------------------------------------ |
+| `hs_max: 10.0` | drop site if any case has Hs > 10 m  |
+| `tp_min: 0.5`  | drop site if any case has Tp < 0.5 s |
 
 Extend with `{var}_max` / `{var}_min`. Removed sites → `split.json` → `removed_sites`.
 
@@ -213,15 +214,15 @@ keeps only variables present in buoy and all models.
 
 ## Python modules (`utils/`)
 
-| Module | Role |
-|--------|------|
-| `config.py` | JSON load, `resolve()`, `validate_metamodel_config()` |
-| `model.metamodel` | Fit, predict, reconstruct, `report_training_data` |
-| `evaluation.validation` | Holdout metrics/plots, buoy comparison |
-| `observation.onshore_sites` | Observations GeoJSON I/O, buoy site ids |
-| `simulation.snapwave_wrappers` | SnapWave case build/run |
-| `viz.snapwave_case_plots` | Case folder diagnostics |
-| `geometry.sites` | Site groups (`10m`, `Apia`, buoys) |
+| Module                         | Role                                                  |
+| ------------------------------ | ----------------------------------------------------- |
+| `config.py`                    | JSON load, `resolve()`, `validate_metamodel_config()` |
+| `model.metamodel`              | Fit, predict, reconstruct, `report_training_data`     |
+| `evaluation.validation`        | Holdout metrics/plots, buoy comparison                |
+| `observation.onshore_sites`    | Observations GeoJSON I/O, buoy site ids               |
+| `simulation.snapwave_wrappers` | SnapWave case build/run                               |
+| `viz.snapwave_case_plots`      | Case folder diagnostics                               |
+| `geometry.sites`               | Site groups (`10m`, `Apia`, buoys)                    |
 
 ---
 

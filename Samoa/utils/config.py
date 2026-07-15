@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 import json
+import logging
+import sys
 from pathlib import Path
 from typing import Any
 
 import xarray as xr
+
+_HYGLOW_LOGGERS = ("hyglow.metamodel", "hyglow.validation")
+_QUIET_LOGGER_PREFIXES = ("hyglow.", "bluemath", "BlueMath")
 
 UTILS_DIR = Path(__file__).resolve().parent
 CASE_DIR = UTILS_DIR.parent
@@ -406,9 +411,93 @@ def reload() -> dict[str, Any]:
     dict
         Parsed configuration dictionary.
     """
+    global CONFIG
     CONFIG = _load()
     _refresh_sections(CONFIG)
+    if _running_in_notebook():
+        configure_notebook_logging()
     return CONFIG
+
+
+def _normalize_log_level(level: int | str) -> int:
+    if isinstance(level, str):
+        return logging.getLevelName(level.upper())
+    return int(level)
+
+
+def _is_console_handler(handler: logging.Handler) -> bool:
+    return isinstance(handler, logging.StreamHandler) and not isinstance(
+        handler, logging.FileHandler
+    )
+
+
+def configure_notebook_logging(
+    *,
+    console_level: int | str = "WARNING",
+    file_level: int | str | None = None,
+) -> None:
+    """
+    Show WARNING+ in the notebook; keep INFO in ``logs/*.log`` files.
+
+    Applies to HyGloW loggers (``hyglow.metamodel``, ``hyglow.validation``),
+    ``bluemath_tk`` loggers, and any root StreamHandler attached by Jupyter.
+    Called automatically when :mod:`utils.config` is imported inside a notebook.
+    """
+    console_lv = _normalize_log_level(console_level)
+    file_lv = _normalize_log_level(file_level) if file_level is not None else None
+
+    # Re-apply HyGloW loggers so bluemath get_file_logger updates handlers
+    # (fixes stale console_level when the logger was created earlier in the kernel).
+    from bluemath_tk.core.logging import get_file_logger
+
+    get_file_logger(
+        "hyglow.metamodel",
+        logs_path=str(resolve("logs/metamodel.log")),
+        level="INFO",
+        console=True,
+        console_level=console_lv,
+    )
+    get_file_logger(
+        "hyglow.validation",
+        logs_path=str(resolve("logs/validation.log")),
+        level="INFO",
+        console=True,
+        console_level=console_lv,
+    )
+
+    for name, obj in logging.Logger.manager.loggerDict.items():
+        if not isinstance(obj, logging.Logger):
+            continue
+        if name not in _HYGLOW_LOGGERS and not any(
+            name.startswith(prefix) for prefix in _QUIET_LOGGER_PREFIXES
+        ):
+            continue
+        for handler in obj.handlers:
+            if _is_console_handler(handler):
+                handler.setLevel(console_lv)
+            elif file_lv is not None and isinstance(handler, logging.FileHandler):
+                handler.setLevel(file_lv)
+
+    root = logging.getLogger()
+    for handler in root.handlers:
+        if _is_console_handler(handler) and handler.stream in (sys.stdout, sys.stderr):
+            handler.setLevel(console_lv)
+
+
+def _running_in_notebook() -> bool:
+    try:
+        from IPython import get_ipython
+
+        ip = get_ipython()
+        if ip is None:
+            return False
+        return "IPKernelApp" in getattr(ip, "config", {})
+    except ImportError:
+        return False
+
+
+if _running_in_notebook():
+    configure_notebook_logging()
 
 
 __all__ = [
@@ -424,6 +513,7 @@ __all__ = [
     "SIMULATIONS",
     "case_description",
     "case_name",
+    "configure_notebook_logging",
     "display_title",
     "forcing_columns",
     "get_offshore_wave",

@@ -53,7 +53,7 @@ logger = get_file_logger(
     logs_path=str(resolve("logs/metamodel.log")),
     level="INFO",
     console=True,
-    console_level="INFO",
+    console_level="WARNING",
 )
 
 PcaVariance = float | dict[str, float] | None

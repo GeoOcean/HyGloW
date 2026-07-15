@@ -61,7 +61,7 @@ logger = get_file_logger(
     logs_path=str(resolve("logs/validation.log")),
     level="INFO",
     console=True,
-    console_level="INFO",
+    console_level="WARNING",
 )
 
 PARAMETERS: dict[str, dict[str, Any]] = {
