@@ -1,290 +1,305 @@
 # Samoa — hybrid wave downscaling case
 
 Samoa is a **hybrid downscaling** workflow for nearshore waves around the Samoan
-archipelago. A small set of **SnapWave** numerical simulations is combined with
-a **GPR metamodel** (MDA → PCA → Gaussian Process) so that full historical
-offshore hindcasts can be reconstructed without running the model hundreds of
-thousands of times.
+archipelago. SnapWave LHS simulations feed a **GPR metamodel** (MDA → PCA → GP)
+so full offshore hindcasts can be reconstructed without running the model at every
+timestep.
 
-All case-specific paths and parameters live in **`Samoa.json`**. Python helpers
-are in **`utils/`**; each stage has a numbered Jupyter notebook.
+- **Config:** `Samoa.json` (auto-loaded by `utils.config`)
+- **Code:** `utils/` + numbered notebooks
+- **Observations catalogue:** `inputs/Observations/Samoa_observations.json` (GeoJSON; notebook 03)
+
+**Environment:** conda `bluemath-311-dev`; run notebooks with `Samoa/` as cwd.
 
 ---
 
 ## Quick start
 
-1. Work from the `Samoa/` directory (notebooks assume this as the working directory).
-2. Run notebooks **in order** (see pipeline below).
-3. Config auto-discovery: `utils.config` loads `<case-folder-name>.json` from the
-   current case directory (e.g. `Samoa/Samoa.json`, `NewSouthWales/NewSouthWales.json`).
-4. After editing your case JSON, restart the kernel or call `utils.config.reload()`.
-5. SnapWave cases are heavy — use `nohup` or a cluster for steps 05 and 08.
-
-**Imports** (consistent across validation notebooks):
-
 ```python
 from utils.model import metamodel as mm
 from utils.evaluation import validation as val
-from utils.config import resolve, load_goals, METAMODEL, SIMULATIONS
+from utils.config import METAMODEL, load_goals, validate_metamodel_config
+from utils.observation import onshore_sites as obs
 ```
+
+After editing `Samoa.json`: restart kernel or `utils.config.reload()`.
 
 ---
 
 ## Pipeline (notebooks)
 
-| Step | Notebook | Purpose |
-|------|----------|---------|
-| 01 | `01_Generate_tif_From_GEBCO.ipynb` | Download GEBCO, clip to AoI, write topobathy GeoTIFF |
-| 02 | `02_Create_Mesh_By_pymesh2d.ipynb` | Gradient-limited mesh sizing (`utils.mesh.mesh_sizing`) → SnapWave mesh |
-| 03 | `03_Generate_Observations_Configuration.ipynb` | Onshore sites GeoJSON (buoys, gauges, …) |
-| 04 | `04_Select_Goals_by_Hindcasts.ipynb` | Place metamodel goals in AoI buffer ring → `Samoa_goals.json` |
-| 05 | `05_Metamodel_Cases_Generation.ipynb` | LHS propagation cases (500 per goal) → per-goal NetCDF |
-| 06 | `06_Validate_Metamodel.ipynb` | Fit MDA/PCA/GP, holdout validation, MDA sweep plots |
-| 07 | `07_Download_Process_WHACS.ipynb` | Offshore WHACS → processed zarr `(time, goal)` |
-| 08 | `08_Dynamic_Cases_Generation.ipynb` | SnapWave forced by offshore time series (reference runs) |
-| 09 | `09_Validate_Linear_Summation.ipynb` | Spectral metamodel vs dynamic SnapWave (linear sum) |
-| 10 | `10_Validate_Buoy_Observations.ipynb` | Bulk/spectral/dynamic/offshore vs Lauri buoy records |
-
-### Data flow (conceptual)
+| Step  | Notebook                                       | Purpose                                      |
+| ----- | ---------------------------------------------- | -------------------------------------------- |
+| 00    | `00_Course_Figures.ipynb`                      | Slide-ready PNGs for teaching                |
+| 01–04 | Mesh, observations, goals                      | Static setup                                 |
+| 03    | `03_Generate_Observations_Configuration.ipynb` | Onshore buoy/site GeoJSON                    |
+| 05    | `05_Metamodel_Cases_Generation.ipynb`          | 500 LHS cases / goal                         |
+| 06    | `06_Validate_Metamodel.ipynb`                  | Fit, holdout validation, MDA sweep           |
+| 07    | `07_Download_Process_WHACS.ipynb`              | Offshore zarr                                |
+| 08    | `08_Dynamic_Cases_Generation.ipynb`            | Dynamic reference runs                       |
+| 09    | `09_Validate_Linear_Summation.ipynb`           | Spectral reconstruct vs dynamic (bulk stats) |
+| 10    | `10_Validate_Buoy_Observations.ipynb`          | Buoy bulk comparison                         |
+| 11    | `11_Validate_Spectra.ipynb`                    | Buoy vs model spectra (in progress)          |
 
 ```
-GEBCO + AoI  →  mesh  →  output sites (isobaths, mesh, buoys)
-                              ↓
-Goals (04)  →  LHS cases (05)  →  train metamodel (06)
-                              ↓
-WHACS (07)  →  dynamic cases (08)  →  hindcast validation (09, 10)
-                              ↓
-                    mm.reconstruct()  →  nearshore time series
+Goals → LHS (05) → fit (06) → WHACS (07) → dynamic (08)
+                              → mm.reconstruct() hindcast
+                              → validate bulk (09–10) → validate spectra (11)
 ```
 
 ---
 
-## Step-by-step detail
+## Metamodel (notebook 06)
 
-### 01 — Topobathy GeoTIFF
+### Variables
 
-Produces `inputs/GRID/Samoa_300m.tif` (path in `Samoa.json` → `paths.topobathy_file`)
-and the AoI shapefile used everywhere else.
+| Variable | Training (`vars_to_predict`) | Holdout metrics |
+| -------- | ---------------------------- | --------------- |
+| `hs`     | PCA                          | yes             |
+| `tp`     | **raw** (GP passthrough)     | yes             |
+| `dir`    | PCA (`dir_u`, `dir_v`)       | yes             |
+| `spr`    | PCA                          | yes             |
 
-### 02 — Computational mesh
-
-Uses `utils.mesh.mesh_sizing.precalc_hfuns` to limit bathymetry gradients, then pymesh2d
-to build `inputs/GRID/Samoa_mesh.nc`. The mesh resolution drives SnapWave cost
-for all later runs.
-
-### 03 — Observations configuration
-
-Builds `inputs/LauriBuoys/LauriBuoys_coordinates.json` (or your chosen path in
-`onshore_waves`). Buoys listed here are automatically included as SnapWave output
-sites when `include_buoys: true` in `output_sites_config`.
-
-### 04 — Metamodel goals
-
-`utils.geometry.sectors` places random targets in the inland buffer ring, snaps each goal
-to hindcast catalog nodes (WHACS, etc.), and saves:
-
-- `inputs/goals/Samoa_goals.json` — targets, **nautical** direction sectors (`[left, right]` clockwise from N; see `utils/directions.py`), hindcast snaps
-- `inputs/goals/Samoa_goals.gpkg` — QGIS preview
-
-Goals define **where** offshore forcing enters the domain (boundary nodes + sectors).
-
-### 05 — Metamodel LHS cases
-
-For each goal, `utils.simulation.lhs_cases.generate_cases` builds 500 Latin Hypercube samples
-of `(tp, dir, spr, wl)` within bounds in `Samoa.json`. Wave direction `dir` is sampled
-in nautical degrees inside each goal's sector (`angles` in the goals JSON), then
-normalized to `[0, 360)`. `SnapWaveMetaModelWrapper` runs propagation and writes
-`SnapWave_CASES_Metamodel/output_sites_{goal}.nc`.
-
-These cases are the **training library** for the GPR metamodel.
-
-### 06 — Fit and holdout validation
+### Fit
 
 ```python
-mm.fit_all(gp_epochs=1500)           # train all goals × MDA sizes
-metrics = val.sweep("10")            # CSV per goal
-result = val.validate("10", n=450)   # plots for one MDA size
-result.plot("10m")
+mm.fit_all(gp_epochs=1500)                         # all goals × mda_candidates
+mm.fit("1", force_retrain=True)                    # one goal, overwrite artefacts
+mm.fit("1", candidates=[450], force_retrain=True)  # one MDA size
 ```
 
-Outputs under `outputs/goal_XX/`:
+**`force_retrain=True`** re-fits MDA (when needed) and all PCA/GP models for
+that goal. Updates `split.json` → `fit_by_mda`. Use after changing metamodel
+config or upgrading code.
 
-- `mda.pkl`, `split.json` — MDA object and train/test case indices
-- `pca_{n}/`, `gp_{n}/` — fitted models per MDA candidate size
-- `validation_metrics.csv` — sweep results
+**Diagnostics (read-only):**
 
-**Site filter** (`metamodel.site_filter`): sites with unrealistic LHS extremes
-(e.g. Hs > 10 m) are dropped before PCA; list stored in `split.json`.
+```python
+mm.report_training_data("1", n=450)   # site filter + NaN fractions
+mm.load_fit_summary("1", 450)         # pca_sites_kept, n_cases_used, …
+mm.load_split("1")                    # train_idx, test_idx
+```
 
-### 07 — Offshore WHACS
+### Validate
 
-Downloads/processes bulk + partition spectra onto goal nodes. Result:
+```python
+val.sweep("1")                    # → outputs/goal_01/validation_metrics.csv
+result = val.validate("1", n=450)
+result.plot("10m")                # map + 2×2 scatters (hs, tp, dir, spr)
+result.plot_all()
+```
 
-`inputs/WHACS/processed/Samoa_WHACS.zarr` with dims `(time, goal)` and variables
-`hs/tp/dir/spr` plus `phs0`–`phs3`, etc.
+Validation loads saved models only. `validate_metamodel_config()` runs at
+`fit()`, `validate()`, and `reconstruct()`.
 
-Open via `utils.config.open_offshore_waves("WHACS")`.
+### Training stages (per goal)
 
-### 08 — Dynamic SnapWave cases
+1. **Site filter** — drop numerically inconsistent sites (`site_filter`)
+2. **MDA** — centroids on `(tp, dir, spr, wl)`; largest size = `mda_max_points()`
+3. **Split** — centroids = train; other LHS cases = holdout test
+4. **PCA** — `hs`, `dir`, `spr` on stacked sites; `tp` raw
+5. **GP** — centroids → stacked PCs (alignment checked at fit time)
 
-`utils.simulation.snapwave_wrappers.SnapWaveDynamicModelWrapper` forces SnapWave with the full offshore time series
-for a chosen `period`. Output: joined NetCDF under `SnapWave_CASES_Dynamic/`
-(e.g. `Dynamic_Cases_WHACS_fullaso.nc`).
+### Outputs (`outputs/goal_XX/`)
 
-Used as **reference** for hindcast validation (expensive but exact).
+| File                     | Contents                                                 |
+| ------------------------ | -------------------------------------------------------- |
+| `mda.pkl`                | MDA object                                               |
+| `split.json`             | Indices, `removed_sites`, `pca_nan_policy`, `fit_by_mda` |
+| `pca_{n}/`, `gp_{n}/`    | Fitted models                                            |
+| `validation_metrics.csv` | Holdout sweep                                            |
 
-### 09 — Linear summation validation
+**`split.json` → `fit_by_mda["450"]`:** `n_cases_used`, `pca_sites_kept`,
+`pca_sites_dropped`, `pca_variances`, `n_gp_components`.
 
-Compares **spectral metamodel reconstruction** (`mm.reconstruct`, partitions 0–3
-summed with wavespectra) against the dynamic run for the same period and sites.
-
-### 10 — Buoy validation
-
-Compares buoy observations to:
-
-- Closest-goal offshore hindcast
-- Bulk metamodel (`spectral=False`)
-- Spectral metamodel (`spectral=True`)
-- Dynamic SnapWave output
-
-Use the **same `period`** for buoy data, reconstruction, and dynamic NC.
+Logs: `logs/metamodel.log`, `logs/validation.log`.
 
 ---
 
 ## Configuration (`Samoa.json`)
 
-`utils.config` discovers config as `<CASE_DIR>/<CASE_DIR.name>.json`. In this
-case folder that is `Samoa/Samoa.json`.
+| Section                                  | Role                                               |
+| ---------------------------------------- | -------------------------------------------------- |
+| `onshore_waves`                          | Path to observations GeoJSON (notebook 03)         |
+| `simulations`                            | LHS bounds, case dirs, `output_sites_config`       |
+| `metamodel.mda_candidates`               | Train sizes, e.g. `[50, 100, 150, 250, 450]`       |
+| `metamodel.vars_to_predict`              | PCA vs raw per variable                            |
+| `metamodel.site_filter`                  | Pre-MDA rules (`{var}_max`, `{var}_min`)           |
+| `metamodel.pca_preprocessing`            | PCA NaN thresholds + zero-fill                     |
+| `metamodel.validation.metrics_variables` | Holdout scoring                                    |
+| `metamodel.reconstruction.variables`     | HyGloW name → wavespectra stat for `reconstruct()` |
+| `metamodel.reconstruction.save_spectra`  | Cache summed `efth` spectra (bool, required)       |
 
-| Section | Role |
-|---------|------|
-| `paths` | AoI, topobathy, mesh |
-| `offshore_waves` | Processed hindcast zarrs |
-| `onshore_waves` | Observations GeoJSON |
-| `simulations` | LHS bounds, templates, case dirs, **output_sites_config** |
-| `metamodel` | MDA sizes, PCA targets, site filter, validation metrics |
+`validate_metamodel_config()` enforces required reconstruction keys — no code defaults.
 
-Key metamodel fields:
+---
 
-- **`mda_candidates`** — train sizes to try (largest = `mda_max_points()`)
-- **`vars_to_predict`** — `hs` and `dir` via PCA; `tp` and `spr` passed through
-- **`site_filter`** — remove unstable sites before fitting
+## Data quality & NaN handling
+
+Two mechanisms in `metamodel` config:
+
+### 1. Site filter (before MDA/PCA)
+
+Numerical inconsistencies from extreme LHS forcing.
+
+| Key            | Rule                                 |
+| -------------- | ------------------------------------ |
+| `hs_max: 10.0` | drop site if any case has Hs > 10 m  |
+| `tp_min: 0.5`  | drop site if any case has Tp < 0.5 s |
+
+Extend with `{var}_max` / `{var}_min`. Removed sites → `split.json` → `removed_sites`.
+
+### 2. PCA preprocessing (during PCA fit)
+
+Dry / low water level NaNs at shallow nodes.
+
+1. `nan_threshold_to_drop` — drop site columns with too many case NaNs (default 0.99)
+2. `value_to_replace_nans` — fill remaining NaNs with `0.0`
+
+Sites kept per PCA variable → `fit_by_mda[n].pca_sites_kept`.
+
+---
+
+## Hindcast reconstruction
+
+```python
+ds = mm.reconstruct(
+    "2020-07",
+    n=450,
+    spectral=True,
+    offshore_name="WHACS",
+    sites="buoy_Aunuu_Buoy",
+    recompute=True,   # after retraining or config change
+)
+```
+
+- **Output:** HyGloW variables on `(time, sites)` from required
+  `metamodel.reconstruction.variables` (e.g. `hs→hs`, `tp→tp`, `dir→dm`, `spr→dspr`).
+  All wavespectra bulk stats are computed per site; only the mapped names are returned.
+- **`save_spectra`:** when `true`, cache summed `efth` on `(time, sites, freq, dir)` as
+  `{bulk_cache}__spectra.nc`. Load with `mm.load_reconstruction_spectra(...)`.
+- **Cache:** `tmp/reconstruct/` (`reconstruct-v5`); use `recompute=True` after refit or
+  config change.
+- Warns if `offshore_waves` is empty in config
+
+Same `pca_variance` override as at fit time.
+
+---
+
+## Buoy observations (notebooks 03, 10, 11)
+
+1. **Catalogue** — `03_Generate_Observations_Configuration.ipynb` writes
+   `inputs/Observations/Samoa_observations.json` (`instrument_id`, lon/lat, …).
+2. **SnapWave site ids** — `obs.snapwave_site_id("Aunuu_Buoy")` → `buoy_Aunuu_Buoy`
+   (same convention as mesh output sites).
+3. **Processed files** — user prepares NetCDF under `inputs/Observations/processed/`
+   (bulk or spectral). Notebook 10 loads, derives bulk stats if needed, and builds a
+   `(time, sites)` dataset for `val.compare_all()`.
+4. **Site metadata** — `obs.attach_buoy_site_meta(ds, site_id)` adds map/plot coords
+   from the GeoJSON.
+
+Buoy validation requests `hs`, `tp`, `dir`, `spr`; `val.resolve_comparison_variables()`
+keeps only variables present in buoy and all models.
+
+---
+
+## Case diagnostic plots
+
+`utils.viz.snapwave_case_plots` — post-run SnapWave case check:
+
+- Layout: full-width domain map + 2×2 site panels (`hs`, `tp`, `dir`, `spr`)
+- Map file: `snapwave.inp` → `map_file`, else `output_map.nc`
 
 ---
 
 ## Python modules (`utils/`)
 
-| Module | Responsibility |
-|--------|----------------|
-| `config.py` | Load `Samoa.json`, `resolve()`, offshore zarr I/O |
-| `directions.py` | Nautical direction and sector convention helpers |
-| `mesh.mesh_sizing` | Mesh sizing function (gradient-limited h) |
-| `geometry.sectors` | Goal placement, buffer ring, catalog snaps |
-| `observation.onshore_sites` | Onshore GeoJSON I/O |
-| `geometry.output_sites` | Isobaths + mesh nodes + buoys → output sites table |
-| `simulation.lhs_cases` | LHS case generation |
-| `simulation.snapwave_wrappers` | SnapWave case build/run/postprocess |
-| `simulation.offshore_forcing` | Offshore → dynamic template parameters |
-| `geometry.sites` | Site metadata, groups (`10m`, `Apia`, buoys), `resolve_sites` |
-| `model.metamodel` | Fit, predict, `reconstruct` (hindcast) |
-| `evaluation.validation` | Metrics, holdout/buoy comparison, plots |
-| `viz.case_plots` | Case maps and validation site maps |
+| Module                         | Role                                                  |
+| ------------------------------ | ----------------------------------------------------- |
+| `config.py`                    | JSON load, `resolve()`, `validate_metamodel_config()` |
+| `model.metamodel`              | Fit, predict, reconstruct, `report_training_data`     |
+| `evaluation.validation`        | Holdout metrics/plots, buoy comparison                |
+| `observation.onshore_sites`    | Observations GeoJSON I/O, buoy site ids               |
+| `simulation.snapwave_wrappers` | SnapWave case build/run                               |
+| `viz.snapwave_case_plots`      | Case folder diagnostics                               |
+| `geometry.sites`               | Site groups (`10m`, `Apia`, buoys)                    |
+
+---
+
+## Tests
+
+From `Samoa/`:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Covers scatter grid shape, comparison variable resolution, site filter, PCA config,
+onshore buoy site helpers.
+
+---
+
+## Commit & full re-run checklist
+
+### 1. Config
+
+- [ ] `Samoa.json` reviewed (`mda_candidates`, `site_filter`, `pca_preprocessing`, `reconstruction`)
+- [ ] `utils.config.reload()` or kernel restart
+
+### 2. Prerequisites (if not already done)
+
+- [ ] Notebooks 01–05: mesh, goals, LHS cases exist
+- [ ] Notebook 03: observations GeoJSON
+- [ ] Notebook 07: WHACS zarr (for 08–11)
+
+### 3. Refit metamodel
+
+```python
+mm.fit_all(gp_epochs=1500, force_retrain=True)
+```
+
+### 4. Holdout validation
+
+```python
+val.sweep_all()
+result = val.validate("1", n=450)
+result.plot_all()
+```
+
+### 5. Hindcast validation
+
+- [ ] Notebook 08: dynamic cases for chosen period
+- [ ] Notebook 09: `mm.reconstruct(..., spectral=True, recompute=True)` vs dynamic
+- [ ] Notebook 10: process buoy NetCDF → `val.compare_all()`
+- [ ] Notebook 11: spectral comparison (buoy `Efth` vs `mm.load_reconstruction_spectra()`)
+
+### 6. Before git commit
+
+- [ ] Run unit tests: `python -m unittest discover -s tests`
+- [ ] Clear large notebook outputs if desired
+- [ ] Do **not** commit `tmp/reconstruct/` caches or huge NetCDF outputs unless intentional
+
+### Suggested commit scope
+
+Code + config + docs:
+
+- `utils/`, `Samoa.json`, `README.md`, `tests/`
+- Notebook intro/config cells (06, 09, 10, 11)
+
+Artefacts (`outputs/`, `logs/`) — commit only if you want frozen validation results in the repo.
 
 ---
 
 ## Tips
 
-- **Working directory** — run notebooks with `Samoa/` as cwd so `utils` imports work.
-- **Goal consistency** — `Samoa_goals.json` goal ids must match the `goal` dimension
-  in the WHACS zarr and in `output_sites_{goal}.nc`.
-- **MDA size** — use `val.sweep` / `aggregate_sweep` to pick `n`; larger is not
-  always better (diminishing returns vs training cost).
-- **PCA variance** — if you override at fit time (`pca_variance={...}`), use the
-  same override in `predict`, `reconstruct`, and validation.
-- **Period alignment** — notebook 10 will silently mis-compare if buoy, dynamic,
-  and reconstruction periods differ.
-- **Site selectors** — `mm.resolve_sites(ds, "10m")`, `"buoy"`, `"Apia"`, or a
-  site id; see `utils.geometry.sites.metric_groups`.
-- **Clear notebook outputs** before committing large validation notebooks (keeps
-  git diffs small).
-
----
-
-## Things worth a closer look
-
-These are not blockers — suggestions from the code review:
-
-1. **Output sites spacing** — isobath `spacing: 0.1`° in `Samoa.json` can produce
-   many points per depth; check SnapWave cost and whether coarser spacing is enough
-   for validation.
-
-2. **`geometry.output_sites.get_isobath_points`** — uses Matplotlib contouring (headless-safe).
-   For very high-resolution rasters, consider `skimage` or `contourpy` if profiling
-   shows a bottleneck (unlikely compared to SnapWave itself).
-
-3. **SnapWave launcher path** — hard-coded in `simulation/snapwave_wrappers.py`
-   (`available_launchers`); consider moving to `Samoa.json` for portability.
-
-4. **`Samoa_goals copy.json`** — duplicate goals file in `inputs/goals/`; remove or
-   rename to avoid confusion.
-
-5. **Notebook 06 last cell** — comment says “10m isobath” but query filters
-   `site_label == 'Apia'`; align comment or query when reviewing sweep results.
-
-6. **Dynamic case storage** — full-period dynamic runs grow quickly; document which
-   `period` slices you keep for validation vs archive.
-
-7. **Enclosure files** — `build_case` has enclosure writing commented out; verify
-   this matches your SnapWave template expectations for the Samoa domain.
-
----
-
-## Outputs layout (typical)
-
-```
-Samoa/
-├── inputs/          # Static data, goals, WHACS zarr, buoys
-├── templates-metamodel/
-├── templates-dynamic/
-├── SnapWave_CASES_Metamodel/
-├── SnapWave_CASES_Dynamic/
-├── outputs/goal_01/ … goal_11/
-│   ├── mda.pkl
-│   ├── split.json
-│   ├── validation_metrics.csv
-│   ├── pca_450/
-│   └── gp_450/
-└── logs/
-    ├── metamodel.log
-    └── validation.log
-```
-
----
-
-## Reproducing hindcast reconstruction in code
-
-```python
-from utils.model import metamodel as mm
-
-ds = mm.reconstruct(
-    "2020-05",           # period for offshore zarr
-    n=450,               # MDA train size (models must exist)
-    spectral=True,       # WHACS partitions 0–3 + wavespectra sum
-    offshore_name="WHACS",
-    sites="10m",         # or "buoy", site id, etc.
-    pca_variance={"hs": 0.99, "dir": 0.99},
-)
-# ds: (time, sites) with hs, tp, dir
-```
+- **MDA sweep:** compare all `mda_candidates`; largest ≠ always best
+- **PCA variance:** same override in fit, predict, reconstruct, validate
+- **Period alignment:** use the same `period` in notebooks 08–11
+- **Site selectors:** `resolve_sites(ds, "10m")`, `"buoy"`, `"Apia"`, or site id
+- **New case:** copy `Samoa/` folder, rename JSON, update `onshore_waves` and paths
 
 ---
 
 ## Dependencies
 
-- **bluemath_tk** — MDA, PCA, GP, metrics, SnapWave wrappers
-- **wavespectra** — linear partition summation in `mm.reconstruct`
-- **SnapWave** — numerical wave model (external install)
-- **xarray**, **geopandas**, **rioxarray**, **pymesh2d** (mesh notebook)
-
-Ensure the Python environment used in notebooks has `bluemath_tk` and can import
-`utils` from the `Samoa/` directory.
+bluemath_tk, wavespectra, SnapWave (external), xarray, geopandas, rioxarray, pymesh2d

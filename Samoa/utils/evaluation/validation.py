@@ -1,20 +1,22 @@
 """Compare wave datasets: metrics and plots.
 
 Holdout validation (:func:`validate`, :func:`sweep`) — metamodel vs SnapWave on MDA
-test cases (requires :func:`utils.metamodel.fit`).
+test cases (requires :func:`utils.model.metamodel.fit`).
 
-Generic comparison (:func:`compare`) — any aligned estimate/reference pair.
+Generic comparison (:func:`compare`, :func:`resolve_comparison_variables`) — any
+aligned estimate/reference pair on ``(time, sites)`` bulk variables.
 
-Buoy validation (:func:`load_buoy_observations`, :func:`load_offshore_hindcast_at_buoys`,
-:func:`compare_all`) — bulk / spectral reconstruction, dynamic SnapWave, and closest-goal
-offshore hindcast vs Lauri buoy records (``10_Validate_Buoy_Observations.ipynb``).
+Buoy validation (:func:`load_offshore_hindcast_at_buoys`, :func:`compare_all`) —
+bulk / spectral reconstruction, dynamic SnapWave, and closest-goal offshore
+hindcast vs user-processed buoy datasets (``10_Validate_Buoy_Observations.ipynb``).
+Buoy site coordinates and labels come from the onshore-waves GeoJSON
+(:mod:`utils.observation.onshore_sites`).
 
-Site grouping: :mod:`utils.sites` (re-exported here for notebook convenience).
+Site grouping for plots and metrics tables: :mod:`utils.geometry.sites`.
 """
 
 from __future__ import annotations
 
-import pickle
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Mapping
@@ -27,8 +29,7 @@ from bluemath_tk.core.logging import get_file_logger
 from bluemath_tk.core.metrics import bias, r2, rmse
 from bluemath_tk.core.plotting.old_scatter import density_scatter
 from matplotlib.figure import Figure
-from utils.model import metamodel as mm
-from utils.observation import onshore_sites as obs
+
 from utils.config import (
     METAMODEL,
     OFFSHORE_WAVES,
@@ -37,6 +38,7 @@ from utils.config import (
     offshore_catalog_key,
     open_offshore_waves,
     resolve,
+    validate_metamodel_config,
 )
 from utils.geometry.sites import (
     SITE_META,
@@ -46,6 +48,8 @@ from utils.geometry.sites import (
     per_site_coord,
     resolve_sites,
 )
+from utils.model import metamodel as mm
+from utils.observation import onshore_sites as obs
 
 # Config mirrors metamodel module (case config → metamodel)
 METRICS_VARIABLES = METAMODEL["validation"]["metrics_variables"]
@@ -57,17 +61,16 @@ logger = get_file_logger(
     logs_path=str(resolve("logs/validation.log")),
     level="INFO",
     console=True,
-    console_level="INFO",
+    console_level="WARNING",
 )
 
 PARAMETERS: dict[str, dict[str, Any]] = {
     "hs": {"label": "Hs", "units": "m", "circular": False},
     "tp": {"label": "Tp", "units": "s", "circular": False},
     "dir": {"label": "Dir", "units": "deg", "circular": True},
+    # Directional spread (degrees); linear metrics — not periodic like dir.
+    "spr": {"label": "Spr", "units": "deg", "circular": False},
 }
-
-# LauriBuoys processed pickles (see ``03_Generate_Observations_Configuration.ipynb``)
-BUOY_OBS_DIR = Path("inputs/LauriBuoys/processed")
 
 
 def _metrics_variables(variables: Iterable[str] | None) -> list[str]:
@@ -82,9 +85,81 @@ def _metrics_variables(variables: Iterable[str] | None) -> list[str]:
     Returns
     -------
     list[str]
-        Variable keys (e.g. ``hs``, ``tp``, ``dir``).
+        Variable keys (e.g. ``hs``, ``tp``, ``dir``, ``spr``).
     """
     return list(variables) if variables is not None else list(METRICS_VARIABLES)
+
+
+def _available_metrics_variables(
+    estimate: xr.Dataset,
+    reference: xr.Dataset | None = None,
+    variables: Iterable[str] | None = None,
+) -> list[str]:
+    """Return configured metrics variables present in estimate/reference datasets."""
+    keys = _metrics_variables(variables)
+    keys = [k for k in keys if k in PARAMETERS and k in estimate.data_vars]
+    if reference is not None:
+        keys = [k for k in keys if k in reference.data_vars]
+    return keys
+
+
+def resolve_comparison_variables(
+    *datasets: xr.Dataset,
+    variables: Iterable[str] | None = None,
+) -> list[str]:
+    """Return metric variables present in every dataset (preserving request order).
+
+    Use this before :func:`compare` or :func:`compare_all` when the requested
+    list (``hs``, ``tp``, ``dir``, ``spr``) may not exist in all inputs — e.g.
+    processed buoy NetCDF without ``spr``, or models missing a variable.
+
+    Parameters
+    ----------
+    *datasets
+        Two or more aligned datasets (reference, estimate, …).
+    variables
+        Requested variables; default ``metamodel.validation.metrics_variables``.
+
+    Returns
+    -------
+    list[str]
+        Subset of *variables* found in every dataset.
+
+    Raises
+    ------
+    ValueError
+        If no datasets are passed or no requested variable is shared.
+    """
+    if not datasets:
+        raise ValueError("resolve_comparison_variables requires at least one dataset")
+    requested = _metrics_variables(variables)
+    available = requested
+    for ds in datasets:
+        available = [v for v in available if v in PARAMETERS and v in ds.data_vars]
+    skipped = [v for v in requested if v not in available]
+    if skipped:
+        logger.info(
+            "Comparison skipping variables not in all datasets: %s",
+            skipped,
+        )
+    if not available:
+        raise ValueError(
+            "No comparison variables shared by all datasets; "
+            f"requested={requested}, datasets={[list(d.data_vars) for d in datasets]}"
+        )
+    return available
+
+
+def _scatter_grid_shape(n: int) -> tuple[int, int]:
+    """Return ``(nrows, ncols)`` for up to four scatter panels in a 2×2 grid."""
+    if n <= 1:
+        return 1, 1
+    if n == 2:
+        return 1, 2
+    if n <= 4:
+        return 2, 2
+    ncols = min(4, int(np.ceil(np.sqrt(n))))
+    return int(np.ceil(n / ncols)), ncols
 
 
 # ---------------------------------------------------------------------------
@@ -176,7 +251,7 @@ def compute_metrics(
 
 
 def _find_group(ds: xr.Dataset, group: str) -> tuple[str, str, list[str]]:
-    """Alias for :func:`utils.sites.find_group`."""
+    """Alias for :func:`utils.geometry.sites.find_group`."""
     return find_group(ds, group)
 
 
@@ -202,7 +277,7 @@ def metrics_table(
         Columns include ``group``, ``site_source``, ``variable``, ``bias``,
         ``rmse``, ``r2``, ``n``.
     """
-    params = _metrics_variables(variables)
+    params = _available_metrics_variables(estimate, reference, variables)
     rows: list[dict[str, Any]] = []
 
     for group_name, site_source, site_ids in metric_groups(estimate):
@@ -238,94 +313,6 @@ def metrics_table(
 def validation_metrics_path(goal: str | int) -> Path:
     """CSV path for :func:`sweep` output on one goal."""
     return mm.goal_output_dir(goal) / "validation_metrics.csv"
-
-
-# ---------------------------------------------------------------------------
-# Buoy observations
-# ---------------------------------------------------------------------------
-
-
-def _buoy_site_id(name: str) -> str:
-    """SnapWave site label (``buoy_<instrument_id>``)."""
-    text = str(name)
-    return text if text.startswith("buoy_") else f"buoy_{text}"
-
-
-def _buoy_pickle_to_dataset(frame: pd.DataFrame, site: str) -> xr.Dataset:
-    """One LauriBuoys bulk pickle → ``(time, sites)`` with ``hs`` / ``tp`` / ``dir``."""
-    df = frame.copy()
-    if "time" in df.columns:
-        df = df.set_index("time")
-    if not isinstance(df.index, pd.DatetimeIndex):
-        raise ValueError(
-            f"Buoy data for {site!r} needs a datetime index or time column"
-        )
-
-    vars_out: dict[str, xr.DataArray] = {}
-    if "hs" in df.columns:
-        vars_out["hs"] = (("time",), df["hs"].to_numpy())
-    if "tp" in df.columns:
-        vars_out["tp"] = (("time",), df["tp"].to_numpy())
-    elif "tm10" in df.columns:
-        vars_out["tp"] = (("time",), df["tm10"].to_numpy())
-    if "dir" in df.columns:
-        vars_out["dir"] = (("time",), df["dir"].to_numpy())
-
-    if "hs" not in vars_out:
-        raise ValueError(f"Buoy pickle for {site!r} has no hs column")
-
-    ds = xr.Dataset(vars_out, coords={"time": df.index})
-    return ds.expand_dims(sites=[site]).transpose("time", "sites")
-
-
-def load_buoy_observations(
-    buoy_files: Mapping[str, str | Path],
-    *,
-    time: str | slice | None = None,
-) -> xr.Dataset:
-    """Load processed Lauri buoy pickles as ``(time, sites)``.
-
-    Parameters
-    ----------
-    buoy_files
-        SnapWave site id (or instrument id) → path to a ``.pkl`` bulk file.
-    time
-        Optional slice applied after concat (e.g. ``"1990-05"``).
-
-    Returns
-    -------
-    xarray.Dataset
-        Variables ``hs``, ``tp`` and ``dir`` when present in the pickles.
-    """
-    chunks: list[xr.Dataset] = []
-    for site_key, path in buoy_files.items():
-        site = _buoy_site_id(site_key)
-        p = resolve(path)
-        if not p.is_file():
-            logger.warning("Buoy file not found: %s", p)
-            continue
-        frame = pickle.loads(p.read_bytes())
-        chunks.append(_buoy_pickle_to_dataset(frame, site))
-
-    if not chunks:
-        raise FileNotFoundError(
-            "No buoy observation files loaded — check buoy_files paths"
-        )
-
-    out = xr.concat(chunks, dim="sites")
-    if time is not None:
-        out = out.sel(time=time)
-    logger.info(
-        "Loaded buoy data: %d site(s), %d time step(s)",
-        out.sizes["sites"],
-        out.sizes.get("time", 0),
-    )
-    return out
-
-
-def _instrument_id(site: str) -> str:
-    """Strip the ``buoy_`` prefix from a SnapWave site label."""
-    return str(site).removeprefix("buoy_")
 
 
 def _haversine_m(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
@@ -377,8 +364,8 @@ def closest_goals_table(
 
     rows: list[dict[str, Any]] = []
     for site in sites:
-        site = _buoy_site_id(site)
-        iid = _instrument_id(site)
+        site = obs.snapwave_site_id(site)
+        iid = obs.instrument_id(site)
         if iid not in buoy_coords:
             raise KeyError(
                 f"Buoy {site!r} not in onshore-waves GeoJSON (instrument {iid!r})"
@@ -414,9 +401,9 @@ def load_offshore_hindcast_at_buoys(
     """Bulk offshore hindcast at each buoy's closest goal node.
 
     One entry per configured offshore source (e.g. WHACS). Each dataset has
-    ``(time, sites)`` with ``hs``, ``tp``, ``dir`` when present in the zarr.
+    ``(time, sites)`` with the requested bulk variables present in the zarr.
     """
-    site_ids = [_buoy_site_id(s) for s in sites]
+    site_ids = [obs.snapwave_site_id(s) for s in sites]
     mapping = closest_goals_table(site_ids, offshore_names=offshore_names, goals=goals)
     vars_ = [v for v in _metrics_variables(variables) if v in PARAMETERS]
 
@@ -487,6 +474,7 @@ def compare_all(
     time: str | slice | None = None,
     variables: Iterable[str] | None = None,
     reference_label: str = "Buoy",
+    pca_variance: mm.PcaVariance = None,
 ) -> dict[str, ComparisonResult]:
     """Run :func:`compare` for several models against the same buoy reference."""
     results: dict[str, ComparisonResult] = {}
@@ -498,6 +486,7 @@ def compare_all(
             variables=variables,
             estimate_label=name,
             reference_label=reference_label,
+            pca_variance=pca_variance,
         )
     return results
 
@@ -687,7 +676,7 @@ class HoldoutValidationResult(ComparisonResult):
         )
 
 
-# HoldoutValidationResult alias (notebooks may import either name)
+# Backward-compatible alias for holdout validation results.
 ValidationResult = HoldoutValidationResult
 
 
@@ -718,7 +707,18 @@ def _holdout_pair(
         models=models,
         pca_variance=pca_variance,
     )
-    reference = cases.isel(case_num=idx)[["hs", "tp", "dir"]].assign(
+    configured = _metrics_variables(None)
+    vars_ = _available_metrics_variables(estimate, cases, variables=None)
+    missing = [v for v in configured if v in PARAMETERS and v not in vars_]
+    if missing:
+        logger.warning(
+            "Goal %s / n=%d: configured metrics variables missing from "
+            "estimate or reference: %s",
+            goal,
+            mda_candidate,
+            missing,
+        )
+    reference = cases.isel(case_num=idx)[vars_].assign(
         **{name: cases[name] for name in SITE_META if name in cases}
     )
     return estimate, reference, len(test_idx)
@@ -731,6 +731,7 @@ def compare(
     variables: Iterable[str] | None = None,
     estimate_label: str = "Estimate",
     reference_label: str = "Reference",
+    pca_variance: mm.PcaVariance = None,
 ) -> ComparisonResult:
     """
     Compare aligned estimate and reference datasets.
@@ -743,6 +744,10 @@ def compare(
         Metrics variables to score.
     estimate_label, reference_label
         Labels stored on the metrics table and used in plots.
+    pca_variance
+        When set, adds a ``pca_variances`` column with the fully resolved PCA
+        fractions (including config defaults for variables omitted from a
+        partial override dict).
 
     Returns
     -------
@@ -750,6 +755,8 @@ def compare(
         Metrics plus plot helpers.
     """
     table = metrics_table(estimate, reference, variables=variables)
+    if pca_variance is not None:
+        table.insert(0, "pca_variances", str(mm.resolved_pca_variances(pca_variance)))
     if estimate_label != "Estimate" or reference_label != "Reference":
         table = table.copy()
         table["estimate_label"] = estimate_label
@@ -803,6 +810,7 @@ def validate(
     """
     goal = str(goal)
     n = int(n)
+    validate_metamodel_config()
     estimate, reference, n_test = _holdout_pair(goal, n, pca_variance=pca_variance)
     table = _tag_metrics(
         metrics_table(estimate, reference, variables=variables),
@@ -920,8 +928,13 @@ def _scatter_panel(
         ax.set_title(f"{spec['label']} (no data)")
         return
 
-    xs, ys, density = density_scatter(est, ref)
-    ax.scatter(xs, ys, c=density, s=10, cmap=cmap, edgecolors="none", alpha=0.9)
+    try:
+        xs, ys, density = density_scatter(est, ref)
+        ax.scatter(xs, ys, c=density, s=10, cmap=cmap, edgecolors="none", alpha=0.9)
+    except (np.linalg.LinAlgError, ValueError) as exc:
+        logger.debug("density_scatter failed (%s); using plain scatter", exc)
+        ax.scatter(est, ref, s=10, color="steelblue", edgecolors="none", alpha=0.5)
+        xs, ys = est, ref
 
     if spec["circular"]:
         lo, hi = 0.0, 360.0
@@ -969,16 +982,18 @@ def plot_scatter(
     variables: Iterable[str] | None = None,
     estimate_label: str = "Estimate",
     reference_label: str = "Reference",
-    figsize: tuple[float, float] = (12, 4),
+    figsize: tuple[float, float] | None = None,
     cmap: str = "viridis",
 ) -> Figure:
     """Density scatter panels for one validation group."""
-    keys = _metrics_variables(variables)
-    fig, axes = plt.subplots(1, len(keys), figsize=figsize)
-    if len(keys) == 1:
-        axes = [axes]
+    keys = _available_metrics_variables(estimate, reference, variables)
+    nrows, ncols = _scatter_grid_shape(len(keys))
+    if figsize is None:
+        figsize = (4.2 * ncols, 3.8 * nrows)
+    fig, axes = plt.subplots(nrows, ncols, figsize=figsize)
+    axes_flat = np.atleast_1d(axes).ravel()
 
-    for ax, key in zip(axes, keys, strict=True):
+    for ax, key in zip(axes_flat, keys):
         est, ref = _paired_values(estimate, reference, key, site_ids)
         _scatter_panel(
             ax,
@@ -989,6 +1004,9 @@ def plot_scatter(
             reference_label=reference_label,
             cmap=cmap,
         )
+
+    for ax in axes_flat[len(keys) :]:
+        ax.set_visible(False)
 
     fig.suptitle(group_name, fontsize=11)
     fig.tight_layout()
@@ -1033,16 +1051,24 @@ def plot_group(
     variables: Iterable[str] | None = None,
     estimate_label: str = "Estimate",
     reference_label: str = "Reference",
-    figsize: tuple[float, float] = (14, 9),
+    figsize: tuple[float, float] | None = None,
     cmap: str = "viridis",
 ) -> Figure:
     """Map + density scatters for one validation group."""
     from utils.viz.case_plots import plot_base_map, plot_validation_sites
 
-    keys = _metrics_variables(variables)
+    keys = _available_metrics_variables(estimate, reference, variables)
+    scatter_rows, scatter_cols = _scatter_grid_shape(len(keys))
+    if figsize is None:
+        figsize = (4.5 * scatter_cols, 3.0 + 3.5 * scatter_rows)
+
     fig = plt.figure(figsize=figsize)
     gs = fig.add_gridspec(
-        2, len(keys), height_ratios=[1.25, 1.0], hspace=0.3, wspace=0.3
+        1 + scatter_rows,
+        scatter_cols,
+        height_ratios=[1.25] + [1.0] * scatter_rows,
+        hspace=0.3,
+        wspace=0.3,
     )
     ax_map = fig.add_subplot(gs[0, :])
 
@@ -1058,8 +1084,8 @@ def plot_group(
     )
     ax_map.set_title(group_name, fontsize=11)
 
-    for col, key in enumerate(keys):
-        ax = fig.add_subplot(gs[1, col])
+    for i, key in enumerate(keys):
+        ax = fig.add_subplot(gs[1 + i // scatter_cols, i % scatter_cols])
         est, ref = _paired_values(estimate, reference, key, site_ids)
         _scatter_panel(
             ax,
@@ -1119,7 +1145,7 @@ def plot_timeseries(
 ) -> Figure:
     """Line plot of estimate vs reference at one site."""
     site = str(site)
-    keys = _metrics_variables(variables)
+    keys = _available_metrics_variables(estimate, reference, variables)
     fig, axes = plt.subplots(len(keys), 1, figsize=figsize, sharex=True)
     if len(keys) == 1:
         axes = [axes]
@@ -1165,6 +1191,8 @@ def plot_buoy_timeseries(
     """Time series at one buoy: observations vs all model estimates."""
     site = str(site)
     keys = _metrics_variables(variables)
+    keys = [k for k in keys if k in PARAMETERS and k in reference.data_vars]
+    keys = [k for k in keys if all(k in est.data_vars for est in estimates.values())]
     fig, axes = plt.subplots(len(keys), 1, figsize=figsize, sharex=True)
     if len(keys) == 1:
         axes = [axes]
@@ -1354,7 +1382,7 @@ def plot_sweep(
 ) -> Figure:
     """Line plots of bias / RMSE / R² vs MDA size.
 
-    Rows = metrics, columns = variables (hs, tp, dir). One line per series
+    Rows = metrics, columns = variables (hs, tp, dir, spr). One line per series
     defined by ``by`` (bulk, source, group, label, or buoy).
     """
     vars_ = _metrics_variables(variables)
@@ -1464,7 +1492,6 @@ def plot_sweep_suite(
 
 
 __all__ = [
-    "BUOY_OBS_DIR",
     "LOGGER_NAME",
     "ComparisonResult",
     "HoldoutValidationResult",
@@ -1474,12 +1501,12 @@ __all__ = [
     "compare",
     "compare_all",
     "compute_metrics",
-    "load_buoy_observations",
     "load_offshore_hindcast_at_buoys",
     "logger",
     "metric_groups",
     "metrics_summary",
     "metrics_table",
+    "resolve_comparison_variables",
     "aggregate_sweep",
     "load_sweep_metrics",
     "plot_all_groups",

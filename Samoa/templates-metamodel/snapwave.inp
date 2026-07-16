@@ -26,3 +26,5 @@ map_ee         = 1
 
 obsfile        = output_sites.txt
 his_file       = output_sites.nc
+map_file       = {{ map_file }}
+map_dirspr     = {{ map_dirspr }}

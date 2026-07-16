@@ -181,6 +181,7 @@ cython_debug/
 *.xml
 *.zarr
 *.tiff
+*.pkl
 
 # Data directories
 *logs/
@@ -195,7 +196,8 @@ NorthCarolina/assets/
 
 # Repo tmp files
 pymesh2d/
-Samoa/tmp/
+*/tmp/
+Samoa/OLD_results/
 
 # Arquetypes
 Cantabria/

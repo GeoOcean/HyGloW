@@ -4,10 +4,13 @@ Training: :func:`fit`, :func:`fit_all`
 Prediction: :func:`predict` (LHS ``case_num`` or hindcast ``time`` via ``row_dim``)
 Hindcast: :func:`reconstruct` — ``spectral=False`` bulk (partition ``-1``),
 ``spectral=True`` WHACS partitions ``0``–``3``; both via wavespectra linear sum.
+Bulk output variables and optional full-spectrum caching are configured in the
+case JSON under ``metamodel.reconstruction`` (``variables`` maps HyGloW names to
+wavespectra bulk stats; ``save_spectra`` caches summed spectra).
 Long hindcast periods are processed month by month; results are cached under
 ``tmp/reconstruct``.
 
-Site grouping and selection: :mod:`utils.sites`.
+Site grouping and selection: :mod:`utils.geometry.sites`.
 """
 
 from __future__ import annotations
@@ -17,7 +20,7 @@ import json
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Iterable, Literal
+from typing import Any, Iterable, Literal, Mapping
 
 import numpy as np
 import pandas as pd
@@ -28,6 +31,9 @@ from bluemath_tk.core.operations import get_degrees_from_uv, get_uv_components
 from bluemath_tk.datamining.mda import MDA
 from bluemath_tk.datamining.pca import PCA
 from bluemath_tk.interpolation.gps import ExactGPInterpolation
+from wavespectra.construct import STATS as WAVESPECTRA_STATS
+from wavespectra.construct import construct_partition
+
 from utils.config import (
     METAMODEL,
     SIMULATIONS,
@@ -36,10 +42,10 @@ from utils.config import (
     mda_max_points,
     open_offshore_waves,
     resolve,
+    validate_metamodel_config,
 )
 from utils.directions import in_nautical_sector
 from utils.geometry.sites import SITE_META, resolve_sites
-from wavespectra.construct import construct_partition
 
 LOGGER_NAME = "hyglow.metamodel"
 logger = get_file_logger(
@@ -47,7 +53,7 @@ logger = get_file_logger(
     logs_path=str(resolve("logs/metamodel.log")),
     level="INFO",
     console=True,
-    console_level="INFO",
+    console_level="WARNING",
 )
 
 PcaVariance = float | dict[str, float] | None
@@ -59,14 +65,183 @@ MDA_INPUTS = METAMODEL["mda_inputs"]
 MDA_DIRECTIONAL = METAMODEL["mda_directional_variables"]
 MDA_CANDIDATES = METAMODEL["mda_candidates"]
 SITE_FILTER = METAMODEL["site_filter"]
-FORCING_COLS = tuple(c for c in MDA_INPUTS if c != "wl")  # MDA inputs passed through GP
+FORCING_COLS = tuple(
+    c for c in MDA_INPUTS if c != "wl"
+)  # validity mask for hindcast rows (wl optional)
 
-# Wavespectra grid and WHACS partition ids (see offshore_waves.py)
-SPECTRAL_FREQ = np.logspace(np.log10(0.035), np.log10(0.5), 29)
-SPECTRAL_DIR = np.arange(0.0, 360.0, 5)
 # WHACS: bulk = partition -1; wind sea + swells = 0–3 (see offshore_waves.py)
 BULK_PARTITION = -1
 SPECTRAL_PARTITIONS = (0, 1, 2, 3)
+
+# Fixed frequency/direction grids for wavespectra linear summation (reconstruct)
+SPECTRAL_FREQ = np.logspace(np.log10(0.035), np.log10(0.5), 29)
+SPECTRAL_DIR = np.arange(0.0, 360.0, 5)
+
+
+def _set_gp_device(gp: Any, device: str) -> None:
+    """Move a fitted :class:`~bluemath_tk.interpolation.gps.ExactGPInterpolation` to *device*."""
+    import torch
+
+    dev = torch.device(device)
+    gp.device = dev
+    for model in gp._models.values():
+        model.to(dev)
+    for likelihood in gp._likelihoods.values():
+        likelihood.to(dev)
+
+
+def _release_gp_memory() -> None:
+    """Best-effort CUDA cache flush after unloading GP models."""
+    import gc
+
+    gc.collect()
+    try:
+        import torch
+    except ImportError:
+        return
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
+# Default PCA NaN handling (overridden by metamodel.pca_preprocessing in case JSON)
+_DEFAULT_PCA_PREPROCESSING = {
+    "nan_threshold_to_drop": {
+        "hs": 0.99,
+        "dir_u": 0.99,
+        "dir_v": 0.99,
+        "spr": 0.99,
+    },
+    "value_to_replace_nans": {
+        "hs": 0.0,
+        "dir_u": 0.0,
+        "dir_v": 0.0,
+        "spr": 0.0,
+    },
+}
+
+
+def _pca_preprocessing() -> tuple[dict[str, float], dict[str, float]]:
+    """Return PCA NaN settings from case config (with code defaults)."""
+    cfg = METAMODEL.get("pca_preprocessing", {})
+    replace = {
+        **_DEFAULT_PCA_PREPROCESSING["value_to_replace_nans"],
+        **cfg.get("value_to_replace_nans", {}),
+    }
+    drop = {
+        **_DEFAULT_PCA_PREPROCESSING["nan_threshold_to_drop"],
+        **cfg.get("nan_threshold_to_drop", {}),
+    }
+    return replace, drop
+
+
+def _reconstruction_config() -> dict[str, Any]:
+    """Return ``metamodel.reconstruction`` from the case JSON.
+
+    Raises
+    ------
+    ValueError
+        If the section is missing or not a dict.
+    """
+    recon = METAMODEL.get("reconstruction")
+    if not isinstance(recon, dict):
+        raise ValueError(
+            "metamodel.reconstruction must be defined in the case JSON "
+            "(see validate_metamodel_config)"
+        )
+    return recon
+
+
+def _parse_reconstruction_variables(raw: Any) -> dict[str, str]:
+    """Validate a HyGloW name → wavespectra stat mapping.
+
+    Parameters
+    ----------
+    raw
+        Mapping from case JSON ``metamodel.reconstruction.variables`` or a
+        runtime override passed to :func:`reconstruct`.
+
+    Returns
+    -------
+    dict[str, str]
+        Validated mapping.
+
+    Raises
+    ------
+    ValueError
+        If *raw* is empty, uses unknown stats, or keys are not in
+        ``vars_to_predict``.
+    TypeError
+        If *raw* is not a dict.
+    """
+    if not isinstance(raw, dict):
+        raise TypeError(
+            "metamodel.reconstruction.variables must be a dict "
+            "(HyGloW name → wavespectra stat)"
+        )
+    if not raw:
+        raise ValueError("metamodel.reconstruction.variables must be non-empty")
+    unknown_stat = [s for s in raw.values() if s not in WAVESPECTRA_STATS]
+    if unknown_stat:
+        raise ValueError(
+            "metamodel.reconstruction.variables uses unsupported wavespectra stats: "
+            f"{unknown_stat}; allowed: {WAVESPECTRA_STATS}"
+        )
+    unknown_keys = [k for k in raw if k not in VARS]
+    if unknown_keys:
+        raise ValueError(
+            "metamodel.reconstruction.variables keys not in vars_to_predict: "
+            f"{unknown_keys}"
+        )
+    return dict(raw)
+
+
+def _reconstruction_variables(
+    *, override: Mapping[str, str] | None = None
+) -> dict[str, str]:
+    """HyGloW output names mapped to wavespectra bulk stats.
+
+    Reads ``metamodel.reconstruction.variables`` from the case JSON unless
+    *override* is provided (e.g. ``mm.reconstruct(..., variables={...})``).
+
+    Raises
+    ------
+    ValueError
+        If the case JSON section or mapping is missing or invalid.
+    """
+    if override is not None:
+        return _parse_reconstruction_variables(dict(override))
+    recon = _reconstruction_config()
+    if "variables" not in recon:
+        raise ValueError(
+            "metamodel.reconstruction.variables is required in the case JSON"
+        )
+    return _parse_reconstruction_variables(recon["variables"])
+
+
+def _reconstruction_save_spectra(*, override: bool | None = None) -> bool:
+    """Whether to cache full summed spectra alongside bulk reconstruction.
+
+    Reads ``metamodel.reconstruction.save_spectra`` from the case JSON unless
+    *override* is passed to :func:`reconstruct`.
+
+    Raises
+    ------
+    ValueError
+        If the key is missing from the case JSON.
+    TypeError
+        If the configured value is not a bool.
+    """
+    if override is not None:
+        return bool(override)
+    recon = _reconstruction_config()
+    if "save_spectra" not in recon:
+        raise ValueError(
+            "metamodel.reconstruction.save_spectra is required in the case JSON"
+        )
+    save = recon["save_spectra"]
+    if not isinstance(save, bool):
+        raise TypeError("metamodel.reconstruction.save_spectra must be a bool")
+    return save
 
 
 class ModelsNotFittedError(FileNotFoundError):
@@ -280,29 +455,45 @@ def pca_model_path(goal: str | int, n: int, variable: str, variance: float) -> P
 def detect_removed_sites(cases: xr.Dataset) -> list[str]:
     """Return site labels that fail ``METAMODEL.site_filter`` on SnapWave cases.
 
+    Each ``site_filter`` key must end with ``_max`` or ``_min``:
+
+    - ``{var}_max`` — drop sites whose maximum over ``case_num`` exceeds the threshold.
+    - ``{var}_min`` — drop sites whose minimum over ``case_num`` falls below the threshold.
+
     Parameters
     ----------
     cases
-        SnapWave LHS dataset with ``hs`` and ``tp`` on ``(case_num, sites)``.
+        SnapWave LHS dataset with variables on ``(case_num, sites)``.
 
     Returns
     -------
     list[str]
-        Sorted site labels exceeding ``hs_max`` or below ``tp_min``.
+        Sorted site labels failing any configured rule.
     """
     bad: set[str] = set()
-    if "hs_max" in SITE_FILTER:
-        peak = cases["hs"].max("case_num")
-        bad.update(
-            str(s)
-            for s in peak.where(peak > SITE_FILTER["hs_max"], drop=True).sites.values
-        )
-    if "tp_min" in SITE_FILTER:
-        low = cases["tp"].min("case_num")
-        bad.update(
-            str(s)
-            for s in low.where(low < SITE_FILTER["tp_min"], drop=True).sites.values
-        )
+    for key, threshold in SITE_FILTER.items():
+        if key.endswith("_max"):
+            var = key[:-4]
+            op = "max"
+        elif key.endswith("_min"):
+            var = key[:-4]
+            op = "min"
+        else:
+            logger.warning(
+                "Ignoring site_filter key %r (expected {var}_max or {var}_min)",
+                key,
+            )
+            continue
+        if var not in cases.data_vars:
+            logger.warning("site_filter %r: variable %r not in cases", key, var)
+            continue
+        if op == "max":
+            agg = cases[var].max("case_num")
+            offenders = agg.where(agg > float(threshold), drop=True)
+        else:
+            agg = cases[var].min("case_num")
+            offenders = agg.where(agg < float(threshold), drop=True)
+        bad.update(str(s) for s in offenders.sites.values)
     return sorted(bad)
 
 
@@ -362,12 +553,12 @@ def load_cases_goal(goal: str | int, *, apply_site_filter: bool = True) -> xr.Da
     xarray.Dataset
         Dimensions ``(case_num, sites)``; variables ``hs``, ``tp``, ``dir``, …
     """
-    ds = xr.open_dataset(cases_path(goal))
-    u, v = get_uv_components(ds["dir"])
-    ds = ds.assign(dir_u=u, dir_v=v)
+    with xr.open_dataset(cases_path(goal)) as ds:
+        u, v = get_uv_components(ds["dir"])
+        out = ds.assign(dir_u=u, dir_v=v).load()
     if apply_site_filter:
-        ds = drop_sites(ds, removed_sites(goal))
-    return ds
+        out = drop_sites(out, removed_sites(goal))
+    return out
 
 
 def forcing_dataframe(cases: xr.Dataset) -> pd.DataFrame:
@@ -402,12 +593,149 @@ def load_split(goal: str | int) -> tuple[np.ndarray, np.ndarray]:
     train_idx, test_idx
         Integer arrays of case indices.
     """
-    with split_path(goal).open(encoding="utf-8") as f:
-        split = json.load(f)
+    split = _read_split_dict(goal)
     return (
         np.asarray(split["train_idx"], dtype=int),
         np.asarray(split["test_idx"], dtype=int),
     )
+
+
+def _read_split_dict(goal: str | int) -> dict[str, Any]:
+    """Load the full ``split.json`` payload for one goal."""
+    with split_path(goal).open(encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _write_split_dict(goal: str | int, data: dict[str, Any]) -> None:
+    """Write ``split.json`` for one goal."""
+    path = split_path(goal)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+
+def load_fit_summary(goal: str | int, n: int | None = None) -> dict[str, Any]:
+    """Return persisted PCA/GP fit summary from ``split.json``.
+
+    Parameters
+    ----------
+    goal
+        Goal id from the case goals JSON.
+    n
+        MDA train size. If ``None``, return the full ``fit_by_mda`` mapping.
+
+    Returns
+    -------
+    dict
+        Fit summary for one MDA size, or all sizes when *n* is ``None``.
+    """
+    fit_by = _read_split_dict(goal).get("fit_by_mda", {})
+    if n is None:
+        return fit_by
+    return fit_by.get(str(int(n)), {})
+
+
+def _pca_kept_site_labels(pca: Any) -> dict[str, list[str]]:
+    """Map stacked variable name → site labels kept by PCA NaN threshold."""
+    sites = np.asarray(pca.coords_values.get("sites", []))
+    if sites.size == 0:
+        return {}
+    out: dict[str, list[str]] = {}
+    for var, positions in getattr(pca, "not_nan_positions", {}).items():
+        idx = np.asarray(positions, dtype=int)
+        out[var] = [str(sites[i]) for i in idx]
+    return out
+
+
+def _consolidated_pca_sites(
+    kept_by_stack: dict[str, list[str]], stack: list[str]
+) -> list[str]:
+    """Intersection of kept sites across all stacked variables for one PCA target."""
+    if not stack:
+        return []
+    sets = [set(kept_by_stack.get(v, [])) for v in stack]
+    if not sets or not sets[0]:
+        return kept_by_stack.get(stack[0], [])
+    consolidated = sets[0]
+    for other in sets[1:]:
+        consolidated &= other
+    return sorted(consolidated)
+
+
+def _persist_fit_summary(goal: str | int, n: int, summary: dict[str, Any]) -> None:
+    """Merge one MDA-size fit summary into ``split.json``."""
+    data = _read_split_dict(goal)
+    if "pca_nan_policy" not in data:
+        value_replace, nan_drop = _pca_preprocessing()
+        data["pca_nan_policy"] = {
+            "value_to_replace_nans": value_replace,
+            "nan_threshold_to_drop": nan_drop,
+        }
+    fit_by = data.setdefault("fit_by_mda", {})
+    fit_by[str(int(n))] = summary
+    _write_split_dict(goal, data)
+
+
+def report_training_data(
+    goal: str | int,
+    n: int | None = None,
+) -> dict[str, Any]:
+    """Summarise LHS training data quality (site filter, NaN fractions).
+
+    Read-only helper for notebook diagnostics before or after fit. When *n* is
+    given and ``split.json`` exists, reports stats on the first *n* MDA train
+    cases only.
+
+    Parameters
+    ----------
+    goal
+        Goal id from the case goals JSON.
+    n
+        Optional MDA train size to subset train cases.
+
+    Returns
+    -------
+    dict
+        Keys include ``removed_sites``, ``nan_fraction``, ``pca_nan_policy``.
+    """
+    goal = str(goal)
+    raw = load_cases_goal(goal, apply_site_filter=False)
+    dropped = detect_removed_sites(raw)
+    cases = drop_sites(raw, dropped)
+    summary: dict[str, Any] = {
+        "goal": goal,
+        "n_cases_total": int(cases.sizes["case_num"]),
+        "n_sites_after_site_filter": int(cases.sizes["sites"]),
+        "removed_sites": dropped,
+        "n_removed_sites": len(dropped),
+    }
+    if n is not None and split_path(goal).exists():
+        train_idx, _ = load_split(goal)
+        cases = cases.isel(case_num=train_idx[: int(n)])
+        summary["n_cases_requested"] = int(n)
+        summary["n_cases_used"] = int(cases.sizes["case_num"])
+
+    nan_frac: dict[str, float] = {}
+    for var in ("hs", "tp", "dir", "spr"):
+        if var in cases:
+            nan_frac[var] = float(np.mean(np.isnan(cases[var].values)))
+    summary["nan_fraction"] = nan_frac
+
+    value_replace, nan_drop = _pca_preprocessing()
+    summary["pca_nan_policy"] = {
+        "nan_threshold_to_drop": nan_drop,
+        "value_to_replace_nans": value_replace,
+    }
+    logger.info(
+        "Goal %s training data: %d cases, %d sites (%d removed by site_filter); "
+        "NaN fractions %s",
+        goal,
+        summary["n_cases_total"],
+        summary["n_sites_after_site_filter"],
+        summary["n_removed_sites"],
+        {k: f"{v:.3f}" for k, v in nan_frac.items()},
+    )
+    return summary
 
 
 def load_context(goal: str | int) -> dict[str, Any]:
@@ -544,7 +872,11 @@ def require_models_all(
 
 
 def load_models(
-    goal: str | int, n: int, *, pca_variance: PcaVariance = None
+    goal: str | int,
+    n: int,
+    *,
+    pca_variance: PcaVariance = None,
+    device: str | None = None,
 ) -> dict[str, Any]:
     """Load fitted MDA, GP and per-variable PCA models from disk.
 
@@ -554,6 +886,8 @@ def load_models(
         Goal id and MDA train size (must match saved artefacts).
     pca_variance
         Override PCA variance fractions; default uses the case config JSON.
+    device
+        Optional PyTorch device for GP inference (e.g. ``"cpu"`` on small GPUs).
 
     Returns
     -------
@@ -570,9 +904,12 @@ def load_models(
         name: load_model(pca_model_path(goal, n, name, var))
         for name, var, _ in _pca_variables(pca_variance)
     }
+    gp = load_model(gp_model_path(goal, n))
+    if device is not None:
+        _set_gp_device(gp, device)
     return {
         "mda": load_model(mda_path(goal)),
-        "gp": load_model(gp_model_path(goal, n)),
+        "gp": gp,
         "pcas": pcas,
         "pca_variances": resolved_pca_variances(pca_variance),
     }
@@ -689,6 +1026,7 @@ def _fit_mda(
 
     path.parent.mkdir(parents=True, exist_ok=True)
     mda.save_model(path)
+    value_replace, nan_drop = _pca_preprocessing()
     with split_file.open("w", encoding="utf-8") as f:
         json.dump(
             {
@@ -697,6 +1035,11 @@ def _fit_mda(
                 "num_centers": num_centers,
                 "removed_sites": dropped,
                 "site_filter": SITE_FILTER,
+                "pca_nan_policy": {
+                    "value_to_replace_nans": value_replace,
+                    "nan_threshold_to_drop": nan_drop,
+                },
+                "fit_by_mda": {},
             },
             f,
             indent=2,
@@ -803,20 +1146,72 @@ def _fit_models(
         mda, train_idx, _ = _fit_mda(goal, force_retrain=force_retrain)
 
     cases = load_cases_goal(goal).isel(case_num=train_idx[:n])
+    value_replace, nan_drop = _pca_preprocessing()
+    n_requested = n
+    n_cases = int(cases.sizes["case_num"])
+    n_sites = int(cases.sizes["sites"])
+    if n_cases < n_requested:
+        logger.warning(
+            "Goal %s / n=%d: only %d training cases available",
+            goal,
+            n_requested,
+            n_cases,
+        )
     pcas: dict[str, Any] = {}
+    pca_sites_kept: dict[str, list[str]] = {}
+    pca_sites_kept_by_stack: dict[str, list[str]] = {}
+    pca_sites_dropped: dict[str, int] = {}
     for name, variance, stack in _pca_variables(pca_variance):
+        logger.info(
+            "Goal %s / n=%d: fitting PCA %s (%d cases × %d sites; nan_threshold=%s)",
+            goal,
+            n,
+            name,
+            n_cases,
+            n_sites,
+            {k: nan_drop.get(k) for k in stack},
+        )
         pca = PCA(n_components=variance)
         pca.fit_transform(
             data=cases,
             vars_to_stack=stack,
             coords_to_stack=["sites"],
             pca_dim_for_rows="case_num",
+            value_to_replace_nans=value_replace,
+            nan_threshold_to_drop=nan_drop,
+        )
+        kept_by_stack = _pca_kept_site_labels(pca)
+        kept = _consolidated_pca_sites(kept_by_stack, stack)
+        pca_sites_kept[name] = kept
+        for var in stack:
+            if var in kept_by_stack:
+                pca_sites_kept_by_stack[var] = kept_by_stack[var]
+        n_dropped = n_sites - len(kept)
+        pca_sites_dropped[name] = n_dropped
+        logger.info(
+            "Goal %s / n=%d: PCA %s kept %d/%d sites (%d dropped by nan threshold)",
+            goal,
+            n,
+            name,
+            len(kept),
+            n_sites,
+            n_dropped,
         )
         path = pca_model_path(goal, n, name, variance)
         path.parent.mkdir(parents=True, exist_ok=True)
         pca.save_model(path)
         pcas[name] = pca
         logger.info("Goal %s / n=%d: saved %s", goal, n, path.name)
+
+    forcing = forcing_dataframe(cases)
+    centroids = mda.centroids[MDA_INPUTS].iloc[:n]
+    if forcing.shape != centroids.shape:
+        raise ValueError(
+            f"GP training: forcing shape {forcing.shape} != centroids {centroids.shape}"
+        )
+    if not np.allclose(forcing.values, centroids.values, rtol=1e-5, atol=1e-8):
+        diff = float(np.nanmax(np.abs(forcing.values - centroids.values)))
+        raise ValueError(f"GP training: forcing != MDA centroids (max |Δ|={diff:.4g})")
 
     target = _stack_pcs(pcas)
     gp = ExactGPInterpolation(epochs=gp_epochs)
@@ -829,6 +1224,21 @@ def _fit_models(
     gp_p.parent.mkdir(parents=True, exist_ok=True)
     gp.save_model(gp_p)
     logger.info("Goal %s / n=%d: GP saved (%d PCs)", goal, n, target.shape[1])
+
+    _persist_fit_summary(
+        goal,
+        n,
+        {
+            "n_cases_requested": n_requested,
+            "n_cases_used": n_cases,
+            "n_sites_before_pca": n_sites,
+            "pca_sites_kept": pca_sites_kept,
+            "pca_sites_kept_by_stack": pca_sites_kept_by_stack,
+            "pca_sites_dropped": pca_sites_dropped,
+            "pca_variances": resolved_pca_variances(pca_variance),
+            "n_gp_components": int(target.shape[1]),
+        },
+    )
 
     return {
         "mda": mda,
@@ -863,6 +1273,7 @@ def fit(
         Override per-variable PCA variance; default from the case config JSON.
     """
     goal = str(goal)
+    validate_metamodel_config()
     mda, train_idx, _ = _fit_mda(goal, force_retrain=force_retrain)
     for n in candidates or MDA_CANDIDATES:
         _fit_models(
@@ -923,6 +1334,7 @@ def predict(
     pca_variance: PcaVariance = None,
     sites: Iterable[str] | None = None,
     row_dim: str = "case_num",
+    device: str | None = None,
 ) -> xr.Dataset:
     """
     Map offshore forcing rows to nearshore wave fields via GP → PCA inverse.
@@ -947,6 +1359,8 @@ def predict(
     row_dim
         Name of the output row dimension (``case_num`` for LHS holdout,
         ``time`` for hindcast).
+    device
+        Optional PyTorch device for GP inference when models are loaded here.
 
     Returns
     -------
@@ -964,7 +1378,7 @@ def predict(
 
     goal = str(goal)
     if models is None:
-        models = load_models(goal, n, pca_variance=pca_variance)
+        models = load_models(goal, n, pca_variance=pca_variance, device=device)
 
     # PCA inverse_transform expects the row dimension to be named case_num
     if forcing.index.name != "case_num":
@@ -1224,6 +1638,7 @@ def _predict_offshore(
     wl: float = 0.0,
     pca_variance: PcaVariance = None,
     models: dict[str, Any] | None = None,
+    device: str | None = None,
 ) -> xr.Dataset | None:
     """Predict nearshore bulk parameters for one goal, partition and time slice.
 
@@ -1267,6 +1682,7 @@ def _predict_offshore(
         pca_variance=pca_variance,
         sites=site_ids,
         row_dim="time",
+        device=device,
     )
     # Scale hs by offshore partition/bulk height (transfer function)
     pred["hs"] = pred["hs"] * hs_offshore.sel(time=pred.coords["time"])
@@ -1274,9 +1690,18 @@ def _predict_offshore(
 
 
 def _wavespectra_sum(
-    cube: xr.Dataset, site_ids: list[str], *, load: bool = True
-) -> xr.Dataset:
-    """Linearly sum goal × partition spectra into bulk ``hs/tp/dir``.
+    cube: xr.Dataset,
+    site_ids: list[str],
+    *,
+    variables: Mapping[str, str] | None = None,
+    save_spectra: bool = False,
+    load: bool = True,
+) -> tuple[xr.Dataset, xr.Dataset | None]:
+    """Linearly sum goal × partition spectra into bulk parameters.
+
+    All wavespectra bulk stats are computed per site; the case JSON mapping
+    (``metamodel.reconstruction.variables``) selects which stat becomes each
+    HyGloW name (``hs``, ``tp``, ``dir``, ``spr``, …).
 
     Parameters
     ----------
@@ -1284,15 +1709,26 @@ def _wavespectra_sum(
         Dataset with ``goal``, ``partition``, ``time`` and ``sites`` dimensions.
     site_ids
         Nearshore site labels to process.
+    variables
+        HyGloW name → wavespectra stat. When omitted, reads
+        ``metamodel.reconstruction.variables`` from the case JSON.
+    save_spectra
+        When ``True``, also return the summed spectrum on ``(time, sites, freq, dir)``.
+        When omitted at the :func:`reconstruct` level, reads
+        ``metamodel.reconstruction.save_spectra`` from the case JSON.
     load
-        Eager-load the output dataset.
+        Eager-load the output dataset(s).
 
     Returns
     -------
-    xarray.Dataset
-        Bulk parameters on ``(time, sites)``.
+    tuple[xarray.Dataset, xarray.Dataset | None]
+        Bulk parameters on ``(time, sites)`` and optional ``efth`` spectra.
     """
-    out: list[xr.Dataset] = []
+    variable_map = _reconstruction_variables(override=variables)
+    output_names = tuple(variable_map)
+
+    bulk_parts: list[xr.Dataset] = []
+    spec_parts: list[xr.Dataset] = []
     for i, site in enumerate(site_ids, start=1):
         logger.info("Wavespectra site %3d / %d: %s", i, len(site_ids), site)
         parts = cube.sel(sites=[site]).stack(part=("goal", "partition"))
@@ -1302,15 +1738,34 @@ def _wavespectra_sum(
             dir_name="cartwright",
             dir_kwargs={"dir": SPECTRAL_DIR, "dm": parts.dir, "dspr": parts.spr},
         )
-        bulk = spec.sum(dim="part").spec.stats(["hs", "tp", "dm"])
-        if "sites" not in bulk.dims:
-            bulk = bulk.expand_dims(sites=[site])
-        out.append(bulk)
+        combined = spec.sum(dim="part")
+        if save_spectra:
+            site_spec = combined
+            if "sites" not in site_spec.dims:
+                site_spec = site_spec.expand_dims(sites=[site])
+            if isinstance(site_spec, xr.DataArray):
+                site_spec = site_spec.to_dataset(name="efth")
+            spec_parts.append(site_spec)
 
-    result = xr.concat(out, dim="sites")
-    if "dm" in result:
-        result = result.rename(dm="dir")  # wavespectra stats name
-    return result.load() if load else result
+        all_stats = combined.spec.stats(list(WAVESPECTRA_STATS))
+        site_bulk = xr.Dataset(
+            {hyglow: all_stats[ws_stat] for hyglow, ws_stat in variable_map.items()}
+        )
+        if "sites" not in site_bulk.dims:
+            site_bulk = site_bulk.expand_dims(sites=[site])
+        bulk_parts.append(site_bulk)
+
+    result = xr.concat(bulk_parts, dim="sites")[list(output_names)]
+
+    spectra: xr.Dataset | None = None
+    if save_spectra:
+        spectra = xr.concat(spec_parts, dim="sites")
+        if load:
+            spectra = spectra.load()
+
+    if load:
+        result = result.load()
+    return result, spectra
 
 
 # ---------------------------------------------------------------------------
@@ -1359,8 +1814,23 @@ def _time_label_for_cache(time: str | slice) -> str:
     return str(time).replace(":", "-")
 
 
+def _metamodel_cache_label() -> str:
+    """Short hash of site-filter and PCA preprocessing settings for cache filenames."""
+    payload = {
+        "site_filter": METAMODEL.get("site_filter", {}),
+        "pca_preprocessing": METAMODEL.get("pca_preprocessing", {}),
+    }
+    digest = hashlib.sha1(
+        json.dumps(payload, sort_keys=True, default=str).encode()
+    ).hexdigest()[:8]
+    return digest
+
+
 def _pca_variance_label(pca_variance: PcaVariance) -> str:
     """Encode PCA variance settings for cache filenames.
+
+    Uses :func:`resolved_pca_variances` so every stacked variable from the case
+    config appears in the label, not only keys present in a partial override dict.
 
     Parameters
     ----------
@@ -1374,11 +1844,8 @@ def _pca_variance_label(pca_variance: PcaVariance) -> str:
     """
     if pca_variance is None:
         return "default"
-    if isinstance(pca_variance, dict):
-        return "_".join(
-            f"{key}{value:g}" for key, value in sorted(pca_variance.items())
-        )
-    return f"{float(pca_variance):g}"
+    resolved = resolved_pca_variances(pca_variance)
+    return "_".join(f"{key}{value:g}" for key, value in sorted(resolved.items()))
 
 
 def _goals_label(goals: Iterable[str | int] | None) -> str:
@@ -1421,6 +1888,27 @@ def _sanitize_cache_stem(stem: str, *, max_len: int = 220) -> str:
     return f"{safe[: max_len - 11]}_{digest}"
 
 
+def _variables_label(variables: Mapping[str, str]) -> str:
+    """Encode HyGloW → wavespectra mapping for cache filenames."""
+    return "-".join(f"{k}-{v}" for k, v in sorted(variables.items()))
+
+
+def reconstruction_spectra_cache_path(bulk_cache_path: Path) -> Path:
+    """Return the spectra cache path paired with one bulk reconstruction file.
+
+    Parameters
+    ----------
+    bulk_cache_path
+        Path from :func:`reconstruction_cache_path` for the bulk variables.
+
+    Returns
+    -------
+    Path
+        ``{bulk_stem}__spectra.nc`` alongside the bulk cache file.
+    """
+    return bulk_cache_path.with_name(f"{bulk_cache_path.stem}__spectra.nc")
+
+
 def reconstruction_cache_path(
     time_label: str | slice,
     n: int,
@@ -1431,11 +1919,14 @@ def reconstruction_cache_path(
     wl: float,
     site_ids: list[str],
     pca_variance: PcaVariance,
+    variables: Mapping[str, str] | None = None,
 ) -> Path:
     """Build the NetCDF cache path for one reconstruction request.
 
     The filename encodes offshore source, MDA size, spectral mode, goals,
-    water level, resolved site list, PCA settings and time span.
+    water level, resolved site list, output variable mapping, PCA settings,
+    metamodel config fingerprint (``site_filter`` + ``pca_preprocessing``),
+    and time span.
 
     Parameters
     ----------
@@ -1455,22 +1946,89 @@ def reconstruction_cache_path(
         Resolved nearshore site labels.
     pca_variance
         PCA variance override used for prediction.
+    variables
+        HyGloW name → wavespectra stat mapping. When omitted, uses the case JSON
+        ``metamodel.reconstruction.variables``.
 
     Returns
     -------
     Path
         Target ``.nc`` path under ``tmp/reconstruct`` (not created on disk).
     """
+    var_map = _reconstruction_variables(override=variables)
     stem = (
-        "reconstruct-v2__"
+        "reconstruct-v5__"
         f"reconstruct__offshore-{offshore_name}__n-{n}__"
         f"{'spectral' if spectral else 'bulk'}__"
         f"goals-{_goals_label(goals)}__wl-{wl:g}__"
         f"sites-{'-'.join(sorted(site_ids))}__"
+        f"vars-{_variables_label(var_map)}__"
         f"pca-{_pca_variance_label(pca_variance)}__"
+        f"cfg-{_metamodel_cache_label()}__"
         f"time-{_time_label_for_cache(time_label)}"
     )
     return resolve("tmp/reconstruct") / f"{_sanitize_cache_stem(stem)}.nc"
+
+
+def load_reconstruction_spectra(
+    time_label: str | slice,
+    n: int,
+    *,
+    spectral: bool,
+    offshore_name: str,
+    goals: Iterable[str | int] | None = None,
+    wl: float = 0.0,
+    site_ids: list[str],
+    pca_variance: PcaVariance,
+    variables: Mapping[str, str] | None = None,
+    load: bool = True,
+) -> xr.Dataset | None:
+    """Load cached summed spectra written when ``save_spectra`` was enabled.
+
+    Parameters
+    ----------
+    time_label
+        Same time selector used for the paired bulk reconstruction.
+    n
+        MDA train size.
+    spectral
+        Spectral or bulk partition mode used for reconstruction.
+    offshore_name
+        Processed hindcast key in the case config JSON.
+    goals
+        Goals included in reconstruction.
+    wl
+        Constant water level (m).
+    site_ids
+        Resolved nearshore site labels.
+    pca_variance
+        PCA variance override used at fit time.
+    variables
+        HyGloW → wavespectra mapping; must match the bulk cache entry. When
+        omitted, uses ``metamodel.reconstruction.variables``.
+    load
+        Eager-load arrays into memory.
+
+    Returns
+    -------
+    xarray.Dataset or None
+        ``efth`` on ``(time, sites, freq, dir)``, or ``None`` if no spectra
+        cache exists for the request.
+    """
+    bulk_path = reconstruction_cache_path(
+        time_label,
+        n,
+        spectral=spectral,
+        offshore_name=offshore_name,
+        goals=goals,
+        wl=wl,
+        site_ids=site_ids,
+        pca_variance=pca_variance,
+        variables=variables,
+    )
+    return _load_reconstruction_cache(
+        reconstruction_spectra_cache_path(bulk_path), load=load
+    )
 
 
 def _load_reconstruction_cache(path: Path, *, load: bool) -> xr.Dataset | None:
@@ -1491,8 +2049,9 @@ def _load_reconstruction_cache(path: Path, *, load: bool) -> xr.Dataset | None:
     if not path.is_file():
         return None
     logger.info("Loading reconstruction cache: %s", path.name)
-    ds = xr.open_dataset(path)
-    return ds.load() if load else ds
+    with xr.open_dataset(path) as ds:
+        data = ds.load()
+    return data
 
 
 def _save_reconstruction_cache(ds: xr.Dataset, path: Path) -> None:
@@ -1583,6 +2142,9 @@ def _reconstruct_period(
     cache_path: Path | None = None,
     recompute: bool = False,
     use_cache: bool = True,
+    device: str | None = None,
+    save_spectra: bool | None = None,
+    variables: Mapping[str, str] | None = None,
 ) -> xr.Dataset:
     """Reconstruct one offshore time slice already selected with ``.sel(time=...)``.
 
@@ -1609,18 +2171,27 @@ def _reconstruct_period(
     load
         Eager-load the output dataset.
     models_by_goal
-        Pre-loaded models per goal; loaded on demand if omitted.
+        Pre-loaded models per goal. When omitted, each goal is loaded only for
+        its own predictions and released before the next (saves GPU memory).
     cache_path
         Optional explicit cache path; built from parameters if omitted.
     recompute
         If ``True``, ignore any existing cache file.
     use_cache
         If ``False``, skip cache read and write.
+    device
+        Optional PyTorch device for GP inference (``"cpu"`` on small GPUs).
+    save_spectra
+        Cache full summed spectra alongside bulk stats. When ``None``, reads
+        ``metamodel.reconstruction.save_spectra`` from the case JSON.
+    variables
+        HyGloW name → wavespectra stat mapping. When ``None``, reads
+        ``metamodel.reconstruction.variables`` from the case JSON.
 
     Returns
     -------
     xarray.Dataset
-        Bulk ``hs``, ``tp``, ``dir`` on ``(time, sites)``.
+        Bulk parameters on ``(time, sites)`` for the mapped HyGloW variables.
 
     Raises
     ------
@@ -1637,13 +2208,23 @@ def _reconstruct_period(
             wl=wl,
             site_ids=site_ids,
             pca_variance=pca_variance,
+            variables=variables,
         )
+    variable_map = _reconstruction_variables(override=variables)
+    save_spectra = _reconstruction_save_spectra(override=save_spectra)
+    spectra_cache_path = reconstruction_spectra_cache_path(cache_path)
     part_ids = _reconstruction_partitions(spectral, offshore)
 
     if use_cache and not recompute:
         cached = _load_reconstruction_cache(cache_path, load=load)
         if cached is not None:
-            return cached
+            if save_spectra and not spectra_cache_path.is_file():
+                logger.info(
+                    "Bulk cache hit but spectra cache missing — recomputing %s",
+                    spectra_cache_path.name,
+                )
+            else:
+                return cached
 
     logger.info(
         "Reconstruct time=%r n=%d goals=%s partitions=%s sites=%d",
@@ -1654,39 +2235,62 @@ def _reconstruct_period(
         len(site_ids),
     )
 
-    if models_by_goal is None:
-        models_by_goal = _load_models_by_goal(active, n, pca_variance=pca_variance)
-
     chunks: list[xr.Dataset] = []
     for goal in active:
-        goal_models = models_by_goal[str(goal)]
-        for part in part_ids:
-            pred = _predict_offshore(
-                offshore,
-                goal,
-                n,
-                site_ids,
-                partition=part,
-                wl=wl,
-                pca_variance=pca_variance,
-                models=goal_models,
-            )
-            if pred is None:
-                logger.debug(
-                    "Goal %s partition %s: no valid timesteps in %r",
+        lazy_load = models_by_goal is None
+        goal_models = (
+            models_by_goal[str(goal)]
+            if models_by_goal is not None
+            else load_models(goal, n, pca_variance=pca_variance, device=device)
+        )
+        try:
+            for part in part_ids:
+                pred = _predict_offshore(
+                    offshore,
                     goal,
-                    part,
-                    time_label,
+                    n,
+                    site_ids,
+                    partition=part,
+                    wl=wl,
+                    pca_variance=pca_variance,
+                    models=goal_models,
+                    device=device,
                 )
-                continue
-            chunks.append(pred.expand_dims(goal=[int(goal)], partition=[part]).load())
+                if pred is None:
+                    logger.debug(
+                        "Goal %s partition %s: no valid timesteps in %r",
+                        goal,
+                        part,
+                        time_label,
+                    )
+                    continue
+                chunks.append(
+                    pred.expand_dims(goal=[int(goal)], partition=[part]).load()
+                )
+        finally:
+            if lazy_load:
+                del goal_models
+                _release_gp_memory()
 
     if not chunks:
         raise ValueError(f"Reconstruction produced no data for {time_label!r}")
 
-    result = _wavespectra_sum(xr.merge(chunks), site_ids, load=load)
+    result, spectra = _wavespectra_sum(
+        xr.merge(chunks),
+        site_ids,
+        variables=variable_map,
+        save_spectra=save_spectra,
+        load=load,
+    )
     if use_cache:
         _save_reconstruction_cache(result, cache_path)
+        if save_spectra and spectra is not None:
+            _save_reconstruction_cache(spectra, spectra_cache_path)
+            logger.info(
+                "Saved spectra cache: %s (%.2f MB)",
+                spectra_cache_path.name,
+                spectra_cache_path.stat().st_size * 1e-6,
+            )
     logger.info(
         "Reconstruction done: %d site(s), %.2f MB",
         result.sizes["sites"],
@@ -1708,14 +2312,18 @@ def reconstruct(
     load: bool = True,
     recompute: bool = False,
     use_cache: bool = True,
+    device: str | None = None,
+    save_spectra: bool | None = None,
+    variables: Mapping[str, str] | None = None,
 ) -> xr.Dataset:
     """Reconstruct nearshore waves from offshore hindcast forcing.
 
     Runs the metamodel for each goal and WHACS partition, then linearly sums
     partition spectra with wavespectra. Each goal is only evaluated for
     timesteps whose offshore direction lies inside that goal's nautical sector
-    (from the case goals JSON). Long periods are processed month by month to
-    limit GPU memory. Results are cached under ``tmp/reconstruct``.
+    (from the case goals JSON). Long periods are split month by month for
+    offshore I/O and caching; GP models are loaded one goal at a time to limit
+    GPU memory. Results are cached under ``tmp/reconstruct``.
 
     Parameters
     ----------
@@ -1724,7 +2332,7 @@ def reconstruct(
     n
         MDA train size; fitted models must exist for every active goal.
     spectral
-        ``False`` — bulk ``hs/tp/dir/spr`` only (partition ``-1``).
+        ``False`` — bulk offshore partition ``-1`` per goal.
         ``True`` — WHACS partitions ``phs0``–``phs3`` (``0``–``3``).
     offshore_name
         Processed hindcast key in the case config JSON.
@@ -1739,14 +2347,30 @@ def reconstruct(
     load
         Eager-load the output dataset.
     recompute
-        If ``True``, ignore and overwrite any matching cache file.
+        If ``True``, ignore and overwrite any matching cache file. Use after
+        retraining models or changing ``site_filter`` / ``pca_preprocessing``.
     use_cache
         If ``False``, skip reading and writing cache files.
+    device
+        Optional PyTorch device for GP inference. Use ``"cpu"`` when CUDA runs
+        out of memory (each goal holds ~100+ exact GPs at ``n=450``).
+    save_spectra
+        Write full summed spectra to a companion cache file
+        (``…__spectra.nc``). When ``None``, reads
+        ``metamodel.reconstruction.save_spectra``. Expensive for many sites /
+        long periods — prefer a small ``sites`` subset.
+    variables
+        HyGloW name → wavespectra stat (e.g. ``dir`` → ``dm``, ``spr`` →
+        ``dpspr``). When ``None``, reads ``metamodel.reconstruction.variables``.
+        All wavespectra bulk stats are computed per site; only the mapped names
+        are returned.
 
     Returns
     -------
     xarray.Dataset
-        ``(time, sites)`` with ``hs``, ``tp``, ``dir``.
+        ``(time, sites)`` with the requested HyGloW variables. Use
+        :func:`load_reconstruction_spectra` to read cached spectra when
+        ``save_spectra=True``.
 
     Raises
     ------
@@ -1755,11 +2379,21 @@ def reconstruct(
     ValueError
         If reconstruction produces no valid data for the requested period.
     """
+    from utils.config import OFFSHORE_WAVES
+
+    if not OFFSHORE_WAVES:
+        logger.warning(
+            "offshore_waves is empty in case config; reconstruct requires a "
+            "processed hindcast zarr (see notebook 07)"
+        )
+
     active = _goals(goals)
+    validate_metamodel_config()
     require_models_all(n, active, pca_variance=pca_variance)
 
     template = load_cases_goal(active[0])
     site_ids = resolve_reconstruction_sites(template, sites, goals=active)
+    variable_map = _reconstruction_variables(override=variables)
 
     cache_kw = dict(
         n=n,
@@ -1769,16 +2403,23 @@ def reconstruct(
         wl=wl,
         site_ids=site_ids,
         pca_variance=pca_variance,
+        variables=variable_map,
     )
     full_cache_path = reconstruction_cache_path(time, **cache_kw)
+    save_spec = _reconstruction_save_spectra(override=save_spectra)
+    full_spectra_cache_path = reconstruction_spectra_cache_path(full_cache_path)
     if use_cache and not recompute:
         cached = _load_reconstruction_cache(full_cache_path, load=load)
         if cached is not None:
-            return cached
+            if save_spec and not full_spectra_cache_path.is_file():
+                logger.info(
+                    "Bulk cache hit but full spectra cache missing — recomputing"
+                )
+            else:
+                return cached
 
     offshore_store = open_offshore_waves(offshore_name)
     periods = _month_periods(time, offshore_store)
-    models_by_goal: dict[str, dict[str, Any]] | None = None
 
     period_kw = dict(
         active=active,
@@ -1789,6 +2430,9 @@ def reconstruct(
         wl=wl,
         recompute=recompute,
         use_cache=use_cache,
+        device=device,
+        save_spectra=save_spectra,
+        variables=variable_map,
     )
 
     if len(periods) == 1:
@@ -1798,12 +2442,20 @@ def reconstruct(
             n,
             time_label=period,
             load=load,
-            models_by_goal=models_by_goal,
             cache_path=reconstruction_cache_path(period, **cache_kw),
             **period_kw,
         )
         if use_cache and _time_label_for_cache(period) != _time_label_for_cache(time):
             _save_reconstruction_cache(result, full_cache_path)
+            if save_spec:
+                period_spec = _load_reconstruction_cache(
+                    reconstruction_spectra_cache_path(
+                        reconstruction_cache_path(period, **cache_kw)
+                    ),
+                    load=False,
+                )
+                if period_spec is not None:
+                    _save_reconstruction_cache(period_spec, full_spectra_cache_path)
         return result
 
     logger.info(
@@ -1828,8 +2480,6 @@ def reconstruct(
                 )
                 monthly.append(cached_month)
                 continue
-        if models_by_goal is None:
-            models_by_goal = _load_models_by_goal(active, n, pca_variance=pca_variance)
         logger.info("Reconstruct month %d/%d: %r", i, len(periods), period)
         monthly.append(
             _reconstruct_period(
@@ -1837,7 +2487,6 @@ def reconstruct(
                 n,
                 time_label=period,
                 load=False,
-                models_by_goal=models_by_goal,
                 cache_path=month_path,
                 **period_kw,
             )
@@ -1851,6 +2500,25 @@ def reconstruct(
         result = result.load()
     if use_cache:
         _save_reconstruction_cache(result, full_cache_path)
+        if save_spec:
+            monthly_specs: list[xr.Dataset] = []
+            for period in periods:
+                spec_path = reconstruction_spectra_cache_path(
+                    reconstruction_cache_path(period, **cache_kw)
+                )
+                spec_month = _load_reconstruction_cache(spec_path, load=False)
+                if spec_month is not None:
+                    monthly_specs.append(spec_month)
+            if monthly_specs:
+                full_spec = xr.concat(monthly_specs, dim="time")
+                if load:
+                    full_spec = full_spec.load()
+                _save_reconstruction_cache(full_spec, full_spectra_cache_path)
+                logger.info(
+                    "Saved full spectra cache: %s (%.2f MB)",
+                    full_spectra_cache_path.name,
+                    full_spectra_cache_path.stat().st_size * 1e-6,
+                )
     logger.info(
         "Reconstruction done: %d site(s), %.2f MB (%d months)",
         result.sizes["sites"],
@@ -1882,6 +2550,8 @@ __all__ = [
     "reconstruct",
     "reconstruction_cache_dir",
     "reconstruction_cache_path",
+    "reconstruction_spectra_cache_path",
+    "load_reconstruction_spectra",
     "require_models",
     "require_models_all",
     "resolve_reconstruction_sites",
