@@ -1,0 +1,2 @@
+   0 {% for g in range(ngoals) %} {{ wl }}{% endfor %}
+3600 {% for g in range(ngoals) %} {{ wl }}{% endfor %}
