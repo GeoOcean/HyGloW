@@ -1,0 +1,20 @@
+# Portal metadata — paths and model settings come from each case JSON.
+cases:
+  - id: samoa
+    case_dir: Samoa
+    institution: GeoOcean
+    authors:
+      - name: tausiaj
+        github: https://github.com/tausiaj
+        role: downscaling & metamodel
+    repository: https://github.com/tausiaj/HyGloW
+    updated: "2026-07-15"
+    pipeline:
+      mesh: done
+      goals: done
+      lhs: done
+      fit: done
+      whacs: done
+      hindcast: done
+      buoy_validation: done
+      spectra_validation: in_progress
