@@ -37,6 +37,16 @@ Next steps (see {target.name}/README.md):
     return 0
 
 
+def _cmd_update(args: argparse.Namespace) -> int:
+    from .update import UpdateError, update_case
+
+    try:
+        return update_case(args.case_dir, force=args.force, dry_run=args.dry_run)
+    except UpdateError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+
 def _cmd_validate(args: argparse.Namespace) -> int:
     from .contract.validate import main as validate_main
 
@@ -75,6 +85,26 @@ def main(argv: list[str] | None = None) -> int:
         "--no-notebooks", action="store_true", help="Skip copying the pipeline notebooks"
     )
     p_start.set_defaults(func=_cmd_start)
+
+    p_update = sub.add_parser(
+        "update",
+        help="Re-sync a case's vendored engine from the template",
+        description=(
+            "Update the case's engine files (utils/, mesher, tests/) to the "
+            "current hyglow/template/ versions. Locally modified files are "
+            "kept unless --force. Notebooks and SnapWave templates are never "
+            "touched. Orphaned files (e.g. a legacy pymesh2d/) are reported, "
+            "never deleted."
+        ),
+    )
+    p_update.add_argument("case_dir", help="Path to the case folder")
+    p_update.add_argument(
+        "--force", action="store_true", help="Overwrite locally modified files too"
+    )
+    p_update.add_argument(
+        "--dry-run", action="store_true", help="Report the plan without writing"
+    )
+    p_update.set_defaults(func=_cmd_update)
 
     p_validate = sub.add_parser(
         "validate",

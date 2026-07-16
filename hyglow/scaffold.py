@@ -30,6 +30,9 @@ TEMPLATE_DIR = Path(__file__).resolve().parent / "template"
 # (the template ships bluemesh2d, older cases like Samoa still carry pymesh2d).
 ENGINE_DIRS = ("utils", "bluemesh2d", "pymesh2d")
 SUPPORT_DIRS = ("tests", "templates-metamodel", "templates-dynamic")
+# Hashed in the manifest and kept in sync by `hyglow update`. SnapWave
+# templates and notebooks are user-owned after scaffolding — never synced.
+SYNCED_DIRS = ENGINE_DIRS + ("tests",)
 INPUT_SUBDIRS = ("AoI_Polygons", "GEBCO", "GRID", "Goals", "Observations", "WHACS")
 EMPTY_DIRS = ("outputs", "logs")
 
@@ -68,16 +71,19 @@ def _render_template(template_name: str, target: Path, name: str) -> None:
 
 
 def _file_hashes(root: Path, dirs: tuple[str, ...]) -> dict[str, str]:
-    """sha256 per vendored engine file, for future `hyglow update` diffing."""
+    """sha256 per vendored engine file, used by `hyglow update` for diffing."""
     hashes: dict[str, str] = {}
     for dirname in dirs:
         base = root / dirname
         if not base.is_dir():
             continue
         for path in sorted(base.rglob("*")):
-            if path.is_file():
-                digest = hashlib.sha256(path.read_bytes()).hexdigest()
-                hashes[str(path.relative_to(root))] = digest
+            if not path.is_file():
+                continue
+            rel = path.relative_to(root)
+            if "__pycache__" in rel.parts or path.suffix == ".pyc":
+                continue
+            hashes[str(rel)] = hashlib.sha256(path.read_bytes()).hexdigest()
     return hashes
 
 
@@ -142,7 +148,7 @@ def start_case(
         "source": source.name if from_case else f"hyglow-template@{__version__}",
         "created": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "notebooks": copied_notebooks,
-        "engine_files": _file_hashes(target, ENGINE_DIRS),
+        "engine_files": _file_hashes(target, SYNCED_DIRS),
     }
     manifest_dir = target / ".hyglow"
     manifest_dir.mkdir()

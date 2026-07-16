@@ -14,6 +14,11 @@ python -m hyglow start --name Cantabria
 # Check a case against the case contract
 python -m hyglow validate Cantabria/             # development mode: gaps are warnings
 python -m hyglow validate Cantabria/ --publish   # strict: portal-ready check
+
+# Re-sync a case's vendored engine from the template
+python -m hyglow update Cantabria/ --dry-run     # report only
+python -m hyglow update Cantabria/               # sync untouched files, keep local edits
+python -m hyglow update Cantabria/ --force       # overwrite local edits too
 ```
 
 `start` is deliberately minimal — it creates the structure and the user takes
@@ -38,8 +43,9 @@ No data is downloaded.
   code (`utils/`, `bluemesh2d/`), case-agnostic pipeline notebooks
   (`notebooks/`), SnapWave templates, tests, and the config skeleton.
   Engine improvements and notebook fixes land there. Existing cases
-  (including Samoa) are snapshots that can be re-synced later
-  (`hyglow update`, planned).
+  are snapshots that `hyglow update` re-syncs: untouched engine files are
+  updated, locally modified ones are kept (overridden by `--force`), and
+  notebooks/SnapWave templates are never touched.
 - **The contract is the interface.** The GUI and any global aggregation read
   only contract files (case JSON, goals, observations, metrics CSVs,
   figures). What a case does internally is its author's business.
