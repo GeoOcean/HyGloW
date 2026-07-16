@@ -204,3 +204,6 @@ Cantabria/
 
 # QGIS
 QGIS/
+
+# VS Code
+.vscode/
