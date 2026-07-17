@@ -4,7 +4,7 @@
     "schema_version": 1,
     "paths": {
         "aoi_file": "inputs/AoI_Polygons/Samoa_AoI.shp",
-        "topobathy_file": "inputs/GEBCO/Samoa_GEBCO_NOAA_3s.tiff",
+        "topobathy_file": "inputs/GEBCO/Samoa_GEBCO_SMOOTH_NOAA_3s.tiff",
         "mesh_file": "inputs/GRID/Samoa_mesh.nc"
     },
     "onshore_waves": "inputs/Observations/Samoa_observations.json",
