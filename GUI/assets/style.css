@@ -131,9 +131,9 @@ body {
     top: 1rem;
     left: 1rem;
     width: min(340px, calc(100vw - 2rem));
-    max-height: calc(100% - 280px);
+    max-height: calc(100% - 240px);
     overflow-y: auto;
-    padding: 1rem 1.1rem;
+    padding: 1rem 1.1rem 1.25rem;
 }
 
 .controls-panel {
@@ -222,24 +222,32 @@ body {
 }
 
 .status-pill {
-    padding: 0.2rem 0.55rem;
+    padding: 0.28rem 0.65rem;
     border-radius: 999px;
-    font-size: 0.68rem;
+    font-size: 0.78rem;
     font-weight: 600;
+    line-height: 1.35;
     text-transform: capitalize;
     border: 1px solid transparent;
+    white-space: nowrap;
 }
 
 .status-pill.done {
-    background: rgba(52, 211, 153, 0.15);
-    border-color: rgba(52, 211, 153, 0.35);
-    color: #6ee7b7;
+    background: rgba(52, 211, 153, 0.2);
+    border-color: rgba(52, 211, 153, 0.5);
+    color: #86efac;
 }
 
 .status-pill.progress {
-    background: rgba(251, 191, 36, 0.12);
-    border-color: rgba(251, 191, 36, 0.35);
-    color: #fcd34d;
+    background: rgba(251, 191, 36, 0.18);
+    border-color: rgba(251, 191, 36, 0.5);
+    color: #fde68a;
+}
+
+.status-pill.todo {
+    background: rgba(148, 163, 184, 0.14);
+    border-color: rgba(148, 163, 184, 0.4);
+    color: #cbd5e1;
 }
 
 .control-label {
@@ -286,6 +294,12 @@ body {
     background: var(--danger);
     clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
     border-radius: 0;
+}
+
+.dot.aoi {
+    background: rgba(125, 211, 252, 0.15);
+    border: 2px solid #7dd3fc;
+    border-radius: 3px;
 }
 
 /* Drawer / tabs */

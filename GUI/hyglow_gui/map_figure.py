@@ -10,6 +10,8 @@ MAP_STYLE = "open-street-map"
 GOAL_COLOR = "#22d3ee"
 GOAL_SELECTED = "#fbbf24"
 BUOY_COLOR = "#f87171"
+AOI_LINE = "#7dd3fc"
+AOI_FILL = "rgba(125, 211, 252, 0.22)"
 MAP_UIREVISION = "hyglow-map-v1"
 
 
@@ -38,16 +40,28 @@ def build_map(
     bounds: dict[str, list[float]],
     *,
     selected_goal: str | None = None,
+    aoi: list[list[tuple[float, float]]] | None = None,
 ) -> go.Figure:
     fig = go.Figure()
 
-    if goals.empty:
-        fig.update_layout(
-            mapbox={"style": MAP_STYLE, "center": _center(bounds), "zoom": _zoom(bounds)},
-            margin={"l": 0, "r": 0, "t": 0, "b": 0},
-            uirevision=MAP_UIREVISION,
+    if aoi:
+        lon: list[float | None] = []
+        lat: list[float | None] = []
+        for ring in aoi:
+            lon += [p[0] for p in ring] + [ring[0][0], None]
+            lat += [p[1] for p in ring] + [ring[0][1], None]
+        fig.add_trace(
+            go.Scattermapbox(
+                lon=lon,
+                lat=lat,
+                mode="lines",
+                name="AoI",
+                fill="toself",
+                fillcolor=AOI_FILL,
+                line={"color": AOI_LINE, "width": 2.5},
+                hoverinfo="skip",
+            )
         )
-        return fig
 
     selected = str(selected_goal) if selected_goal is not None else None
     other = goals[goals["goal"] != selected] if selected else goals

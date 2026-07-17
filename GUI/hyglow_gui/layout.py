@@ -3,6 +3,7 @@ from dash import dcc, html
 
 from .loaders import (
     list_figures,
+    load_aoi,
     load_case,
     load_case_config,
     load_catalog,
@@ -20,13 +21,22 @@ def _author_links(authors: list[dict]) -> list:
     ]
 
 
+def _pipeline_pill_class(value) -> str:
+    status = str(value).lower()
+    if status == "done":
+        return "done"
+    if status in ("todo", "pending", "not_started"):
+        return "todo"
+    return "progress"
+
+
 def _pipeline_badges(case: dict) -> html.Div:
     pipeline = case.get("pipeline", {})
     return html.Div(
         [
             html.Span(
                 key.replace("_", " "),
-                className=f"status-pill {'done' if value == 'done' else 'progress'}",
+                className=f"status-pill {_pipeline_pill_class(value)}",
                 title=str(value),
             )
             for key, value in pipeline.items()
@@ -94,6 +104,7 @@ def controls_panel(catalog: list[dict]) -> html.Div:
 def legend_panel() -> html.Div:
     return html.Div(
         [
+            html.Div([html.Span(className="dot aoi"), " Area of interest"], className="legend-row"),
             html.Div([html.Span(className="dot goal"), " Downscaling goals"], className="legend-row"),
             html.Div([html.Span(className="dot selected"), " Selected goal"], className="legend-row"),
             html.Div([html.Span(className="dot buoy"), " Wave observations"], className="legend-row"),
@@ -158,7 +169,8 @@ def build_layout() -> html.Div:
     config = load_case_config(case)
     goals = load_goals(case, config)
     observations = load_observations(case, config)
-    bounds = region_bounds(case, config, goals, observations)
+    aoi = load_aoi(case, config)
+    bounds = region_bounds(case, config, goals, observations, aoi)
     figures = list_figures(case)
 
     map_config = {

@@ -7,6 +7,7 @@ from .layout import case_panel
 from .loaders import (
     list_figures,
     load_all_metrics,
+    load_aoi,
     load_case,
     load_case_config,
     load_goals,
@@ -43,6 +44,7 @@ def register_callbacks(app):
         metrics = load_all_metrics(case)
         goals = load_goals(case, config)
         observations = load_observations(case, config)
+        aoi = load_aoi(case, config)
         candidates = mda_candidates(case, config, metrics)
         default_mda = production_mda(candidates)
 
@@ -58,7 +60,7 @@ def register_callbacks(app):
             goal_options,
             goal_options[0]["value"] if goal_options else None,
             [p.name for p in list_figures(case)],
-            region_bounds(case, config, goals, observations),
+            region_bounds(case, config, goals, observations, aoi),
         )
 
     @app.callback(
@@ -86,7 +88,14 @@ def register_callbacks(app):
         config = load_case_config(case)
         goals = load_goals(case, config)
         buoys = load_observations(case, config)
-        return build_map(goals, buoys, bounds or {"lon": [-180, 180], "lat": [-90, 90]}, selected_goal=goal_id)
+        aoi = load_aoi(case, config)
+        return build_map(
+            goals,
+            buoys,
+            bounds or {"lon": [-180, 180], "lat": [-90, 90]},
+            selected_goal=goal_id,
+            aoi=aoi,
+        )
 
     @app.callback(
         Output("tab-content", "children"),

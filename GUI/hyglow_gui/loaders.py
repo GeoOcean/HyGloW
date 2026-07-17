@@ -88,6 +88,34 @@ def load_observations(case: dict, config: dict | None = None) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def load_aoi(case: dict, config: dict | None = None) -> list[list[tuple[float, float]]]:
+    """Rings of the case AoI polygon(s) from ``paths.aoi_file`` (EPSG:4326).
+
+    Returns an empty list when the AoI is not declared, missing, or pyshp
+    is unavailable — the map simply omits the layer.
+    """
+    config = config or load_case_config(case)
+    aoi_rel = config.get("paths", {}).get("aoi_file")
+    if not isinstance(aoi_rel, str) or not aoi_rel:
+        return []
+    path = resolve_case(case, aoi_rel)
+    if not path.is_file():
+        return []
+    try:
+        import shapefile
+    except ImportError:
+        return []
+
+    rings: list[list[tuple[float, float]]] = []
+    for shape in shapefile.Reader(str(path)).shapes():
+        breaks = list(shape.parts) + [len(shape.points)]
+        for lo, hi in zip(breaks[:-1], breaks[1:]):
+            ring = [(float(x), float(y)) for x, y in shape.points[lo:hi]]
+            if len(ring) >= 3:
+                rings.append(ring)
+    return rings
+
+
 def load_all_metrics(case: dict) -> pd.DataFrame:
     outputs = case_root(case) / "outputs"
     frames = [pd.read_csv(path) for path in sorted(outputs.glob("goal_*/validation_metrics.csv"))]
@@ -105,9 +133,18 @@ def list_figures(case: dict) -> list[Path]:
     return sorted(fig_dir.glob("fig*.png"))
 
 
-def region_bounds(case: dict, config: dict, goals: pd.DataFrame, observations: pd.DataFrame) -> dict[str, list[float]]:
+def region_bounds(
+    case: dict,
+    config: dict,
+    goals: pd.DataFrame,
+    observations: pd.DataFrame,
+    aoi: list[list[tuple[float, float]]] | None = None,
+) -> dict[str, list[float]]:
     lons = list(goals["lon"]) + list(observations.get("lon", []))
     lats = list(goals["lat"]) + list(observations.get("lat", []))
+    for ring in aoi or []:
+        lons += [p[0] for p in ring]
+        lats += [p[1] for p in ring]
     if not lons:
         return {"lon": [-180, 180], "lat": [-90, 90]}
     pad_lon = max(0.15, (max(lons) - min(lons)) * 0.08)
