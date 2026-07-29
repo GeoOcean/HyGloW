@@ -209,6 +209,35 @@ def _row_fid(row) -> int:
     raise KeyError("No fid/id column in nearest-neighbour join result")
 
 
+def _nearest_per_catalog(
+    points: gpd.GeoDataFrame,
+    catalogs: dict[str, gpd.GeoDataFrame],
+    *,
+    work_crs: str,
+) -> dict[Any, dict[str, dict[str, Any]]]:
+    """Nearest hindcast node per catalog, for every point in one join per catalog.
+
+    Each catalog is reprojected once regardless of how many points are
+    queried — :func:`snap_to_catalogs` wraps this for a single point, but
+    calling it once per point (as looping callers used to) reprojects the
+    same catalog once per point too.
+    """
+    pts_xy = points.to_crs(work_crs)
+    out: dict[Any, dict[str, dict[str, Any]]] = {idx: {} for idx in points.index}
+    for name, catalog in catalogs.items():
+        cat_xy = catalog.to_crs(work_crs)
+        joined = gpd.sjoin_nearest(pts_xy, cat_xy, how="left", distance_col="dist")
+        joined = joined[~joined.index.duplicated(keep="first")]
+        for idx, row in joined.iterrows():
+            out[idx][name] = {
+                "fid": _row_fid(row),
+                "longitude": float(row["longitude"]),
+                "latitude": float(row["latitude"]),
+                "distance_m": round(float(row["dist"]), 1),
+            }
+    return out
+
+
 def snap_to_catalogs(
     target: Point | gpd.GeoSeries,
     catalogs: dict[str, gpd.GeoDataFrame],
@@ -217,19 +246,8 @@ def snap_to_catalogs(
 ) -> dict[str, dict[str, Any]]:
     """Nearest hindcast node per catalog for one target point."""
 
-    pt = gpd.GeoDataFrame(geometry=[target], crs=GEO_CRS).to_crs(work_crs)
-    out: dict[str, dict[str, Any]] = {}
-    for name, catalog in catalogs.items():
-        cat_xy = catalog.to_crs(work_crs)
-        joined = gpd.sjoin_nearest(pt, cat_xy, how="left", distance_col="dist")
-        row = joined.iloc[0]
-        out[name] = {
-            "fid": _row_fid(row),
-            "longitude": float(row["longitude"]),
-            "latitude": float(row["latitude"]),
-            "distance_m": round(float(row["dist"]), 1),
-        }
-    return out
+    pt = gpd.GeoDataFrame(geometry=[target], crs=GEO_CRS)
+    return _nearest_per_catalog(pt, catalogs, work_crs=work_crs)[0]
 
 
 @dataclass
@@ -372,6 +390,7 @@ def build_goals_dict(
     """
 
     targets_xy = targets.to_crs(work_crs)
+    hindcasts = _nearest_per_catalog(targets, catalogs, work_crs=work_crs)
     goals: dict[str, dict[str, Any]] = {}
 
     for _, row in targets.iterrows():
@@ -387,7 +406,7 @@ def build_goals_dict(
             "angles": sectors.sector_at_boundary(pt_xy, margin_deg=margin_deg)[
                 "angles"
             ],
-            "hindcast": snap_to_catalogs(pt_geo, catalogs, work_crs=work_crs),
+            "hindcast": hindcasts[row.name],
         }
     return goals
 

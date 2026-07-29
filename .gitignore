@@ -198,6 +198,7 @@ NorthCarolina/assets/
 pymesh2d/
 */tmp/
 Samoa/OLD_results/
+Samoa/*.py
 
 # Arquetypes
 Cantabria/
@@ -207,5 +208,6 @@ QGIS/
 
 # VS Code
 .vscode/
-# EuropePolygons downloaded source data
-EuropePolygons/data/
+
+# EuropePolygons still test
+EuropePolygons/
