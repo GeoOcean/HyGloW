@@ -3,7 +3,7 @@
   "hyglow_version": "0.3.0",
   "schema_version": 1,
   "source": "hyglow-template@0.3.0",
-  "updated": "2026-07-31T08:22:40+00:00",
+  "updated": "2026-07-31T10:35:58+00:00",
   "engine_files": {
     "utils/__init__.py": "1cca045a7af34d3bc9213933ecdef953811c2567858c3e11078967084f04a2b2",
     "utils/config.py": "67ddb4904f80e8b11009eb2b34b0dd7f7127b39da3fae483115d2d2e2f82b185",
