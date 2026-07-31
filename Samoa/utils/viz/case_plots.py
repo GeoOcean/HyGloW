@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -71,10 +72,12 @@ ANNOTATE_FONTSIZE, ANNOTATE_OFFSET = 8, (4, 4)
 SECTOR_ALPHA = 0.15
 
 
+@lru_cache(maxsize=1)
 def _topobathy():
     return rioxarray.open_rasterio(resolve(PATHS["topobathy_file"])).squeeze(drop=True)
 
 
+@lru_cache(maxsize=1)
 def _aoi() -> gpd.GeoDataFrame:
     return gpd.read_file(resolve(PATHS["aoi_file"]))
 
@@ -369,10 +372,15 @@ def plot_validation_sites(
     labels = np.asarray(labels, dtype=str)
     lon = np.asarray(lon, dtype=float)
     lat = np.asarray(lat, dtype=float)
+    sources = np.asarray(sources, dtype=str)
 
+    # Color/marker/size are a pure function of (source, label), so one dense
+    # mesh polygon (thousands of sites, all same label) collapses to a single
+    # scatter() call instead of one call per point — each ax.scatter() call
+    # triggers a full O(n) axes autoscale, so per-point calls were O(n^2).
     drawn: set[tuple[str, str]] = set()
-    for i in range(len(lon)):
-        source, label = sources[i], labels[i]
+    for source, label in sorted(set(zip(sources, labels, strict=True))):
+        mask = (sources == source) & (labels == label)
         color = _site_color(source, label)
         marker = SITE_SOURCE_MARKERS.get(source, "o")
         size = POINT_MARKERSIZE * (0.35 if source == "mesh" else 1.0) * markersize_scale
@@ -386,8 +394,8 @@ def plot_validation_sites(
             else ("mesh" if source == "mesh" else "buoy")
         )
         ax.scatter(
-            lon[i],
-            lat[i],
+            lon[mask],
+            lat[mask],
             c=color,
             marker=marker,
             s=size,
@@ -554,35 +562,10 @@ def _plot_goal_dir_range_bars(
     ax.invert_yaxis()
 
 
-def plot_metamodel_configuration(
-    *,
-    aoi_gdf: gpd.GeoDataFrame,
-    enclosure_polygon: Polygon | MultiPolygon,
-    goals_config: dict[str, dict[str, Any]],
-    cases_df: pd.DataFrame,
-    output_sites_df: pd.DataFrame,
-    bounds: dict[str, list[float]] | None = None,
-    num_samples_per_goal: int | None = None,
-    mesh_file: str | None = None,
-    enclosure_buffer_m: float | None = None,
-    sector_radius_deg: float = 0.35,
-    arrow_scale_deg: float = 0.15,
-    max_arrows_per_goal: int = 25,
-    show_topobathy: bool = True,
-    title: str = "Metamodel pre-run diagnostic",
-) -> Figure:
-    """
-    Multi-panel diagnostic before building or running metamodel SnapWave cases.
-
-    Layout: map and direction-range bars on the left; text summary on the right.
-    """
-    required = {"goal", "tp", "dir", "spr", "wl"}
-    missing = required - set(cases_df.columns)
-    if missing:
-        raise KeyError(f"cases_df missing columns: {sorted(missing)}")
-
-    cases = cases_df.copy()
-    cases["goal"] = cases["goal"].astype(int)
+def _configuration_figure(
+    cases: pd.DataFrame,
+) -> tuple[Figure, Axes, Axes, Axes, list[int], dict[int, Any]]:
+    """Shared figure/gridspec skeleton for the config diagnostics: map, bar panel, info panel."""
     goal_ids = sorted(cases["goal"].unique())
     colors = _goal_colors(goal_ids)
 
@@ -592,7 +575,24 @@ def plot_metamodel_configuration(
     ax_bars = fig.add_subplot(gs[1, 0])
     ax_info = fig.add_subplot(gs[:, 1])
     ax_info.axis("off")
+    return fig, ax_map, ax_bars, ax_info, goal_ids, colors
 
+
+def _plot_configuration_map(
+    ax_map: Axes,
+    *,
+    enclosure_polygon: Polygon | MultiPolygon,
+    goals_config: dict[str, dict[str, Any]],
+    cases: pd.DataFrame,
+    colors: dict[int, Any],
+    output_sites_df: pd.DataFrame,
+    sector_radius_deg: float,
+    arrow_scale_deg: float,
+    max_arrows_per_goal: int,
+    show_topobathy: bool,
+    title: str,
+) -> None:
+    """Shared base map + enclosure + goal wedges/arrows + output sites for config diagnostics."""
     plot_base_map(ax=ax_map, title=title, show_topobathy=show_topobathy)
     gpd.GeoDataFrame(geometry=[enclosure_polygon], crs="EPSG:4326").boundary.plot(
         ax=ax_map,
@@ -678,6 +678,51 @@ def plot_metamodel_configuration(
     ax_map.set_aspect("equal", adjustable="box")
     ax_map.legend(loc="upper right", fontsize=7, framealpha=0.9)
 
+
+def plot_metamodel_configuration(
+    *,
+    aoi_gdf: gpd.GeoDataFrame,
+    enclosure_polygon: Polygon | MultiPolygon,
+    goals_config: dict[str, dict[str, Any]],
+    cases_df: pd.DataFrame,
+    output_sites_df: pd.DataFrame,
+    bounds: dict[str, list[float]] | None = None,
+    num_samples_per_goal: int | None = None,
+    mesh_file: str | None = None,
+    enclosure_buffer_m: float | None = None,
+    sector_radius_deg: float = 0.35,
+    arrow_scale_deg: float = 0.15,
+    max_arrows_per_goal: int = 25,
+    show_topobathy: bool = True,
+    title: str = "Metamodel pre-run diagnostic",
+) -> Figure:
+    """
+    Multi-panel diagnostic before building or running metamodel SnapWave cases.
+
+    Layout: map and direction-range bars on the left; text summary on the right.
+    """
+    required = {"goal", "tp", "dir", "spr", "wl"}
+    missing = required - set(cases_df.columns)
+    if missing:
+        raise KeyError(f"cases_df missing columns: {sorted(missing)}")
+
+    cases = cases_df.copy()
+    cases["goal"] = cases["goal"].astype(int)
+
+    fig, ax_map, ax_bars, ax_info, goal_ids, colors = _configuration_figure(cases)
+    _plot_configuration_map(
+        ax_map,
+        enclosure_polygon=enclosure_polygon,
+        goals_config=goals_config,
+        cases=cases,
+        colors=colors,
+        output_sites_df=output_sites_df,
+        sector_radius_deg=sector_radius_deg,
+        arrow_scale_deg=arrow_scale_deg,
+        max_arrows_per_goal=max_arrows_per_goal,
+        show_topobathy=show_topobathy,
+        title=title,
+    )
     _plot_goal_dir_range_bars(ax_bars, cases, goals_config, colors)
 
     n_cases = len(cases)
@@ -765,102 +810,22 @@ def plot_dynamic_configuration(
     Layout: map and direction-range bars on the left; text summary on the right.
     """
     cases = _offshore_bulk_long(offshore)
-    goal_ids = sorted(cases["goal"].unique())
-    colors = _goal_colors(goal_ids)
-    n_time = int(offshore.sizes.get("time", len(cases) // max(len(goal_ids), 1)))
+    n_time = int(offshore.sizes.get("time", len(cases) // max(cases["goal"].nunique(), 1)))
 
-    fig = plt.figure(figsize=(15, 10), constrained_layout=True)
-    gs = GridSpec(2, 2, figure=fig, width_ratios=[2.1, 1.0], height_ratios=[1.5, 0.75])
-    ax_map = fig.add_subplot(gs[0, 0])
-    ax_bars = fig.add_subplot(gs[1, 0])
-    ax_info = fig.add_subplot(gs[:, 1])
-    ax_info.axis("off")
-
-    plot_base_map(ax=ax_map, title=title, show_topobathy=show_topobathy)
-    gpd.GeoDataFrame(geometry=[enclosure_polygon], crs="EPSG:4326").boundary.plot(
-        ax=ax_map,
-        color="#d62728",
-        linestyle="--",
-        linewidth=1.4,
-        label="enclosure",
+    fig, ax_map, ax_bars, ax_info, goal_ids, colors = _configuration_figure(cases)
+    _plot_configuration_map(
+        ax_map,
+        enclosure_polygon=enclosure_polygon,
+        goals_config=goals_config,
+        cases=cases,
+        colors=colors,
+        output_sites_df=output_sites_df,
+        sector_radius_deg=sector_radius_deg,
+        arrow_scale_deg=arrow_scale_deg,
+        max_arrows_per_goal=max_arrows_per_goal,
+        show_topobathy=show_topobathy,
+        title=title,
     )
-
-    for goal_key in sorted(goals_config, key=int):
-        vals = goals_config[goal_key]
-        lon, lat = vals["lon"], vals["lat"]
-        left, right = vals["angles"]
-        color = colors.get(int(goal_key), DEFAULT_POINT_COLOR)
-        theta1, theta2 = nautical_sector_to_wedge_angles(left, right)
-        ax_map.add_patch(
-            Wedge(
-                (lon, lat),
-                sector_radius_deg,
-                theta1,
-                theta2,
-                facecolor=color,
-                edgecolor=color,
-                alpha=SECTOR_ALPHA,
-                linewidth=0.8,
-                zorder=4,
-            )
-        )
-        ax_map.plot(lon, lat, marker="*", color=color, markersize=12, zorder=6)
-        ax_map.text(
-            lon,
-            lat,
-            f" G{goal_key}",
-            fontsize=9,
-            color="black",
-            weight="bold",
-            zorder=7,
-            va="bottom",
-        )
-
-        sub = cases[cases["goal"] == int(goal_key)]
-        if len(sub) > max_arrows_per_goal:
-            sub = sub.sample(max_arrows_per_goal, random_state=0)
-        for _, row in sub.iterrows():
-            props, xytext, xy = _wave_from_arrowprops(
-                lon,
-                lat,
-                row["dir"],
-                scale_deg=arrow_scale_deg,
-                color=color,
-                alpha=0.55,
-            )
-            ax_map.annotate("", xy=xy, xytext=xytext, arrowprops=props, zorder=5)
-
-    if not output_sites_df.empty:
-        sites_gdf = gpd.GeoDataFrame(
-            output_sites_df,
-            geometry=gpd.points_from_xy(
-                output_sites_df["lon"], output_sites_df["lat"]
-            ),
-            crs="EPSG:4326",
-        )
-        for source, group in sites_gdf.groupby("source"):
-            marker = SITE_SOURCE_MARKERS.get(str(source), "o")
-            group.plot(
-                ax=ax_map,
-                marker=marker,
-                color=SITE_SOURCE_COLORS.get(str(source), DEFAULT_POINT_COLOR),
-                markersize=18 if source == "buoy" else 10,
-                edgecolor="white",
-                linewidth=0.4,
-                alpha=0.85,
-                label=f"sites: {source}",
-                zorder=3,
-            )
-
-    minx, miny, maxx, maxy = gpd.GeoDataFrame(
-        geometry=[enclosure_polygon], crs="EPSG:4326"
-    ).total_bounds
-    pad = 0.08
-    ax_map.set_xlim(minx - pad, maxx + pad)
-    ax_map.set_ylim(miny - pad, maxy + pad)
-    ax_map.set_aspect("equal", adjustable="box")
-    ax_map.legend(loc="upper right", fontsize=7, framealpha=0.9)
-
     _plot_goal_dir_range_bars(
         ax_bars,
         cases,

@@ -1,0 +1,2 @@
+   0 {% for spr in spr_goals %} {{ spr }}{% endfor %}
+3600 {% for spr in spr_goals %} {{ spr }}{% endfor %}
