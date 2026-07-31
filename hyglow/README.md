@@ -22,6 +22,9 @@ python -m hyglow validate Cantabria/ --publish   # strict: portal-ready check
 python -m hyglow update Cantabria/ --dry-run     # report only
 python -m hyglow update Cantabria/               # sync untouched files, keep local edits
 python -m hyglow update Cantabria/ --force       # overwrite local edits too
+
+# Run the hyglow package's own test suite (scaffold/update/validate/config)
+python -m unittest discover -s hyglow/tests -t . -v
 ```
 
 `start` is deliberately minimal — it creates the structure and the user takes
@@ -37,6 +40,7 @@ No data is downloaded.
 | `config.py`            | `CaseConfig` class — load any case folder programmatically  |
 | `scaffold.py`          | `start` implementation (vendoring + manifest)               |
 | `template/`            | The canonical case reference (see below)                    |
+| `tests/`               | Tests for `hyglow` itself — scaffold/update/validate/config |
 
 ## The model
 
