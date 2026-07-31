@@ -20,7 +20,7 @@ import geopandas as gpd
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import rioxarray  # noqa: F401
+import rioxarray
 import shapely
 import xarray as xr
 from shapely.geometry import MultiPolygon, Polygon
@@ -253,7 +253,8 @@ def compute_output_sites(
     cfg = {**OUTPUT_SITES_CONFIG, **dict(config or {})}
     rows: list[dict[str, Any]] = []
 
-    if bool(cfg.get("clip_to_aoi", True)) and aoi_polygon is None:
+    clip_to_aoi = bool(cfg.get("clip_to_aoi", True))
+    if clip_to_aoi and aoi_polygon is None:
         aoi_polygon = gpd.read_file(resolve(PATHS["aoi_file"])).geometry.iloc[0]
 
     iso_specs = cfg.get("isobaths") or []
@@ -337,9 +338,7 @@ def compute_output_sites(
 
     df = pd.DataFrame(rows).reset_index(drop=True)
 
-    if bool(cfg.get("clip_to_aoi", True)):
-        if aoi_polygon is None:
-            aoi_polygon = gpd.read_file(resolve(PATHS["aoi_file"])).geometry.iloc[0]
+    if clip_to_aoi:
         mask = shapely.contains_xy(
             aoi_polygon, df["lon"].to_numpy(float), df["lat"].to_numpy(float)
         )

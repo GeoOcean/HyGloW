@@ -250,11 +250,6 @@ def compute_metrics(
 # ---------------------------------------------------------------------------
 
 
-def _find_group(ds: xr.Dataset, group: str) -> tuple[str, str, list[str]]:
-    """Alias for :func:`utils.geometry.sites.find_group`."""
-    return find_group(ds, group)
-
-
 def metrics_table(
     estimate: xr.Dataset,
     reference: xr.Dataset,
@@ -514,7 +509,7 @@ class ComparisonResult:
     _groups: list[tuple[str, str, list[str]]] = field(repr=False)
 
     def site_ids(self, group: str) -> list[str]:
-        return _find_group(self.estimate, group)[2]
+        return find_group(self.estimate, group)[2]
 
     def plot(
         self,
@@ -525,7 +520,7 @@ class ComparisonResult:
         reference_label: str = "Reference",
         **kwargs: Any,
     ) -> Figure:
-        name, _, site_ids = _find_group(self.estimate, group)
+        name, _, site_ids = find_group(self.estimate, group)
         return plot_group(
             self.estimate,
             self.reference,
@@ -538,7 +533,7 @@ class ComparisonResult:
         )
 
     def plot_map(self, group: str, **kwargs: Any) -> tuple[Figure, plt.Axes]:
-        name, _, site_ids = _find_group(self.estimate, group)
+        name, _, site_ids = find_group(self.estimate, group)
         return plot_map(self.estimate, site_ids, group_name=name, **kwargs)
 
     def plot_scatter(
@@ -550,7 +545,7 @@ class ComparisonResult:
         reference_label: str = "Reference",
         **kwargs: Any,
     ) -> Figure:
-        name, _, site_ids = _find_group(self.estimate, group)
+        name, _, site_ids = find_group(self.estimate, group)
         return plot_scatter(
             self.estimate,
             self.reference,
@@ -609,6 +604,10 @@ class ComparisonResult:
         ]
 
 
+HOLDOUT_ESTIMATE_LABEL = "Metamodel"
+HOLDOUT_REFERENCE_LABEL = "SnapWave"
+
+
 @dataclass
 class HoldoutValidationResult(ComparisonResult):
     """Holdout metamodel validation for one goal and MDA train size."""
@@ -616,8 +615,8 @@ class HoldoutValidationResult(ComparisonResult):
     goal: str = ""
     mda_candidate: int = 0
     n_test_cases: int = 0
-    _default_estimate_label: str = field(default="Metamodel", repr=False)
-    _default_reference_label: str = field(default="SnapWave", repr=False)
+    _default_estimate_label: str = field(default=HOLDOUT_ESTIMATE_LABEL, repr=False)
+    _default_reference_label: str = field(default=HOLDOUT_REFERENCE_LABEL, repr=False)
 
     @property
     def n(self) -> int:
@@ -674,10 +673,6 @@ class HoldoutValidationResult(ComparisonResult):
             reference_label=reference_label or self._default_reference_label,
             **kwargs,
         )
-
-
-# Backward-compatible alias for holdout validation results.
-ValidationResult = HoldoutValidationResult
 
 
 def _holdout_pair(
@@ -743,11 +738,13 @@ def compare(
     variables
         Metrics variables to score.
     estimate_label, reference_label
-        Labels stored on the metrics table and used in plots.
+        Labels stored on the metrics table and used in plots. Always present
+        as ``estimate_label``/``reference_label`` columns, matching the
+        schema :func:`validate`/:func:`sweep` produce via ``_tag_metrics``.
     pca_variance
-        When set, adds a ``pca_variances`` column with the fully resolved PCA
-        fractions (including config defaults for variables omitted from a
-        partial override dict).
+        Fully resolved PCA fractions (config defaults filled in for any
+        variable omitted from a partial override dict), always stored in a
+        ``pca_variances`` column — ``None`` resolves to the config defaults.
 
     Returns
     -------
@@ -755,12 +752,9 @@ def compare(
         Metrics plus plot helpers.
     """
     table = metrics_table(estimate, reference, variables=variables)
-    if pca_variance is not None:
-        table.insert(0, "pca_variances", str(mm.resolved_pca_variances(pca_variance)))
-    if estimate_label != "Estimate" or reference_label != "Reference":
-        table = table.copy()
-        table["estimate_label"] = estimate_label
-        table["reference_label"] = reference_label
+    table.insert(0, "pca_variances", str(mm.resolved_pca_variances(pca_variance)))
+    table["estimate_label"] = estimate_label
+    table["reference_label"] = reference_label
     return ComparisonResult(
         estimate=estimate,
         reference=reference,
@@ -776,11 +770,15 @@ def _tag_metrics(
     n: int,
     n_test: int,
     pca_variance: mm.PcaVariance,
+    estimate_label: str = HOLDOUT_ESTIMATE_LABEL,
+    reference_label: str = HOLDOUT_REFERENCE_LABEL,
 ) -> pd.DataFrame:
     table.insert(0, "goal", goal)
     table.insert(1, "mda_candidate", n)
     table.insert(2, "n_test_cases", n_test)
     table.insert(3, "pca_variances", str(mm.resolved_pca_variances(pca_variance)))
+    table["estimate_label"] = estimate_label
+    table["reference_label"] = reference_label
     return table
 
 
@@ -907,6 +905,27 @@ def _paired_values(
     return _coincident_values(est, ref)
 
 
+MAX_DENSITY_POINTS = 5000
+"""Cap on points passed to ``gaussian_kde`` (O(n^2)) in :func:`_scatter_panel`."""
+
+
+def _subsample_for_density(
+    x: np.ndarray, y: np.ndarray, max_points: int = MAX_DENSITY_POINTS
+) -> tuple[np.ndarray, np.ndarray]:
+    """Randomly subsample paired arrays for ``gaussian_kde``.
+
+    Dense groups (e.g. a mesh polygon with thousands of sites) times many
+    holdout cases can reach 10^5-10^6 paired points; ``gaussian_kde``
+    evaluation is O(n^2) and becomes impractically slow well before that.
+    Subsampling only affects the density-color rendering, not the metrics
+    annotation (computed upstream on the full pair).
+    """
+    if x.size <= max_points:
+        return x, y
+    idx = np.random.default_rng(0).choice(x.size, size=max_points, replace=False)
+    return x[idx], y[idx]
+
+
 def _scatter_panel(
     ax: plt.Axes,
     estimate: np.ndarray,
@@ -928,19 +947,22 @@ def _scatter_panel(
         ax.set_title(f"{spec['label']} (no data)")
         return
 
+    est_plot, ref_plot = _subsample_for_density(est, ref)
     try:
-        xs, ys, density = density_scatter(est, ref)
+        xs, ys, density = density_scatter(est_plot, ref_plot)
         ax.scatter(xs, ys, c=density, s=10, cmap=cmap, edgecolors="none", alpha=0.9)
     except (np.linalg.LinAlgError, ValueError) as exc:
         logger.debug("density_scatter failed (%s); using plain scatter", exc)
-        ax.scatter(est, ref, s=10, color="steelblue", edgecolors="none", alpha=0.5)
-        xs, ys = est, ref
+        ax.scatter(
+            est_plot, ref_plot, s=10, color="steelblue", edgecolors="none", alpha=0.5
+        )
+        xs, ys = est_plot, ref_plot
 
     if spec["circular"]:
         lo, hi = 0.0, 360.0
     else:
         lo = 0.0
-        hi = float(np.ceil(max(xs.max(), ys.max()) * 1.05))
+        hi = float(np.ceil(max(est.max(), ref.max()) * 1.05))
 
     ax.plot([lo, hi], [lo, hi], "-r", lw=1.0)
     ax.set_xlim(lo, hi)
@@ -1099,29 +1121,6 @@ def plot_group(
 
     fig.tight_layout()
     return fig
-
-
-def plot_all_groups(
-    estimate: xr.Dataset,
-    reference: xr.Dataset,
-    *,
-    variables: Iterable[str] | None = None,
-    groups: list[tuple[str, str, list[str]]] | None = None,
-    **kwargs: Any,
-) -> list[Figure]:
-    """One map + scatter figure per validation group."""
-    active = groups or metric_groups(estimate)
-    return [
-        plot_group(
-            estimate,
-            reference,
-            group_name,
-            site_ids,
-            variables=variables,
-            **kwargs,
-        )
-        for group_name, _source, site_ids in active
-    ]
 
 
 _MODEL_COLORS: dict[str, str] = {
@@ -1493,9 +1492,9 @@ def plot_sweep_suite(
 
 __all__ = [
     "LOGGER_NAME",
+    "MAX_DENSITY_POINTS",
     "ComparisonResult",
     "HoldoutValidationResult",
-    "ValidationResult",
     "align_pair",
     "closest_goals_table",
     "compare",
@@ -1509,7 +1508,6 @@ __all__ = [
     "resolve_comparison_variables",
     "aggregate_sweep",
     "load_sweep_metrics",
-    "plot_all_groups",
     "plot_buoy_timeseries",
     "plot_group",
     "plot_map",
