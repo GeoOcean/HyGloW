@@ -1,5 +1,4 @@
 import plotly.express as px
-import plotly.graph_objects as go
 from dash import Input, Output, State, dash_table, dcc, html, no_update
 import dash_bootstrap_components as dbc
 
@@ -11,7 +10,9 @@ from .loaders import (
     load_case,
     load_case_config,
     load_goals,
+    load_isobaths,
     load_observations,
+    load_output_sites,
     mda_candidates,
     production_mda,
     region_bounds,
@@ -89,12 +90,16 @@ def register_callbacks(app):
         goals = load_goals(case, config)
         buoys = load_observations(case, config)
         aoi = load_aoi(case, config)
+        isobaths = load_isobaths(case, config)
+        output_sites = load_output_sites(case, config)
         return build_map(
             goals,
             buoys,
             bounds or {"lon": [-180, 180], "lat": [-90, 90]},
             selected_goal=goal_id,
             aoi=aoi,
+            isobaths=isobaths,
+            output_sites=output_sites,
         )
 
     @app.callback(

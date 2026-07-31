@@ -302,6 +302,28 @@ body {
     border-radius: 3px;
 }
 
+.dot.isobath-line {
+    background: transparent;
+    border: 2px solid #1f78b4;
+    border-radius: 0;
+    width: 12px;
+    height: 0;
+}
+
+.dot.site-isobath {
+    background: #38bdf8;
+    opacity: 0.55;
+    width: 7px;
+    height: 7px;
+}
+
+.dot.site-mesh {
+    background: #a78bfa;
+    opacity: 0.55;
+    width: 6px;
+    height: 6px;
+}
+
 /* Drawer / tabs */
 .drawer-header {
     padding: 0.5rem 0.75rem 0;

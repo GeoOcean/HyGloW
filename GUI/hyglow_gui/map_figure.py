@@ -12,6 +12,10 @@ GOAL_SELECTED = "#fbbf24"
 BUOY_COLOR = "#f87171"
 AOI_LINE = "#7dd3fc"
 AOI_FILL = "rgba(125, 211, 252, 0.22)"
+SITE_SOURCE_COLORS = {"isobath": "#38bdf8", "mesh": "#a78bfa"}
+# Same hex values as utils.viz.case_plots.ISOBATH_COLORS in the science codebase.
+ISOBATH_LINE_COLORS = {"5m": "#8dd3c7", "10m": "#1f78b4", "20m": "#33a02c", "50m": "#e31a1c"}
+ISOBATH_LINE_DEFAULT = "#94a3b8"
 MAP_UIREVISION = "hyglow-map-v1"
 
 
@@ -41,8 +45,32 @@ def build_map(
     *,
     selected_goal: str | None = None,
     aoi: list[list[tuple[float, float]]] | None = None,
+    isobaths: list[dict] | None = None,
+    output_sites: pd.DataFrame | None = None,
 ) -> go.Figure:
     fig = go.Figure()
+
+    for iso in isobaths or []:
+        lon = []
+        lat = []
+        for seg in iso["segments"]:
+            lon += [p[0] for p in seg] + [None]
+            lat += [p[1] for p in seg] + [None]
+        if not lon:
+            continue
+        fig.add_trace(
+            go.Scattermapbox(
+                lon=lon,
+                lat=lat,
+                mode="lines",
+                name=f"Isobath {iso['name']}",
+                line={
+                    "color": ISOBATH_LINE_COLORS.get(iso["name"], ISOBATH_LINE_DEFAULT),
+                    "width": 1.5,
+                },
+                hoverinfo="skip",
+            )
+        )
 
     if aoi:
         lon: list[float | None] = []
@@ -62,6 +90,27 @@ def build_map(
                 hoverinfo="skip",
             )
         )
+
+    if output_sites is not None and not output_sites.empty:
+        for source, group in output_sites.groupby("source"):
+            fig.add_trace(
+                go.Scattermapbox(
+                    lon=group["lon"],
+                    lat=group["lat"],
+                    mode="markers",
+                    name=f"Sites: {source}",
+                    marker={
+                        "size": 4 if source == "mesh" else 6,
+                        "color": SITE_SOURCE_COLORS.get(str(source), "#94a3b8"),
+                        "opacity": 0.55,
+                    },
+                    text=group["label"],
+                    hovertemplate=(
+                        f"<b>{source} site</b> %{{text}}<br>"
+                        "lon %{lon:.3f}, lat %{lat:.3f}<extra></extra>"
+                    ),
+                )
+            )
 
     selected = str(selected_goal) if selected_goal is not None else None
     other = goals[goals["goal"] != selected] if selected else goals

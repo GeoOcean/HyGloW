@@ -108,6 +108,9 @@ def legend_panel() -> html.Div:
             html.Div([html.Span(className="dot goal"), " Downscaling goals"], className="legend-row"),
             html.Div([html.Span(className="dot selected"), " Selected goal"], className="legend-row"),
             html.Div([html.Span(className="dot buoy"), " Wave observations"], className="legend-row"),
+            html.Div([html.Span(className="dot isobath-line"), " Isobath contours"], className="legend-row"),
+            html.Div([html.Span(className="dot site-isobath"), " Isobath output sites"], className="legend-row"),
+            html.Div([html.Span(className="dot site-mesh"), " Mesh output sites"], className="legend-row"),
         ],
         className="glass-panel legend-panel",
     )

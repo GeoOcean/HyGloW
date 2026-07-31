@@ -116,6 +116,135 @@ def load_aoi(case: dict, config: dict | None = None) -> list[list[tuple[float, f
     return rings
 
 
+_RASTER_X_NAMES = ("x", "lon", "longitude")
+_RASTER_Y_NAMES = ("y", "lat", "latitude")
+
+# Display-only resampling for isobath lines: independent of the case config's
+# per-isobath `spacing` (that one spaces discrete SnapWave output sites along
+# the contour; this one just keeps the drawn line smooth and light).
+ISOBATH_DISPLAY_SPACING_DEG = 0.02
+
+
+def _resample_polyline(points, spacing: float):
+    """Resample an (N, 2) polyline at approximately uniform arc length."""
+    import numpy as np
+
+    pts = np.asarray(points, dtype=float)
+    seg = np.diff(pts, axis=0)
+    seg_len = np.linalg.norm(seg, axis=1)
+    total = float(seg_len.sum())
+    if total <= 0.0:
+        return pts
+    cum = np.concatenate(([0.0], np.cumsum(seg_len)))
+    ds = np.arange(0.0, total, float(spacing))
+    if ds.size == 0 or (total - ds[-1]) > 0.25 * spacing:
+        ds = np.append(ds, total)
+    out = np.empty((ds.size, 2), dtype=float)
+    for k, d in enumerate(ds):
+        i = int(np.searchsorted(cum, d, side="right") - 1)
+        i = max(0, min(i, len(seg_len) - 1))
+        t = 0.0 if seg_len[i] == 0 else (d - cum[i]) / seg_len[i]
+        out[k] = pts[i] * (1.0 - t) + pts[i + 1] * t
+    return out
+
+
+def load_isobaths(case: dict, config: dict | None = None) -> list[dict]:
+    """Depth-contour lines extracted directly from the topobathy raster.
+
+    One entry per ``simulations.output_sites_config.isobaths`` spec:
+    ``{"name", "level", "segments"}`` where ``segments`` is a list of
+    ``[(lon, lat), ...]`` rings (a level can have several disjoint contours,
+    e.g. one per island). Returns ``[]`` when the raster/config is missing
+    or rioxarray/contourpy are unavailable — the map simply omits the layer.
+    """
+    config = config or load_case_config(case)
+    topobathy_rel = config.get("paths", {}).get("topobathy_file")
+    specs = config.get("simulations", {}).get("output_sites_config", {}).get("isobaths") or []
+    if not isinstance(topobathy_rel, str) or not specs:
+        return []
+    path = resolve_case(case, topobathy_rel)
+    if not path.is_file():
+        return []
+    try:
+        import contourpy
+        import numpy as np
+        import rioxarray
+    except ImportError:
+        return []
+
+    da = rioxarray.open_rasterio(path).squeeze("band", drop=True)
+    xname = next((n for n in _RASTER_X_NAMES if n in da.coords), None)
+    yname = next((n for n in _RASTER_Y_NAMES if n in da.coords), None)
+    if xname is None or yname is None:
+        return []
+
+    cg = contourpy.contour_generator(
+        x=da[xname].values,
+        y=da[yname].values,
+        z=np.asarray(da.values, dtype=float),
+        line_type=contourpy.LineType.Separate,
+    )
+
+    isobaths: list[dict] = []
+    for spec in specs:
+        level = spec.get("level")
+        if level is None:
+            continue
+        name = str(spec.get("name") or f"{abs(level):g}m")
+        segments = [s for s in cg.lines(float(level)) if len(s) >= 2]
+        segments = [_resample_polyline(s, ISOBATH_DISPLAY_SPACING_DEG) for s in segments]
+        isobaths.append(
+            {
+                "name": name,
+                "level": float(level),
+                "segments": [[(float(x), float(y)) for x, y in seg] for seg in segments],
+            }
+        )
+    return isobaths
+
+
+def load_output_sites(case: dict, config: dict | None = None) -> pd.DataFrame:
+    """Isobath/mesh output-site coordinates from one metamodel LHS case file.
+
+    Site layout (isobaths, mesh polygons) is shared across every goal, so
+    any single ``output_sites_*.nc`` gives the full case-wide table without
+    opening one per goal. Buoy sites are excluded — already shown via
+    :func:`load_observations`. Returns an empty frame when the metamodel
+    cases folder, xarray, or a matching file is unavailable.
+    """
+    empty = pd.DataFrame(columns=["lon", "lat", "source", "label"])
+    config = config or load_case_config(case)
+    cases_rel = config.get("simulations", {}).get("metamodel_cases")
+    if not isinstance(cases_rel, str) or not cases_rel:
+        return empty
+    cases_dir = resolve_case(case, cases_rel)
+    if not cases_dir.is_dir():
+        return empty
+    nc_files = sorted(cases_dir.glob("output_sites_*.nc"))
+    if not nc_files:
+        return empty
+    try:
+        import xarray as xr
+    except ImportError:
+        return empty
+
+    with xr.open_dataset(nc_files[0]) as ds:
+        required = {"site_longitude", "site_latitude", "site_source"}
+        if not required.issubset(ds.coords.keys() | ds.data_vars.keys()):
+            return empty
+        df = pd.DataFrame(
+            {
+                "lon": ds["site_longitude"].values,
+                "lat": ds["site_latitude"].values,
+                "source": ds["site_source"].values.astype(str),
+                "label": ds["site_label"].values.astype(str)
+                if "site_label" in ds.variables
+                else "",
+            }
+        )
+    return df[df["source"] != "buoy"].reset_index(drop=True)
+
+
 def load_all_metrics(case: dict) -> pd.DataFrame:
     outputs = case_root(case) / "outputs"
     frames = [pd.read_csv(path) for path in sorted(outputs.glob("goal_*/validation_metrics.csv"))]
