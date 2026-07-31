@@ -302,4 +302,4 @@ Artefacts (`outputs/`, `logs/`) — commit only if you want frozen validation re
 
 ## Dependencies
 
-bluemath_tk, wavespectra, SnapWave (external), xarray, geopandas, rioxarray, pymesh2d
+bluemath_tk, wavespectra, SnapWave (external), xarray, geopandas, rioxarray, bluemesh2d (pip)
