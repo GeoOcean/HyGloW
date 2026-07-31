@@ -3,10 +3,7 @@
 Source of truth for the HyGloW project tooling. `hyglow` itself never needs
 to be pip-installed: everything runs as `python -m hyglow` from the
 repository root, and case folders receive a **vendored copy** of `utils/` so
-they stay fully self-contained (laptop, HPC, or someone else's repo). The one
-exception is `bluemesh2d` (the mesher), which ships on PyPI and is installed
-as a regular dependency (`pip install -r requirements.txt` inside a case)
-rather than vendored.
+they stay fully self-contained (laptop, HPC, or someone else's repo).
 
 ## Commands
 
@@ -45,11 +42,10 @@ No data is downloaded.
 ## The model
 
 - **Cases are folders, not packages.** Each case carries its own engine
-  snapshot (`utils/`), stamped in `.hyglow/manifest.json`. `bluemesh2d` is a
-  pip dependency (`requirements.txt`), not part of the snapshot.
+  snapshot (`utils/`), stamped in `.hyglow/manifest.json`.
 - **`template/` is the canonical reference.** It holds the versioned engine
   code (`utils/`), case-agnostic pipeline notebooks (`notebooks/`), SnapWave
-  templates, tests, the `requirements.txt`, and the config skeleton.
+  templates, tests, and the config skeleton.
   Engine improvements and notebook fixes land there. Existing cases
   are snapshots that `hyglow update` re-syncs: untouched engine files are
   updated, locally modified ones are kept (overridden by `--force`), and

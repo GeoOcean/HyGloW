@@ -3,19 +3,13 @@
 Scaffolded with `python -m hyglow start`. This folder is **self-contained**:
 the engine code (`utils/`), the pipeline notebooks, SnapWave templates, and
 tests are all vendored here — it runs on any machine (laptop or HPC) without
-installing the `hyglow` package itself. The one dependency that isn't
-vendored is `bluemesh2d` (the mesher), installed from PyPI — see
-`requirements.txt`.
+installing the `hyglow` package itself.
 
 **Config:** `__CASE_NAME__.json` (auto-loaded by `utils.config`).
 Run notebooks with `__CASE_NAME__/` as the working directory.
 
 ## Getting started
 
-0. **Install dependencies** — `pip install -r requirements.txt` (pulls in
-   `bluemesh2d`; the rest of the scientific stack — xarray, geopandas,
-   rioxarray, bluemath_tk, wavespectra, etc. — is assumed to already be in
-   your environment, see Dependencies below).
 1. **Fill in the config** — open `__CASE_NAME__.json` and replace the `TODO`
    values. Review the LHS `bounds`, `output_sites_config` isobaths, and
    `metamodel` settings for your region (the defaults come from the Samoa
@@ -62,7 +56,6 @@ to the main HyGloW repository so everyone benefits.
 
 ## Dependencies
 
-`pip install -r requirements.txt` installs `bluemesh2d` (the mesher used by
-`02_Create_mesh_by_bluemesh2d.ipynb`). Everything else is expected to already
-be in your (conda) environment: bluemath_tk, wavespectra, xarray, geopandas,
-rioxarray, pandas, scipy, matplotlib — plus SnapWave (external binary).
+The following dependencies are expected to be in your (conda) environment: 
+bluemath_tk, bluemesh2d, wavespectra, xarray, geopandas, rioxarray, pandas, scipy, matplotlib (you can do `conda install -c conda-forge bluemath-tk`)
+— plus SnapWave (external binary), check [SnapWave repository](https://github.com/danoroelvink/snapwave/).
