@@ -1,15 +1,21 @@
 # __CASE_NAME__ — HyGloW hybrid wave downscaling case
 
 Scaffolded with `python -m hyglow start`. This folder is **self-contained**:
-the engine code (`utils/`, `bluemesh2d/`), the pipeline notebooks, SnapWave
-templates, and tests are all vendored here — it runs on any machine (laptop
-or HPC) without installing a package.
+the engine code (`utils/`), the pipeline notebooks, SnapWave templates, and
+tests are all vendored here — it runs on any machine (laptop or HPC) without
+installing the `hyglow` package itself. The one dependency that isn't
+vendored is `bluemesh2d` (the mesher), installed from PyPI — see
+`requirements.txt`.
 
 **Config:** `__CASE_NAME__.json` (auto-loaded by `utils.config`).
 Run notebooks with `__CASE_NAME__/` as the working directory.
 
 ## Getting started
 
+0. **Install dependencies** — `pip install -r requirements.txt` (pulls in
+   `bluemesh2d`; the rest of the scientific stack — xarray, geopandas,
+   rioxarray, bluemath_tk, wavespectra, etc. — is assumed to already be in
+   your environment, see Dependencies below).
 1. **Fill in the config** — open `__CASE_NAME__.json` and replace the `TODO`
    values. Review the LHS `bounds`, `output_sites_config` isobaths, and
    `metamodel` settings for your region (the defaults come from the Samoa
@@ -56,5 +62,7 @@ to the main HyGloW repository so everyone benefits.
 
 ## Dependencies
 
-Conda environment with: bluemath_tk, wavespectra, xarray, geopandas,
+`pip install -r requirements.txt` installs `bluemesh2d` (the mesher used by
+`02_Create_mesh_by_bluemesh2d.ipynb`). Everything else is expected to already
+be in your (conda) environment: bluemath_tk, wavespectra, xarray, geopandas,
 rioxarray, pandas, scipy, matplotlib — plus SnapWave (external binary).

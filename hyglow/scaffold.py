@@ -1,9 +1,11 @@
 """Scaffold a new self-contained HyGloW case folder.
 
 ``python -m hyglow start --name Cantabria`` creates a case from the built-in
-template (``hyglow/template/``): vendored engine code, case-agnostic pipeline
-notebooks, SnapWave templates, tests, and a fresh config skeleton. The result
-runs anywhere — laptop or HPC — with no package installation.
+template (``hyglow/template/``): vendored engine code (``utils/``), the
+``bluemesh2d`` pip dependency, case-agnostic pipeline notebooks, SnapWave
+templates, tests, and a fresh config skeleton. The result runs anywhere —
+laptop or HPC — with ``pip install -r requirements.txt`` for the one
+non-vendored dependency.
 
 ``--from-case Samoa`` clones an existing case's engine and notebooks instead
 (outputs stripped), for when you want to continue someone's working setup.
@@ -27,7 +29,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE_DIR = Path(__file__).resolve().parent / "template"
 
 # Vendored into every new case; whichever exist in the source are copied
-# (the template ships bluemesh2d, older cases like Samoa still carry pymesh2d).
+# (older cases, e.g. Samoa, still carry a vendored bluemesh2d/ or legacy
+# pymesh2d/ from before bluemesh2d became a pip dependency — see
+# requirements.txt).
 ENGINE_DIRS = ("utils", "bluemesh2d", "pymesh2d")
 SUPPORT_DIRS = ("tests", "templates-metamodel", "templates-dynamic")
 # Hashed in the manifest and kept in sync by `hyglow update`. SnapWave
@@ -134,6 +138,7 @@ def start_case(
     _render_template("case.json", target / f"{name}.json", name)
     _render_template("README.md", target / "README.md", name)
     _render_template("gitignore", target / ".gitignore", name)
+    _render_template("requirements.txt", target / "requirements.txt", name)
 
     for sub in INPUT_SUBDIRS:
         (target / "inputs" / sub).mkdir(parents=True)
