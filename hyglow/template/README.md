@@ -46,9 +46,11 @@ Run notebooks with `__CASE_NAME__/` as the working directory.
 ## Reference
 
 This folder was created from the versioned template in `hyglow/template/`
-(the canonical reference). The Samoa case in the main HyGloW repository is
-the most complete worked example — its README documents the full pipeline,
-the metamodel workflow, and the commit/re-run checklist in detail.
+(the canonical reference). Two worked examples live in the main HyGloW
+repository: **Samoa** is the most complete one — its README documents the
+full pipeline, the metamodel workflow, and the commit/re-run checklist in
+detail — and **NewSouthWales** shows a case mid-pipeline (mesh, goals, and
+observations done; fit and validation pending).
 
 `.hyglow/manifest.json` records which engine snapshot this case was created
 from. Treat `utils/` as vendored code: if you fix a bug there, please PR it

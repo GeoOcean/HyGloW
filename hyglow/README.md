@@ -9,16 +9,16 @@ they stay fully self-contained (laptop, HPC, or someone else's repo).
 
 ```bash
 # Scaffold a new self-contained case (engine + notebooks + templates + config skeleton)
-python -m hyglow start --name Cantabria
+python -m hyglow start --name MyCase
 
 # Check a case against the case contract
-python -m hyglow validate Cantabria/             # development mode: gaps are warnings
-python -m hyglow validate Cantabria/ --publish   # strict: portal-ready check
+python -m hyglow validate MyCase/             # development mode: gaps are warnings
+python -m hyglow validate MyCase/ --publish   # strict: portal-ready check
 
 # Re-sync a case's vendored engine from the template
-python -m hyglow update Cantabria/ --dry-run     # report only
-python -m hyglow update Cantabria/               # sync untouched files, keep local edits
-python -m hyglow update Cantabria/ --force       # overwrite local edits too
+python -m hyglow update MyCase/ --dry-run     # report only
+python -m hyglow update MyCase/               # sync untouched files, keep local edits
+python -m hyglow update MyCase/ --force       # overwrite local edits too
 
 # Run the hyglow package's own test suite (scaffold/update/validate/config)
 python -m unittest discover -s hyglow/tests -t . -v
@@ -54,8 +54,8 @@ No data is downloaded.
   only contract files (case JSON, goals, observations, metrics CSVs,
   figures). What a case does internally is its author's business.
 - **Community cases live in their authors' repos.** This repo hosts the
-  engine, the contract, the GUI, and a few worked examples (Samoa is the
-  most complete one).
+  engine, the contract, the GUI, and two worked examples: Samoa (full
+  pipeline through validation) and NewSouthWales (mid-pipeline).
 
 ## For tooling authors
 

@@ -203,6 +203,30 @@ keeps only variables present in buoy and all models.
 
 ---
 
+## Pre-run diagnostics (notebooks 05, 08)
+
+Before building or running SnapWave cases, both wrapper classes expose:
+
+```python
+wrapper.plot_configuration(...)       # map + per-goal direction bars + text summary
+wrapper.plot_configuration_map(...)   # same map alone, bigger — for reading goal labels closely
+```
+
+The per-goal bar panel means different things depending on the wrapper:
+
+- **Metamodel** (`SnapWaveMetaModelWrapper`) — the crisp outline bounds the
+  *actual sampled* direction interval, verifying the LHS design fills its
+  configured sector.
+- **Dynamic** (`SnapWaveDynamicModelWrapper`) — the crisp outline bounds the
+  goal's *configured* sector instead; the shaded density is the real
+  hindcast, which is free to (and does) extend past it — that gap is exactly
+  the "% outside sector" figure in the text panel.
+
+Colour is assigned by goal order (not a repeating qualitative palette), so
+it never runs out or repeats regardless of goal count.
+
+---
+
 ## Case diagnostic plots
 
 `utils.viz.snapwave_case_plots` — post-run SnapWave case check:
