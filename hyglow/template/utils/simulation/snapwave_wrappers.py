@@ -357,6 +357,35 @@ class SnapWaveModelWrapper(BaseModelWrapper):
         self.output_sites_df = output_sites_df.reset_index(drop=True)
         self._sites_txt = sites_filename
 
+        self.sbatch_file_example = """
+#!/bin/bash
+#SBATCH --job-name=snapwave
+#SBATCH --partition=geocean
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=2        # cores per case -- also change OMP_NUM_THREADS export below stays in sync automatically
+#SBATCH --mem=4gb
+#SBATCH --output=slurm_logs/%A_%a.out
+#SBATCH --error=slurm_logs/%A_%a.err
+
+SNAPWAVE_BIN=/home/tausiaj/GitHub-GeoOcean/SnapWave/SnapWave/lnx64/bin/snapwave
+
+# SnapWave has no thread-count logic of its own (no omp_set_num_threads,
+# no .inp parameter) -- it just inherits libgomp's default, which grabs
+# every online CPU unless told otherwise. This is the only knob.
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+
+case_dir=$(sed -n "${SLURM_ARRAY_TASK_ID}p" case_dirs.txt)
+cd "$case_dir"
+$SNAPWAVE_BIN > wrapper_out.log 2> wrapper_error.log
+rm snapwave.upw
+
+# --ntasks=1 pinned explicitly here too: with CR_Core, --cpus-per-task=1
+# gets rounded up to a full physical core (2 hw threads on hyperthreaded
+# nodes), and srun defaults its task count to allocated_cpus/cpus-per-task
+# when -n isn't given -- without this it silently launches snapwave TWICE.
+# srun --ntasks=1 --cpus-per-task=$SLURM_CPUS_PER_TASK "$SNAPWAVE_BIN" > "wrapper_out.log" 2> "wrapper_error.log"
+"""
+
     @property
     def _sites_nc(self) -> str:
         """NetCDF filename paired with the sites text file."""
@@ -542,6 +571,46 @@ class SnapWaveMetaModelWrapper(SnapWaveModelWrapper):
         plt.show()
         return fig
 
+    def plot_configuration_map(
+        self,
+        *,
+        cases_df: pd.DataFrame | None = None,
+        sector_radius_deg: float = 0.35,
+        arrow_scale_deg: float = 0.15,
+        max_arrows_per_goal: int = 25,
+        show_topobathy: bool = True,
+        figsize: tuple[float, float] = (12, 11),
+        show: bool = True,
+    ) -> plt.Figure:
+        """
+        Bigger, standalone map-only view of :meth:`plot_configuration`.
+
+        Same map as the combined diagnostic, just on its own larger axes —
+        use this to actually read goal labels on a case with many goals,
+        instead of the map being squeezed into the left column next to the
+        bar and info panels.
+        """
+        df = (
+            cases_df
+            if cases_df is not None
+            else pd.DataFrame(self.metamodel_parameters)
+        )
+        fig = plot.plot_metamodel_configuration_map(
+            enclosure_polygon=self.enclosure_polygon,
+            goals_config=self.goals_config,
+            cases_df=df,
+            output_sites_df=self.output_sites_df,
+            sector_radius_deg=sector_radius_deg,
+            arrow_scale_deg=arrow_scale_deg,
+            max_arrows_per_goal=max_arrows_per_goal,
+            show_topobathy=show_topobathy,
+            title="Metamodel configuration map",
+            figsize=figsize,
+        )
+        if show:
+            plt.show()
+        return fig
+
     def plot_case(
         self,
         goal: int,
@@ -662,6 +731,41 @@ class SnapWaveDynamicModelWrapper(SnapWaveModelWrapper):
                 if self.metamodel_parameters.get("save_map")
                 else None
             ),
+        )
+        if show:
+            plt.show()
+        return fig
+
+    def plot_configuration_map(
+        self,
+        *,
+        offshore: xr.Dataset,
+        sector_radius_deg: float = 0.35,
+        arrow_scale_deg: float = 0.15,
+        max_arrows_per_goal: int = 25,
+        show_topobathy: bool = True,
+        figsize: tuple[float, float] = (12, 11),
+        show: bool = True,
+    ) -> plt.Figure:
+        """
+        Bigger, standalone map-only view of :meth:`plot_configuration`.
+
+        Same map as the combined diagnostic, just on its own larger axes —
+        use this to actually read goal labels on a case with many goals,
+        instead of the map being squeezed into the left column next to the
+        bar and info panels.
+        """
+        fig = plot.plot_dynamic_configuration_map(
+            enclosure_polygon=self.enclosure_polygon,
+            goals_config=self.goals_config,
+            offshore=offshore,
+            output_sites_df=self.output_sites_df,
+            sector_radius_deg=sector_radius_deg,
+            arrow_scale_deg=arrow_scale_deg,
+            max_arrows_per_goal=max_arrows_per_goal,
+            show_topobathy=show_topobathy,
+            title="Dynamic configuration map",
+            figsize=figsize,
         )
         if show:
             plt.show()
