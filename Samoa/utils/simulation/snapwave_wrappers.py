@@ -542,6 +542,46 @@ class SnapWaveMetaModelWrapper(SnapWaveModelWrapper):
         plt.show()
         return fig
 
+    def plot_configuration_map(
+        self,
+        *,
+        cases_df: pd.DataFrame | None = None,
+        sector_radius_deg: float = 0.35,
+        arrow_scale_deg: float = 0.15,
+        max_arrows_per_goal: int = 25,
+        show_topobathy: bool = True,
+        figsize: tuple[float, float] = (12, 11),
+        show: bool = True,
+    ) -> plt.Figure:
+        """
+        Bigger, standalone map-only view of :meth:`plot_configuration`.
+
+        Same map as the combined diagnostic, just on its own larger axes —
+        use this to actually read goal labels on a case with many goals,
+        instead of the map being squeezed into the left column next to the
+        bar and info panels.
+        """
+        df = (
+            cases_df
+            if cases_df is not None
+            else pd.DataFrame(self.metamodel_parameters)
+        )
+        fig = plot.plot_metamodel_configuration_map(
+            enclosure_polygon=self.enclosure_polygon,
+            goals_config=self.goals_config,
+            cases_df=df,
+            output_sites_df=self.output_sites_df,
+            sector_radius_deg=sector_radius_deg,
+            arrow_scale_deg=arrow_scale_deg,
+            max_arrows_per_goal=max_arrows_per_goal,
+            show_topobathy=show_topobathy,
+            title="Metamodel configuration map",
+            figsize=figsize,
+        )
+        if show:
+            plt.show()
+        return fig
+
     def plot_case(
         self,
         goal: int,
@@ -662,6 +702,41 @@ class SnapWaveDynamicModelWrapper(SnapWaveModelWrapper):
                 if self.metamodel_parameters.get("save_map")
                 else None
             ),
+        )
+        if show:
+            plt.show()
+        return fig
+
+    def plot_configuration_map(
+        self,
+        *,
+        offshore: xr.Dataset,
+        sector_radius_deg: float = 0.35,
+        arrow_scale_deg: float = 0.15,
+        max_arrows_per_goal: int = 25,
+        show_topobathy: bool = True,
+        figsize: tuple[float, float] = (12, 11),
+        show: bool = True,
+    ) -> plt.Figure:
+        """
+        Bigger, standalone map-only view of :meth:`plot_configuration`.
+
+        Same map as the combined diagnostic, just on its own larger axes —
+        use this to actually read goal labels on a case with many goals,
+        instead of the map being squeezed into the left column next to the
+        bar and info panels.
+        """
+        fig = plot.plot_dynamic_configuration_map(
+            enclosure_polygon=self.enclosure_polygon,
+            goals_config=self.goals_config,
+            offshore=offshore,
+            output_sites_df=self.output_sites_df,
+            sector_radius_deg=sector_radius_deg,
+            arrow_scale_deg=arrow_scale_deg,
+            max_arrows_per_goal=max_arrows_per_goal,
+            show_topobathy=show_topobathy,
+            title="Dynamic configuration map",
+            figsize=figsize,
         )
         if show:
             plt.show()

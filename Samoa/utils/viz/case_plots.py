@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 
 import geopandas as gpd
+import matplotlib.colors as mcolors
+import matplotlib.patheffects as pe
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -70,11 +72,30 @@ POINT_MARKERSIZE, POINT_EDGE_WIDTH = 70, 0.6
 POINT_EDGE_COLOR = "white"
 ANNOTATE_FONTSIZE, ANNOTATE_OFFSET = 8, (4, 4)
 SECTOR_ALPHA = 0.15
+OUTSIDE_SECTOR_FLAG_PCT = 5.0
+DEFAULT_MAX_DIR_MARKS = 200
+
+
+TOPOBATHY_MAX_PIXELS = 4_000_000  # plenty for any figure size used here
 
 
 @lru_cache(maxsize=1)
 def _topobathy():
-    return rioxarray.open_rasterio(resolve(PATHS["topobathy_file"])).squeeze(drop=True)
+    """Load the case topobathy raster, decimated to a display-sized grid.
+
+    A source GEBCO tiff can be 100M+ pixels (float64) — rendering it at
+    native resolution through ``imshow``/colormap costs several GB per call
+    (RGBA buffer, normalization copies, ...) for a diagnostic figure that's
+    a few thousand pixels wide at most. Striding down to a fixed pixel
+    budget keeps every map in this module cheap regardless of source
+    resolution, with no visible loss at these figure sizes.
+    """
+    da = rioxarray.open_rasterio(resolve(PATHS["topobathy_file"])).squeeze(drop=True)
+    total = int(da.sizes.get("y", 1)) * int(da.sizes.get("x", 1))
+    if total > TOPOBATHY_MAX_PIXELS:
+        step = int(np.ceil((total / TOPOBATHY_MAX_PIXELS) ** 0.5))
+        da = da.isel(y=slice(None, None, step), x=slice(None, None, step))
+    return da.load()
 
 
 @lru_cache(maxsize=1)
@@ -422,8 +443,17 @@ def plot_validation_sites(
 
 
 def _goal_colors(goal_ids: list) -> dict:
-    cmap = plt.get_cmap("tab10")
-    return {gid: cmap(i % 10) for i, gid in enumerate(goal_ids)}
+    """Perceptually-uniform colour per goal, ordered along the AoI boundary.
+
+    Goals are numbered sequentially around the domain, so colour doubles as a
+    position cue. A qualitative palette (e.g. tab10) repeats hues past 10
+    goals and breaks that mapping; a continuous colormap sampled by rank
+    never repeats, at any goal count.
+    """
+    n = max(len(goal_ids), 1)
+    cmap = plt.get_cmap("viridis")
+    positions = np.linspace(0.08, 0.92, n) if n > 1 else [0.5]
+    return {gid: cmap(pos) for gid, pos in zip(goal_ids, positions, strict=True)}
 
 
 def _wave_from_arrowprops(
@@ -460,6 +490,37 @@ def _sector_spans(left: float, right: float) -> list[tuple[float, float]]:
     return [(left_n, right_n)]
 
 
+def _circular_intervals(dirs: np.ndarray) -> list[tuple[float, float]]:
+    """One or two (start, end) spans on [0, 360) tightly bounding *dirs*.
+
+    Plain ``[min(dirs), max(dirs)]`` is wrong whenever the data wraps
+    through 0 (a goal sector like ``[-5, 100]`` puts real samples near both
+    355-360 and 0-100, nothing in between) — it spans the whole empty
+    middle instead of jumping the gap. This finds the single largest gap
+    between consecutive sorted values (including the wraparound gap) and
+    treats everything else as the populated arc, splitting into two spans
+    if that arc crosses 0 — mirroring how :func:`_sector_spans` splits the
+    *allowed* sector itself.
+    """
+    vals = np.sort(np.mod(np.asarray(dirs, dtype=float), 360.0))
+    if vals.size <= 1:
+        v = float(vals[0]) if vals.size else 0.0
+        return [(v, v)]
+
+    gaps = np.diff(vals)
+    wrap_gap = vals[0] + 360.0 - vals[-1]
+    largest_idx = int(np.argmax(np.append(gaps, wrap_gap)))
+
+    if largest_idx == len(gaps):
+        # Largest gap is the wraparound gap itself: data doesn't wrap.
+        return [(float(vals[0]), float(vals[-1]))]
+
+    start, end = float(vals[largest_idx + 1]), float(vals[largest_idx])
+    if start <= end:
+        return [(start, end)]
+    return [(start, 360.0), (0.0, end)]
+
+
 def _offshore_bulk_long(offshore: xr.Dataset) -> pd.DataFrame:
     """Melt ``(time, goal)`` offshore bulk forcing to one row per timestep."""
     if not isinstance(offshore, xr.Dataset):
@@ -483,6 +544,74 @@ def _frac_dirs_outside_sector(
     return float(1.0 - np.mean(inside))
 
 
+def _dense_dir_mode(cases: pd.DataFrame, max_dir_marks: int) -> bool:
+    """Whether any goal has more samples than fit as individual tick marks.
+
+    Shared by :func:`_plot_goal_dir_range_bars` (to pick the render style)
+    and :func:`plot_dynamic_configuration` (to match the info-panel legend
+    to whichever style actually got drawn).
+    """
+    return bool((cases.groupby("goal").size() > max_dir_marks).any())
+
+
+def _direction_density_strip(
+    ax: Axes,
+    y: float,
+    dirs: np.ndarray,
+    color: Any,
+    bracket_spans: list[tuple[float, float]],
+    *,
+    nbins: int = 120,
+    height: float = 0.62,
+) -> None:
+    """Background heat-strip: one hue, alpha-encoded circular density of *dirs*.
+
+    Sequential-by-alpha keeps the row tied to the goal's own colour (matches
+    the sector/range bars) while showing the actual shape of the direction
+    distribution — far more legible than hundreds of overlapping tick marks
+    once a goal has more than a couple hundred samples (e.g. hourly
+    reanalysis over a year). The fill always covers the full 0-360 range —
+    density can and does spill past *bracket_spans* (e.g. hindcast events
+    outside the goal's configured sector); that spillover is the point, not
+    a rendering bug.
+    """
+    counts, _ = np.histogram(np.mod(dirs, 360.0), bins=nbins, range=(0, 360))
+    peak = counts.max()
+    density = counts / peak if peak else counts.astype(float)
+    rgba = np.zeros((1, nbins, 4))
+    rgba[0, :, :3] = mcolors.to_rgb(color)
+    rgba[0, :, 3] = np.clip(density, 0.0, 1.0) * 0.85
+    ax.imshow(
+        rgba,
+        extent=(0, 360, y - height / 2, y + height / 2),
+        aspect="auto",
+        # "nearest" keeps each bin a sharp block; "bilinear" softens bin
+        # edges into a gradient, which reads as fuzzy/hard-to-bound —
+        # exactly what makes the interval hard to pin down at a glance.
+        interpolation="nearest",
+        zorder=2,
+    )
+
+    # The density fill alone doesn't give a crisp edge — near-uniform
+    # coverage (e.g. an LHS design deliberately filling its sector) looks
+    # like a smear with no obvious boundary, and a same-hue outline just
+    # blends into the fill it's supposed to delimit. A darker shade of the
+    # same colour outlines *bracket_spans* with real contrast, whatever
+    # shape the fill takes.
+    edge_color = tuple(c * 0.55 for c in mcolors.to_rgb(color))
+    for start, end in bracket_spans:
+        ax.barh(
+            y,
+            end - start,
+            left=start,
+            height=height,
+            fill=False,
+            edgecolor=edge_color,
+            linewidth=1.4,
+            zorder=3,
+        )
+
+
 def _plot_goal_dir_range_bars(
     ax: Axes,
     cases: pd.DataFrame,
@@ -490,12 +619,35 @@ def _plot_goal_dir_range_bars(
     colors: dict[int, Any],
     *,
     title: str = "Sampled direction ranges per goal",
-    max_dir_marks: int = 200,
+    max_dir_marks: int = DEFAULT_MAX_DIR_MARKS,
     annotate_tp: bool = True,
+    bracket_source: str = "observed",
 ) -> None:
-    """Horizontal bars: propagation sector (light) and observed dir range (solid)."""
+    """Horizontal bars: propagation sector (light) and observed dir range.
+
+    Up to ``max_dir_marks`` samples per goal (e.g. a modest LHS design),
+    every observed direction is drawn as its own tick mark plus a solid
+    range bar — a true design-of-experiment view. Past that count, a
+    random subsample of ticks would misrepresent the population it was
+    thinned from, so the row switches to a density strip instead (see
+    :func:`_direction_density_strip`), which stays honest at any sample
+    size.
+
+    ``bracket_source`` picks what the crisp range bar/outline bounds:
+
+    - ``"observed"`` (LHS/metamodel) — the actual sampled interval via
+      :func:`_circular_intervals`, verifying the design fills its sector.
+    - ``"sector"`` (dynamic/reanalysis) — the goal's *configured* sector
+      via :func:`_sector_spans`, a fixed reference; real hindcast density
+      is free to (and often does) spill outside it, which is exactly the
+      "% outside sector" the info panel already reports — the crisp box
+      makes that spillover visible instead of chasing the data's own
+      extent, which for scattered reanalysis directions isn't a
+      meaningful interval to bound in the first place.
+    """
     goal_ids = sorted(cases["goal"].unique())
     y_positions = np.arange(len(goal_ids))
+    dense_mode = _dense_dir_mode(cases, max_dir_marks)
 
     for y, goal_id in enumerate(goal_ids):
         goal_key = str(goal_id)
@@ -516,31 +668,37 @@ def _plot_goal_dir_range_bars(
                 linewidth=0.6,
             )
 
-        dmin, dmax = float(dirs.min()), float(dirs.max())
-        ax.barh(
-            y,
-            dmax - dmin,
-            left=dmin,
-            height=0.28,
-            color=color,
-            alpha=0.85,
-            edgecolor="white",
-            linewidth=0.5,
+        bracket_spans = (
+            _sector_spans(left, right)
+            if bracket_source == "sector"
+            else _circular_intervals(dirs)
         )
-        mark_dirs = dirs
-        if len(mark_dirs) > max_dir_marks:
-            mark_dirs = np.random.default_rng(0).choice(
-                mark_dirs, size=max_dir_marks, replace=False
+
+        if dense_mode:
+            _direction_density_strip(ax, y, dirs, color, bracket_spans)
+        else:
+            for start, end in bracket_spans:
+                ax.barh(
+                    y,
+                    end - start,
+                    left=start,
+                    height=0.28,
+                    color=color,
+                    alpha=0.85,
+                    edgecolor="white",
+                    linewidth=0.5,
+                )
+            # dense_mode is False only when every goal's count already fits
+            # under max_dir_marks, so dirs never needs subsampling here.
+            ax.scatter(
+                dirs,
+                np.full(len(dirs), y),
+                marker="|",
+                s=90,
+                color=color,
+                linewidths=1.2,
+                zorder=4,
             )
-        ax.scatter(
-            mark_dirs,
-            np.full(len(mark_dirs), y),
-            marker="|",
-            s=90,
-            color=color,
-            linewidths=1.2,
-            zorder=4,
-        )
         if annotate_tp:
             ax.text(
                 362,
@@ -565,12 +723,22 @@ def _plot_goal_dir_range_bars(
 def _configuration_figure(
     cases: pd.DataFrame,
 ) -> tuple[Figure, Axes, Axes, Axes, list[int], dict[int, Any]]:
-    """Shared figure/gridspec skeleton for the config diagnostics: map, bar panel, info panel."""
+    """Shared figure/gridspec skeleton for the config diagnostics: map, bar panel, info panel.
+
+    The bar panel's height grows with the number of goals so each row keeps
+    a constant height — a fixed panel height would cram rows and their
+    labels together on cases with many goals (e.g. a long coastline with
+    25+ goals) while leaving cases with few goals sparse.
+    """
     goal_ids = sorted(cases["goal"].unique())
     colors = _goal_colors(goal_ids)
 
-    fig = plt.figure(figsize=(15, 10), constrained_layout=True)
-    gs = GridSpec(2, 2, figure=fig, width_ratios=[2.1, 1.0], height_ratios=[1.5, 0.75])
+    map_h = 6.5
+    bars_h = max(2.2, len(goal_ids) * 0.22 + 0.9)
+    fig = plt.figure(figsize=(15, map_h + bars_h), constrained_layout=True)
+    gs = GridSpec(
+        2, 2, figure=fig, width_ratios=[2.1, 1.0], height_ratios=[map_h, bars_h]
+    )
     ax_map = fig.add_subplot(gs[0, 0])
     ax_bars = fig.add_subplot(gs[1, 0])
     ax_info = fig.add_subplot(gs[:, 1])
@@ -602,7 +770,23 @@ def _plot_configuration_map(
         label="enclosure",
     )
 
-    for goal_key in sorted(goals_config, key=int):
+    # Many goals along a short/folded coastline sit close together — shrink
+    # markers/labels and cycle the label through 4 quadrants so a cluster of
+    # nearby goals (e.g. several sectors sharing one corner) fans out
+    # instead of stacking into an unreadable block.
+    n_goals = len(goals_config)
+    crowded = n_goals > 15
+    star_ms = 9 if crowded else 12
+    label_fontsize = 7.5 if crowded else 9
+    label_halo = [pe.withStroke(linewidth=2.2, foreground="white")]
+    label_offsets = [
+        ((5, 5), "left", "bottom"),
+        ((5, -5), "left", "top"),
+        ((-5, -5), "right", "top"),
+        ((-5, 5), "right", "bottom"),
+    ]
+
+    for i, goal_key in enumerate(sorted(goals_config, key=int)):
         vals = goals_config[goal_key]
         lon, lat = vals["lon"], vals["lat"]
         left, right = vals["angles"]
@@ -621,16 +805,20 @@ def _plot_configuration_map(
                 zorder=4,
             )
         )
-        ax_map.plot(lon, lat, marker="*", color=color, markersize=12, zorder=6)
-        ax_map.text(
-            lon,
-            lat,
-            f" G{goal_key}",
-            fontsize=9,
+        ax_map.plot(lon, lat, marker="*", color=color, markersize=star_ms, zorder=6)
+        offset, ha, va = label_offsets[i % 4] if crowded else label_offsets[0]
+        ax_map.annotate(
+            f"G{goal_key}",
+            (lon, lat),
+            xytext=offset,
+            textcoords="offset points",
+            fontsize=label_fontsize,
             color="black",
             weight="bold",
+            ha=ha,
+            va=va,
             zorder=7,
-            va="bottom",
+            path_effects=label_halo,
         )
 
         sub = cases[cases["goal"] == int(goal_key)]
@@ -676,7 +864,109 @@ def _plot_configuration_map(
     ax_map.set_xlim(minx - pad, maxx + pad)
     ax_map.set_ylim(miny - pad, maxy + pad)
     ax_map.set_aspect("equal", adjustable="box")
-    ax_map.legend(loc="upper right", fontsize=7, framealpha=0.9)
+    # "best" avoids the plotted AoI/enclosure/site artists; goal labels are
+    # drawn afterwards on this same axes and aren't considered, but this is
+    # still strictly better than a fixed corner on domains where the goal
+    # chain runs through upper-right.
+    ax_map.legend(loc="best", fontsize=7, framealpha=0.9)
+
+
+def _configuration_map_figure(
+    *,
+    enclosure_polygon: Polygon | MultiPolygon,
+    goals_config: dict[str, dict[str, Any]],
+    cases: pd.DataFrame,
+    output_sites_df: pd.DataFrame,
+    sector_radius_deg: float,
+    arrow_scale_deg: float,
+    max_arrows_per_goal: int,
+    show_topobathy: bool,
+    title: str,
+    figsize: tuple[float, float],
+) -> Figure:
+    """Standalone, larger map panel only — no bar/info panels competing for space.
+
+    Reuses :func:`_plot_configuration_map` as-is, just on its own bigger
+    axes, so goal labels and the domain layout are actually inspectable on
+    a case with many goals instead of being squeezed into the left column
+    of the combined diagnostic.
+    """
+    colors = _goal_colors(sorted(cases["goal"].unique()))
+    fig, ax = plt.subplots(figsize=figsize)
+    _plot_configuration_map(
+        ax,
+        enclosure_polygon=enclosure_polygon,
+        goals_config=goals_config,
+        cases=cases,
+        colors=colors,
+        output_sites_df=output_sites_df,
+        sector_radius_deg=sector_radius_deg,
+        arrow_scale_deg=arrow_scale_deg,
+        max_arrows_per_goal=max_arrows_per_goal,
+        show_topobathy=show_topobathy,
+        title=title,
+    )
+    fig.tight_layout()
+    return fig
+
+
+def plot_metamodel_configuration_map(
+    *,
+    enclosure_polygon: Polygon | MultiPolygon,
+    goals_config: dict[str, dict[str, Any]],
+    cases_df: pd.DataFrame,
+    output_sites_df: pd.DataFrame,
+    sector_radius_deg: float = 0.35,
+    arrow_scale_deg: float = 0.15,
+    max_arrows_per_goal: int = 25,
+    show_topobathy: bool = True,
+    title: str = "Metamodel configuration map",
+    figsize: tuple[float, float] = (12, 11),
+) -> Figure:
+    """Bigger, standalone map-only companion to :func:`plot_metamodel_configuration`."""
+    cases = cases_df.copy()
+    cases["goal"] = cases["goal"].astype(int)
+    return _configuration_map_figure(
+        enclosure_polygon=enclosure_polygon,
+        goals_config=goals_config,
+        cases=cases,
+        output_sites_df=output_sites_df,
+        sector_radius_deg=sector_radius_deg,
+        arrow_scale_deg=arrow_scale_deg,
+        max_arrows_per_goal=max_arrows_per_goal,
+        show_topobathy=show_topobathy,
+        title=title,
+        figsize=figsize,
+    )
+
+
+def plot_dynamic_configuration_map(
+    *,
+    enclosure_polygon: Polygon | MultiPolygon,
+    goals_config: dict[str, dict[str, Any]],
+    offshore: xr.Dataset,
+    output_sites_df: pd.DataFrame,
+    sector_radius_deg: float = 0.35,
+    arrow_scale_deg: float = 0.15,
+    max_arrows_per_goal: int = 25,
+    show_topobathy: bool = True,
+    title: str = "Dynamic configuration map",
+    figsize: tuple[float, float] = (12, 11),
+) -> Figure:
+    """Bigger, standalone map-only companion to :func:`plot_dynamic_configuration`."""
+    cases = _offshore_bulk_long(offshore)
+    return _configuration_map_figure(
+        enclosure_polygon=enclosure_polygon,
+        goals_config=goals_config,
+        cases=cases,
+        output_sites_df=output_sites_df,
+        sector_radius_deg=sector_radius_deg,
+        arrow_scale_deg=arrow_scale_deg,
+        max_arrows_per_goal=max_arrows_per_goal,
+        show_topobathy=show_topobathy,
+        title=title,
+        figsize=figsize,
+    )
 
 
 def plot_metamodel_configuration(
@@ -724,6 +1014,7 @@ def plot_metamodel_configuration(
         title=title,
     )
     _plot_goal_dir_range_bars(ax_bars, cases, goals_config, colors)
+    dense_mode = _dense_dir_mode(cases, DEFAULT_MAX_DIR_MARKS)
 
     n_cases = len(cases)
     n_goals = len(goal_ids)
@@ -764,9 +1055,19 @@ def plot_metamodel_configuration(
             "",
             "Bar panel:",
             "  light bar = allowed sector",
-            "  solid bar = sampled dir range",
-            "  ticks = individual LHS dirs",
         ]
+        + (
+            [
+                "  shaded strip = density of sampled directions",
+                "                 (darker = more common)",
+                "  crisp outline = actual sampled interval",
+            ]
+            if dense_mode
+            else [
+                "  solid bar = sampled dir range",
+                "  ticks = individual LHS dirs",
+            ]
+        )
     )
     ax_info.text(
         0.02,
@@ -795,7 +1096,7 @@ def plot_dynamic_configuration(
     sector_radius_deg: float = 0.35,
     arrow_scale_deg: float = 0.15,
     max_arrows_per_goal: int = 25,
-    max_dir_marks: int = 200,
+    max_dir_marks: int = DEFAULT_MAX_DIR_MARKS,
     show_topobathy: bool = True,
     maps_to_save: int | None = None,
     title: str = "Dynamic pre-run diagnostic",
@@ -833,7 +1134,9 @@ def plot_dynamic_configuration(
         colors,
         title="Observed direction ranges per goal (reanalysis)",
         max_dir_marks=max_dir_marks,
+        bracket_source="sector",
     )
+    dense_mode = _dense_dir_mode(cases, max_dir_marks)
 
     time_vals = pd.to_datetime(offshore["time"].values) if "time" in offshore else None
     lines = [
@@ -874,7 +1177,11 @@ def plot_dynamic_configuration(
         sub = cases[cases["goal"] == int(goal_key)]
         dirs = sub["dir"].to_numpy(float)
         outside = _frac_dirs_outside_sector(dirs, ang[0], ang[1]) * 100.0
-        flag = "  ! outside sector" if outside > 0 else ""
+        # Real records almost always have a sliver of directions outside the
+        # nominal sector (a boundary snap, a rare cross-swell); flagging at
+        # >0% would mark every goal and make the flag noise. Reserve it for
+        # sectors that miss a meaningful share of observed directions.
+        flag = "  ! outside sector" if outside > OUTSIDE_SECTOR_FLAG_PCT else ""
         lines.append(
             f"  G{goal_key}: sector {ang}  "
             f"dir [{dirs.min():.0f}, {dirs.max():.0f}]°  "
@@ -896,9 +1203,21 @@ def plot_dynamic_configuration(
             "",
             "Bar panel:",
             "  light bar = allowed sector",
-            "  solid bar = observed dir range",
-            "  ticks = subsampled timesteps (if many)",
         ]
+        + (
+            [
+                "  shaded strip = density of observed directions",
+                "                 (darker = more common)",
+                "  crisp outline = goal's configured sector",
+                "                 (density may extend past it — see",
+                "                 the % outside sector below)",
+            ]
+            if dense_mode
+            else [
+                "  solid bar = goal's configured sector",
+                "  ticks = subsampled timesteps (if many)",
+            ]
+        )
     )
     ax_info.text(
         0.02,
@@ -923,8 +1242,10 @@ __all__ = [
     "plot_base_map",
     "plot_case_map",
     "plot_dynamic_configuration",
+    "plot_dynamic_configuration_map",
     "plot_land",
     "plot_metamodel_configuration",
+    "plot_metamodel_configuration_map",
     "plot_points",
     "plot_ring",
     "plot_sectors",
