@@ -11,7 +11,8 @@ from typing import Any
 import xarray as xr
 
 _HYGLOW_LOGGERS = ("hyglow.metamodel", "hyglow.validation")
-_QUIET_LOGGER_PREFIXES = ("hyglow.", "bluemath", "BlueMath")
+_HYGLOW_LOGGER_PREFIX = "hyglow."
+_BLUEMATH_LOGGER_PREFIXES = ("bluemath", "BlueMath")
 
 UTILS_DIR = Path(__file__).resolve().parent
 CASE_DIR = UTILS_DIR.parent
@@ -431,19 +432,113 @@ def _is_console_handler(handler: logging.Handler) -> bool:
     )
 
 
+def _bluemath_model_logger_names() -> set[str]:
+    """Every ``BlueMathModel`` subclass currently imported (PCA, MDA, RBF, ...).
+
+    ``BlueMathModel.logger`` names its logger after the class itself
+    (``get_file_logger(name=self.__class__.__name__)``), not with a
+    ``"bluemath_tk...."`` prefix, so these loggers can't be matched by
+    :data:`_BLUEMATH_LOGGER_PREFIXES`. Used as a one-off safety net for
+    loggers created before :func:`_quiet_bluemath_model_console` was installed.
+    """
+    try:
+        from bluemath_tk.core.models import BlueMathModel
+    except ImportError:
+        return set()
+
+    names: set[str] = set()
+    stack = [BlueMathModel]
+    while stack:
+        cls = stack.pop()
+        names.add(cls.__name__)
+        stack.extend(cls.__subclasses__())
+    return names
+
+
+def _quiet_bluemath_model_console(console_level: int) -> None:
+    """Default *future* bluemath_tk model loggers (PCA, MDA, RBF, GP, ...) to a quiet console.
+
+    Two separate leaks, both from the same root cause -- ``BlueMathModel``
+    loggers are never durably configured once and left alone:
+
+    1. **Fresh instantiation.** Every ``BlueMathModel.__init__`` calls
+       ``self.set_logger_name(...)``, which calls bluemath_tk's
+       ``get_file_logger`` without a ``console_level`` — so it always resets
+       to bluemath_tk's own default (``WARNING``) *on every single call*.
+       A loop that fits a PCA/GP per goal re-triggers the noisy default
+       every time; a one-off level change doesn't survive the next fit.
+       Fixed by patching the factory itself (``get_file_logger`` in
+       :mod:`bluemath_tk.core.models`, the binding ``BlueMathModel`` calls)
+       to default ``console_level`` to *console_level* unless the caller
+       passes one explicitly.
+
+    2. **Models loaded from disk** (``load_model`` / ``load_models`` —
+       what a reconstruction/validation notebook actually does most of the
+       time, as opposed to fitting). ``logging.Logger`` pickles by *name
+       reference* (``Logger.__reduce__`` → ``logging.getLogger(name)``), not
+       by value — so an unpickled model's ``_logger`` is whatever the
+       process's logger for that name currently is. If nothing has called
+       ``get_file_logger("PCA", ...)`` yet in this kernel, that's a bare
+       logger with **no handlers and ``propagate=True``**, so its records
+       (including routine WARNINGs) fall through straight to the root
+       logger — which Jupyter/IPython usually prints. This bypasses fix #1
+       entirely, since ``BlueMathModel.logger`` only calls ``get_file_logger``
+       when ``self._logger is None``, and an unpickled logger reference is
+       never ``None``. Fixed by also patching the ``.logger`` property to
+       repair a handler-less/propagating logger the moment anything reads it.
+
+    File logging is untouched in both cases — full detail still lands in
+    ``logs/*.log``. Idempotent: safe to call every time
+    :func:`configure_notebook_logging` runs.
+    """
+    import bluemath_tk.core.models as bluemath_models
+
+    if getattr(bluemath_models.BlueMathModel, "_hyglow_quieted", False):
+        return
+
+    original_get_file_logger = bluemath_models.get_file_logger
+
+    def quiet_get_file_logger(name, *args, **kwargs):
+        kwargs.setdefault("console_level", console_level)
+        return original_get_file_logger(name, *args, **kwargs)
+
+    bluemath_models.get_file_logger = quiet_get_file_logger
+
+    original_logger_fget = bluemath_models.BlueMathModel.logger.fget
+
+    def quiet_logger_fget(self):
+        lg = original_logger_fget(self)
+        if not lg.handlers or lg.propagate:
+            lg = quiet_get_file_logger(lg.name, level="INFO", console=True)
+            self._logger = lg
+        return lg
+
+    bluemath_models.BlueMathModel.logger = property(
+        quiet_logger_fget, bluemath_models.BlueMathModel.logger.fset
+    )
+    bluemath_models.BlueMathModel._hyglow_quieted = True
+
+
 def configure_notebook_logging(
     *,
     console_level: int | str = "WARNING",
+    bluemath_console_level: int | str = "ERROR",
     file_level: int | str | None = None,
 ) -> None:
     """
     Show WARNING+ in the notebook; keep INFO in ``logs/*.log`` files.
 
-    Applies to HyGloW loggers (``hyglow.metamodel``, ``hyglow.validation``),
-    ``bluemath_tk`` loggers, and any root StreamHandler attached by Jupyter.
-    Called automatically when :mod:`utils.config` is imported inside a notebook.
+    Applies to HyGloW loggers (``hyglow.metamodel``, ``hyglow.validation``)
+    at *console_level*, and to bluemath_tk model loggers (``PCA``, ``MDA``,
+    ``RBF``, GP interpolation, ...) at the stricter *bluemath_console_level*
+    — their routine "Using PCA"-style banners are logged at ``WARNING`` on
+    every fit, which floods the notebook when fitting per goal/candidate in
+    a loop. File logging (``logs/*.log``) always keeps the full ``INFO``
+    detail for both. Called automatically when :mod:`utils.config` is
+    imported inside a notebook.
     """
     console_lv = _normalize_log_level(console_level)
+    bluemath_lv = _normalize_log_level(bluemath_console_level)
     file_lv = _normalize_log_level(file_level) if file_level is not None else None
 
     # Re-apply HyGloW loggers so bluemath get_file_logger updates handlers
@@ -465,16 +560,25 @@ def configure_notebook_logging(
         console_level=console_lv,
     )
 
+    # Future PCA()/MDA()/RBF()/... instantiations default to a quiet console.
+    _quiet_bluemath_model_console(bluemath_lv)
+
+    # Safety net for bluemath model loggers already created this kernel
+    # (e.g. a model built before utils.config was first imported).
+    bluemath_model_names = _bluemath_model_logger_names()
+
     for name, obj in logging.Logger.manager.loggerDict.items():
         if not isinstance(obj, logging.Logger):
             continue
-        if name not in _HYGLOW_LOGGERS and not any(
-            name.startswith(prefix) for prefix in _QUIET_LOGGER_PREFIXES
-        ):
+        if name in _HYGLOW_LOGGERS or name.startswith(_HYGLOW_LOGGER_PREFIX):
+            level_for_console = console_lv
+        elif name in bluemath_model_names or name.startswith(_BLUEMATH_LOGGER_PREFIXES):
+            level_for_console = bluemath_lv
+        else:
             continue
         for handler in obj.handlers:
             if _is_console_handler(handler):
-                handler.setLevel(console_lv)
+                handler.setLevel(level_for_console)
             elif file_lv is not None and isinstance(handler, logging.FileHandler):
                 handler.setLevel(file_lv)
 
