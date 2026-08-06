@@ -35,11 +35,13 @@ class TestStartCase(unittest.TestCase):
         self.assertTrue((target / "templates-dynamic").is_dir())
         self.assertTrue((target / "MyCase.json").is_file())
         self.assertTrue((target / "README.md").is_file())
-        self.assertTrue((target / ".gitignore").is_file())
-        self.assertTrue((target / "requirements.txt").is_file())
         self.assertTrue((target / ".hyglow" / "manifest.json").is_file())
-        # bluemesh2d is a pip dependency now, never vendored from the template.
+        # bluemesh2d is a regular environment dependency now, never vendored
+        # from the template; no .gitignore/requirements.txt are generated
+        # either — see the README's own Dependencies section instead.
         self.assertFalse((target / "bluemesh2d").exists())
+        self.assertFalse((target / ".gitignore").exists())
+        self.assertFalse((target / "requirements.txt").exists())
 
         for sub in ("AoI_Polygons", "GEBCO", "GRID", "Goals", "Observations", "WHACS"):
             self.assertTrue((target / "inputs" / sub / ".gitkeep").is_file())
@@ -56,10 +58,6 @@ class TestStartCase(unittest.TestCase):
         readme = (target / "README.md").read_text()
         self.assertNotIn("__CASE_NAME__", readme)
         self.assertIn("Wharf", readme)
-
-    def test_requirements_txt_declares_bluemesh2d(self) -> None:
-        target = start_case("Reef", self.dest)
-        self.assertIn("bluemesh2d", (target / "requirements.txt").read_text())
 
     def test_notebooks_copied_and_stripped_of_outputs(self) -> None:
         target = start_case("Atoll", self.dest)

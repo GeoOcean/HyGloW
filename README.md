@@ -1,4 +1,12 @@
-# HyGloW — Hybrid Global Wave downscaling
+<p align="center">
+  <img src="assets/logo.svg" alt="HyGloW — Hybrid Global Wave downscaling" width="100%">
+</p>
+
+<p align="center">
+  <img alt="Status" src="https://img.shields.io/badge/status-active%20development-orange">
+  <img alt="Contributions" src="https://img.shields.io/badge/contributions-welcome-brightgreen">
+  <img alt="Built for" src="https://img.shields.io/badge/built%20for-oceanographers-1f93b3">
+</p>
 
 HyGloW turns an offshore wave hindcast into nearshore wave conditions —
 buoys, tide gauges, any point you care about — without running a full
@@ -10,24 +18,41 @@ If you have an area of interest, a bathymetry source, and an offshore wave
 hindcast, you can have nearshore wave conditions there. That's what this
 repo helps you do.
 
+## What this repository is
+
+HyGloW is under active development. This repo is the **base code for the
+whole HyGloW ecosystem** — the engine, the case contract, and the results
+portal (`GUI/`) all live here, and every regional use case is built from it.
+There are two ways to use it:
+
+- **Just want nearshore waves for your region?** Fork or clone this repo,
+  run `hyglow start`, and work in your own case folder from there —
+  Quickstart below. Once scaffolded, a case is self-contained: you don't
+  need to keep up with this repo unless you want engine improvements later
+  (`hyglow update`).
+- **Want to help build the toolkit itself** — the engine, the GUI, the case
+  contract? Fork it and open a PR against `hyglow/` or `GUI/`, same as any
+  open-source project.
+
+Expect rough edges while this is young. Issues and PRs are welcome either way.
+
 ## Quickstart
 
 **0. Install dependencies** (once):
 
-- A conda/Python environment with `bluemath_tk`, `wavespectra`, `xarray`,
-  `geopandas`, `rioxarray`, `pandas`, `scipy`, `matplotlib`.
+- A conda/Python environment with `bluemath_tk`, `bluemesh2d`, `wavespectra`,
+  `xarray`,`geopandas`, `rioxarray`, `pandas`, `scipy`, `matplotlib`.
+  You can install all with `conda install -c conda-forge bluemath-tk`.
 - [**SnapWave**](https://github.com/danoroelvink/snapwave/) — the nearshore
   propagation model. It's an external binary: clone that repo and compile it
   yourself (see its own README for build instructions). You'll need it
   before the notebooks that actually run cases (step 05 onward below).
-- `bluemesh2d` (the mesher) — installed per case with `pip`, see step 1.
 
 **1. Create your case:**
 
 ```bash
 python -m hyglow start --name MyCase
 cd MyCase
-pip install -r requirements.txt
 ```
 
 This gives you a self-contained folder: engine code, numbered notebooks,
@@ -72,13 +97,12 @@ against real buoy records.
 
 ## Repository layout
 
-| Path              | What it is                                                                                          |
-| ----------------- | --------------------------------------------------------------------------------------------------- |
-| `hyglow/`         | The engine, contract, and CLI (`python -m hyglow ...`) — scaffolds and validates cases              |
-| `Samoa/`          | Reference case — Samoan archipelago                                                                 |
-| `NewSouthWales/`  | Reference case — NSW coast, Australia                                                               |
-| `GUI/`            | *HyGloW Results Explorer* — a Dash portal that reads any case's contract files                      |
-| `EuropePolygons/` | Candidate area-of-interest polygons for future European cases ([details](EuropePolygons/README.md)) |
+| Path             | What it is                                                                             |
+| ---------------- | -------------------------------------------------------------------------------------- |
+| `hyglow/`        | The engine, contract, and CLI (`python -m hyglow ...`) — scaffolds and validates cases |
+| `Samoa/`         | Reference case — Samoan archipelago                                                    |
+| `NewSouthWales/` | Reference case — NSW coast, Australia                                                  |
+| `GUI/`           | *HyGloW Results Explorer* — a Dash portal that reads any case's contract files         |
 
 Full CLI reference (including `update`, which re-syncs a case's engine code
 from the template): [`hyglow/README.md`](hyglow/README.md).
@@ -93,7 +117,7 @@ case is conformance to the [case contract](hyglow/contract/CONTRACT.md).
 1. `python -m hyglow start --name YourCase`
 2. Fill in `YourCase/YourCase.json` and work through the numbered notebooks.
 3. `python -m hyglow validate YourCase/ --publish`
-4. Open a PR here, or host it in your own repo and point the GUI catalog
+4. Open a PR here (using your fork), or host it in your own repo and point the GUI catalog
    (`GUI/catalog/cases.yaml`) at it — the contract is the only thing that
    needs to match.
 

@@ -43,11 +43,12 @@ No data is downloaded.
 
 - **Cases are folders, not packages.** Each case carries its own engine
   snapshot (`utils/`), stamped in `.hyglow/manifest.json`. `bluemesh2d` is a
-  pip dependency (`requirements.txt`), not part of the snapshot.
+  regular environment dependency (see a case's README), not part of the
+  snapshot.
 - **`template/` is the canonical reference.** It holds the versioned engine
   code (`utils/`), case-agnostic pipeline notebooks (`notebooks/`), SnapWave
-  templates, tests, the `requirements.txt`, and the config skeleton.
-  Engine improvements and notebook fixes land there. Existing cases
+  templates, tests, and the config skeleton. Engine improvements and
+  notebook fixes land there. Existing cases
   are snapshots that `hyglow update` re-syncs: untouched engine files are
   updated, locally modified ones are kept (overridden by `--force`), and
   notebooks/SnapWave templates are never touched.

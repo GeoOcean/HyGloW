@@ -1,3 +1,0 @@
-# bluemesh2d used to be vendored into every case (hyglow/template/bluemesh2d/);
-# it now ships on PyPI, so it's a regular pip dependency instead.
-bluemesh2d>=0.1.4

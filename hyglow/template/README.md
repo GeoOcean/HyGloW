@@ -10,12 +10,9 @@ Run notebooks with `__CASE_NAME__/` as the working directory.
 
 ## 0. Install dependencies
 
-- `pip install -r requirements.txt` — installs `bluemesh2d` (the mesher used
-  by `02_Create_mesh_by_bluemesh2d.ipynb`; it's pip-only, not on conda-forge).
-- The rest of the scientific stack is expected to already be in your (conda)
-  environment: `bluemath_tk`, `wavespectra`, `xarray`, `geopandas`,
-  `rioxarray`, `pandas`, `scipy`, `matplotlib`
-  (`conda install -c conda-forge bluemath-tk` covers the first one).
+- The following scientific stack is expected to already be in your (conda)
+  environment: `bluemath_tk`, `bluemesh2d`, `wavespectra`, `xarray`,
+  `geopandas`, `rioxarray`, `pandas`, `scipy`, `matplotlib`.
 - [**SnapWave**](https://github.com/danoroelvink/snapwave/) — the nearshore
   propagation model that actually runs each case. It's an external binary:
   clone that repo and compile it yourself (see its README for build
@@ -26,8 +23,7 @@ Run notebooks with `__CASE_NAME__/` as the working directory.
 
 1. **Fill in the config** — open `__CASE_NAME__.json` and replace the `TODO`
    values. Review the LHS `bounds`, `output_sites_config` isobaths, and
-   `metamodel` settings for your region (the defaults come from the Samoa
-   reference case).
+   `metamodel` settings for your region.
 2. **Area of interest** — put your AoI shapefile in `inputs/AoI_Polygons/`.
 3. **Work through the notebooks in order:**
 
@@ -55,9 +51,8 @@ Run notebooks with `__CASE_NAME__/` as the working directory.
 
 **Samoa** (in the main HyGloW repository) is the most complete worked
 example — its README documents the full pipeline, the metamodel workflow,
-and the commit/re-run checklist in detail. **NewSouthWales** shows a case
-mid-pipeline (mesh, goals, and observations done; fit and validation
-pending). Both are real, runnable cases you can read notebook-by-notebook
+and the commit/re-run checklist in detail. **NewSouthWales** shows another
+use case. Both are real, runnable cases you can read notebook-by-notebook
 alongside your own.
 
 ## For developers

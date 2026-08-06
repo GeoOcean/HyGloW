@@ -1,11 +1,11 @@
 """Scaffold a new self-contained HyGloW case folder.
 
 ``python -m hyglow start --name Cantabria`` creates a case from the built-in
-template (``hyglow/template/``): vendored engine code (``utils/``), the
-``bluemesh2d`` pip dependency, case-agnostic pipeline notebooks, SnapWave
-templates, tests, and a fresh config skeleton. The result runs anywhere —
-laptop or HPC — with ``pip install -r requirements.txt`` for the one
-non-vendored dependency.
+template (``hyglow/template/``): vendored engine code (``utils/``),
+case-agnostic pipeline notebooks, SnapWave templates, tests, and a fresh
+config skeleton. The result runs anywhere — laptop or HPC — as long as the
+scientific stack (``bluemath_tk``, ``bluemesh2d``, ``wavespectra``, ...) is
+in your environment; see the generated ``README.md`` for the exact list.
 
 ``--from-case Samoa`` clones an existing case's engine and notebooks instead
 (outputs stripped), for when you want to continue someone's working setup.
@@ -30,8 +30,8 @@ TEMPLATE_DIR = Path(__file__).resolve().parent / "template"
 
 # Vendored into every new case; whichever exist in the source are copied
 # (older cases, e.g. Samoa, still carry a vendored bluemesh2d/ or legacy
-# pymesh2d/ from before bluemesh2d became a pip dependency — see
-# requirements.txt).
+# pymesh2d/ from before bluemesh2d became a regular environment dependency —
+# see the generated README.md's Dependencies section).
 ENGINE_DIRS = ("utils", "bluemesh2d", "pymesh2d")
 SUPPORT_DIRS = ("tests", "templates-metamodel", "templates-dynamic")
 # Hashed in the manifest and kept in sync by `hyglow update`. SnapWave
@@ -171,8 +171,6 @@ def start_case(
 
     _render_template("case.json", target / f"{name}.json", name)
     _render_template("README.md", target / "README.md", name)
-    _render_template("gitignore", target / ".gitignore", name)
-    _render_template("requirements.txt", target / "requirements.txt", name)
 
     for sub in INPUT_SUBDIRS:
         (target / "inputs" / sub).mkdir(parents=True)
