@@ -21,24 +21,27 @@ reference case.
 
 ## Status
 
-Checked with `python -m hyglow validate NewSouthWales/`:
+Checked with `python -m hyglow validate NewSouthWales/` (run from the repo root):
 
-| Stage                                  | State                                       |
-| --------------------------------------- | -------------------------------------------- |
-| AoI, GEBCO clip, mesh (01–02)          | ✅ done — `inputs/GRID/NewSouthWales_mesh.nc` |
-| Observations catalogue (03)            | ✅ done — 35 buoys, see below                |
-| Goals + propagation sectors (04)       | ✅ done — 26 goals                           |
-| Metamodel LHS cases (05)               | ✅ configured — 500 samples/goal, not yet built/run |
-| Metamodel fit + holdout validation (06) | ⬜ pending                                    |
-| Offshore hindcast — WHACS (07)         | ✅ done — `inputs/WHACS/processed/*.zarr`     |
-| Dynamic reference runs (08)            | ✅ configured, not yet built/run              |
-| Hindcast / buoy / spectra validation (09–11) | ⬜ pending                              |
+| Stage                                        | State                                                          |
+| ---------------------------------------------- | ----------------------------------------------------------------- |
+| AoI, GEBCO clip, mesh (01–02)                | ✅ done — `inputs/GRID/NewSouthWales_mesh.nc`                    |
+| Observations catalogue (03)                  | ✅ done — 35 buoys, see below                                    |
+| Goals + propagation sectors (04)             | ✅ done — 26 goals                                               |
+| Metamodel LHS cases, built + run (05)        | ✅ done — 500 samples/goal                                       |
+| Metamodel fit + holdout validation (06)      | ✅ done — all 26 goals, holdout R² ≈ 0.95–0.98 for hs/tp/dir at 5m |
+| Offshore hindcast — WHACS (07)               | ✅ done — `inputs/WHACS/processed/*.zarr`                        |
+| Dynamic reference runs, built + run (08)     | ✅ done                                                          |
+| Reconstruct-vs-dynamic / buoy / spectral validation (09–11) | ✅ run at least once — under active review, see note below |
 
-In short: the domain is fully set up (mesh, goals, observations, offshore
-forcing) and both SnapWave case generators (`05`, `08`) have been reviewed
-via their pre-run diagnostics (`wrapper.plot_configuration()` /
-`plot_configuration_map()`) — see below. Building the case folders, running
-SnapWave, fitting the metamodel, and validating are the next steps.
+Full pipeline has been run end-to-end. Built SnapWave case folders
+(`SnapWave_CASES_Metamodel`, `SnapWave_CASES_Dynamic`) live outside the repo
+at the path set in `NewSouthWales.json` → `simulations.metamodel_cases` /
+`dynamic_cases` (this machine points them at `/hyglowdata/NewSouthWales/` —
+change that to wherever you want them for your own run). Notebook outputs
+aren't currently committed (kept local while the buoy-processing work below
+is still being checked), so don't expect populated `outputs/` cells if you
+pull this fresh — re-run the notebooks to regenerate.
 
 ---
 
@@ -59,6 +62,8 @@ After editing `NewSouthWales.json`: restart kernel or `utils.config.reload()`.
 | Step  | Notebook                                       | Purpose                                       |
 | ----- | ----------------------------------------------- | ---------------------------------------------- |
 | 00    | `00_Buoys_Inspection.ipynb`                     | Raw buoy inventory: coverage, gaps, completeness |
+| 00    | `00_Buoys_Processing.ipynb`                     | Raw → standardized bulk parameters, one NetCDF/buoy |
+| 00    | `00_Buoys_Processing_Spectra.ipynb`             | Raw → `(time, freq, dir)` spectra for the 3 MHL stations that have them |
 | 00    | `00_Course_Figures.ipynb`                       | Slide-ready PNGs for teaching                  |
 | 01    | `01_Generate_tiff_from_GEBCO.ipynb`             | Clip GEBCO bathymetry to AoI                   |
 | 02    | `02_Create_mesh_by_bluemesh2d.ipynb`            | Unstructured mesh                              |
@@ -87,12 +92,39 @@ Raw buoy data lives under `inputs/Observations/raw/` in two networks:
 | Offshore MHL Waverider buoys | 7     | Manly Hydraulics Laboratory (Sydney, Port Kembla, Crowdy Head, Coffs Harbour, Byron Bay, Eden, Batemans Bay) | hourly, since 1976 |
 | Nearshore Spotter buoys      | 28    | NSW DCCEEW / SEED nearshore wave buoy program (per-deployment) | 30 min |
 
-`00_Buoys_Inspection.ipynb` matches every raw file to its catalogue entry and
-reports record spans, sampling completeness, directional coverage, and which
-years have the most combined data (useful for picking a validation
-`period`) — inventory saved to `outputs/buoys_raw_inventory.csv`.
+Three notebooks turn that raw data into what the rest of the pipeline uses,
+backed by two case-specific modules — `utils/observation/raw_buoys.py`
+(bulk) and `utils/observation/raw_spectra.py` (spectra), not vendored from
+the template since every case's raw layout differs:
 
-`03_Generate_Observations_Configuration.ipynb` builds the actual catalogue
+1. **`00_Buoys_Inspection.ipynb`** — matches every raw file to its catalogue
+   entry and reports record spans, sampling completeness, directional
+   coverage, and which years have the most combined data (useful for
+   picking a validation `period`) — inventory saved to
+   `outputs/buoys_raw_inventory.csv`.
+2. **`00_Buoys_Processing.ipynb`** — standardizes all 35 buoys to one
+   NetCDF each under `inputs/Observations/processed/{instrument_id}.nc`:
+   `hs`, `tp`, `dir`, `spr` (nearshore only — offshore MHL bulk files never
+   report directional spread) plus secondary fields, CF attrs, all times
+   converted to UTC. The nearshore source (`wave_parameters_csv/`) turned
+   out richer than the sibling NetCDF — it carries `spr` and QC flags the
+   NetCDF doesn't, and its timestamps are local Eastern Standard (fixed
+   UTC+10, verified constant across DST and non-DST months), converted here.
+3. **`00_Buoys_Processing_Spectra.ipynb`** — the 3 offshore stations with
+   raw spectral archives (Sydney, Byron Bay, Batemans Bay) get a full
+   `(time, freq, dir)` spectrum under
+   `inputs/Observations/processed/spectra/{Station}_Buoy.nc`. The raw MHL
+   files only give one mean direction + spread *per frequency bin*, not a
+   measured 2D breakdown, so the directional shape is **modelled** — the
+   same Cartwright (1963) cos-2s spreading and the same direction grid
+   (`utils.model.metamodel.SPECTRAL_DIR`) the metamodel's own spectral
+   reconstruction uses, so buoy and model spectra are directly comparable.
+   Named `efth`/`efth_norm` so notebook 10/11's existing auto-detection
+   picks them up. **Sydney's absolute-density file is corrupted** in the
+   raw archive (all null bytes) — Sydney gets the normalized shape only,
+   not an absolute spectrum; Byron Bay and Batemans Bay get both.
+
+`03_Generate_Observations_Configuration.ipynb` builds the catalogue
 (`inputs/Observations/NewSouthWales_observations.json`) that the rest of the
 pipeline reads: `lon`, `lat`, `depth`, `institution`, `recording` period per
 `instrument_id`. Offshore buoy coordinates come from public AODN /
@@ -137,6 +169,7 @@ values actually set for this case:
 | `offshore_waves`             | `WHACS` → `inputs/WHACS/processed/NewSouthWales_WHACS_goal.zarr` |
 | `simulations.num_samples_per_goal` | 500                                                 |
 | `simulations.bounds`         | `tp [1, 20]`, `spr [1, 45]`, `wl [-2.0, 2.0]`            |
+| `simulations.metamodel_cases` / `dynamic_cases` | external path (`/hyglowdata/NewSouthWales/...` on this machine) — built case folders are large and not stored in the repo |
 | `metamodel.mda_candidates`   | `[50, 100, 150, 250, 450]`                               |
 | `output_sites_config.isobaths` | `5m, 10m, 20m, 50m`, clipped to AoI, buoys included    |
 
@@ -150,12 +183,18 @@ values actually set for this case:
 | `model.metamodel`                | Fit, predict, reconstruct                                 |
 | `evaluation.validation`          | Holdout metrics/plots, buoy comparison                    |
 | `observation.onshore_sites`      | Observations GeoJSON I/O, buoy site ids                   |
+| `observation.raw_buoys`          | Case-specific: raw → standardized bulk buoy NetCDFs        |
+| `observation.raw_spectra`        | Case-specific: raw → `(time, freq, dir)` buoy spectra       |
 | `simulation.snapwave_wrappers`   | SnapWave case build/run, pre-run diagnostics              |
 | `simulation.lhs_cases`           | Latin Hypercube design per goal                            |
 | `simulation.offshore_forcing`    | WHACS → SnapWave boundary forcing                           |
 | `geometry.output_sites`          | Isobath/mesh/buoy output-site catalogue                     |
 | `viz.case_plots`                 | Case/domain maps, pre-run configuration diagnostics         |
 | `viz.snapwave_case_plots`        | Post-run per-case diagnostics                                |
+
+`observation.raw_buoys` and `observation.raw_spectra` are case-owned, not
+vendored from `hyglow/template/` — every case's raw data layout is
+different, so `hyglow update` leaves them alone (reported as "orphaned").
 
 ---
 
@@ -169,15 +208,6 @@ python -m unittest discover -s tests -v
 
 Covers direction handling, logging config, metamodel helpers, offshore
 forcing, onshore site helpers, output sites, and site groups.
-
----
-
-## Next steps
-
-- [ ] `05_Metamodel_Cases_Generation.ipynb` — build and run the LHS cases
-- [ ] `06_Validate_Metamodel.ipynb` — `mm.fit_all()`, holdout sweep
-- [ ] `08_Dynamic_Cases_Generation.ipynb` — build and run the dynamic reference
-- [ ] `09`–`11` — reconstruct-vs-dynamic, buoy, and spectral validation
 
 ---
 
