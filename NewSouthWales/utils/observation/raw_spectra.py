@@ -23,6 +23,22 @@ states it explicitly).
 confirmed by :func:`_read_sd_file`) — only the peak-normalized ``energy``
 is available for Sydney, not an absolute energy density. Byron Bay and
 Batemans Bay both have valid SD files.
+
+**The raw files do not contain a full 2D E(f, dir) spectrum** — only one
+mean direction (``dirn``) and one directional spread (``spread``) *per
+frequency bin*, i.e. the first two directional moments, not a per-direction
+energy breakdown. No buoy in this dataset measures a full 2D spectrum
+directly; a per-frequency directional *distribution* still has to be
+modelled from those moments. This module builds one the same way the rest
+of this codebase already does for reconstructed spectra
+(``utils.model.metamodel._wavespectra_sum``): the Cartwright (1963)
+cosine-2s spreading function, ``wavespectra.construct.direction.cartwright``,
+applied per frequency bin using that bin's own ``dirn``/``spread``, on the
+same ``SPECTRAL_DIR`` grid (5-degree bins) the metamodel's own spectral
+reconstruction uses — so buoy and model spectra are directly comparable.
+This is a **modelled** directional shape, not a measurement; ``skewness``
+and ``kurtosis`` (which the cos-2s model does not use) are kept alongside
+it so a deviation from that shape can still be assessed later.
 """
 
 from __future__ import annotations
@@ -32,8 +48,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import xarray as xr
+from wavespectra.construct import set_spec_attributes
+from wavespectra.construct.direction import cartwright
 
 from utils.config import resolve
+from utils.model.metamodel import SPECTRAL_DIR
 
 RAW_SPECTRA_DIR = "inputs/Observations/raw/buoys/WaveSpectra/MHL_Spectra"
 NSW_LOCAL_UTC_OFFSET_HOURS = 10  # fixed Eastern Standard, never AEDT
@@ -70,6 +89,16 @@ VAR_ATTRS: dict[str, dict[str, str]] = {
         "long_name": "Total spectral density scale factor (multiplies energy_norm)",
     },
     "freq": {"standard_name": "sea_surface_wave_frequency", "units": "Hz"},
+    "efth_norm": {
+        "units": "degree-1",
+        "long_name": (
+            "Modelled 2D directional spectrum shape, peak=1 per hour "
+            "(energy_norm spread over direction via Cartwright cos-2s, "
+            "not a direct measurement — see module docstring)"
+        ),
+    },
+    # "efth" itself: left to wavespectra's own set_spec_attributes() so it
+    # matches the CF attrs the rest of the codebase's spectra carry exactly.
 }
 
 
@@ -121,8 +150,10 @@ def read_station_spectra(instrument_id: str) -> xr.Dataset:
     -------
     xarray.Dataset
         Dims ``(time, freq)`` for ``energy_norm``/``dirn``/``spread``/
-        ``skewness``/``kurtosis``, dim ``(time,)`` for ``spect_den``, and
-        ``energy_density`` only when a usable SD file exists. Time is UTC.
+        ``skewness``/``kurtosis``; dim ``(time,)`` for ``spect_den``;
+        ``(time, freq, dir)`` for ``efth_norm`` (always) and ``efth``
+        (absolute, m2/Hz/deg — only when a usable SD file exists). Time is
+        UTC.
     """
     info = STATIONS[instrument_id]
     years = yearly_files(info)
@@ -145,12 +176,25 @@ def read_station_spectra(instrument_id: str) -> xr.Dataset:
         ds = ds.assign(spect_den=("time", spect_den.to_numpy()))
         ds["energy_density"] = ds["energy_norm"] * ds["spect_den"]
 
+    # Per-frequency directional shape from (dirn, spread) -> full (time, freq,
+    # dir) spectrum, on the same direction grid the metamodel's own spectral
+    # reconstruction uses (utils.model.metamodel.SPECTRAL_DIR). See module
+    # docstring: this is a modelled cos-2s shape, not a measured spectrum.
+    dir_shape = cartwright(dir=SPECTRAL_DIR, dm=ds["dirn"], dspr=ds["spread"])
+    ds = ds.assign(efth_norm=(ds["energy_norm"] * dir_shape).astype("float32"))
+    if "energy_density" in ds:
+        ds = ds.assign(efth=(ds["energy_density"] * dir_shape).astype("float32"))
+
     utc_time = ds["time"].to_index() - pd.Timedelta(hours=NSW_LOCAL_UTC_OFFSET_HOURS)
     ds = ds.assign_coords(time=utc_time.to_numpy())
 
     for name, attrs in VAR_ATTRS.items():
         if name in ds.variables:
             ds[name].attrs.update(attrs)
+    # Applied last so wavespectra's own CF attrs win for "efth"/"freq"/"dir"/
+    # "time" specifically — notebook 10/11's automatic Efth detection
+    # (`.spec` accessor) relies on those matching exactly.
+    set_spec_attributes(ds)
 
     return ds
 
@@ -206,13 +250,24 @@ def standardize_and_write(
                         "normalized shape is available, not an absolute spectrum."
                     )
                 )
+                + " 'efth_norm'/'efth' (time, freq, dir) are a MODELLED 2D spectrum: "
+                "the raw data only has one mean direction + spread per frequency "
+                "bin (no per-direction energy breakdown), spread onto the "
+                "SPECTRAL_DIR grid via the Cartwright (1963) cos-2s function — "
+                "same method utils.model.metamodel uses for reconstructed spectra. "
+                "Not a direct measurement; see the module docstring."
             ),
         }
     )
 
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"{instrument_id}.nc"
-    ds.to_netcdf(out_path)
+    encoding = {
+        name: {"zlib": True, "complevel": 4}
+        for name in ("efth_norm", "efth")
+        if name in ds
+    }
+    ds.to_netcdf(out_path, encoding=encoding)
     return out_path
 
 
