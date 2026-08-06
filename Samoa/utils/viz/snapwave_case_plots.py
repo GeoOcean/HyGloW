@@ -71,6 +71,7 @@ class CasePlotStyle:
     top_vars: tuple[str, ...] = TOP_VARS
 
     def cmap_for(self, var: str, *, mode: str = "dynamic") -> str:
+        """Colormap name for *var*, falling back to the dynamic-mode default."""
         if mode == "metamodel":
             return self.metamodel_cmaps.get(var, self.cmaps.get(var, "viridis"))
         return self.cmaps.get(var, "viridis")
@@ -100,9 +101,35 @@ def resolve_wave_variable(
     time_index: int = 0,
     site_dim: str | None = None,
 ) -> tuple[str, xr.DataArray]:
-    """Resolve canonical wave variable inside a SnapWave output dataset.
+    """
+    Resolve canonical wave variable inside a SnapWave output dataset.
 
-    Supports ``hs``, ``tp``, ``dir``, ``spr`` for site/map panels.
+    Supports ``hs``, ``tp``, ``dir``, ``spr`` for site/map panels, matching
+    against :data:`WAVE_VAR_ALIASES` since SnapWave history/map NetCDFs use
+    their own native variable names.
+
+    Parameters
+    ----------
+    ds
+        SnapWave sites or map output dataset.
+    name
+        Canonical variable name (``hs``, ``tp``, ``dir``, or ``spr``).
+    time_index
+        Timestep to select when the resolved variable has a ``time`` dim.
+    site_dim
+        Extra dimension to keep (e.g. ``nmesh2d_node`` for map variables)
+        when squeezing singleton dimensions.
+
+    Returns
+    -------
+    tuple[str, xarray.DataArray]
+        Native variable name found in *ds*, and its resolved data array.
+
+    Raises
+    ------
+    KeyError
+        If *name* is not a known canonical variable, or none of its aliases
+        are present in *ds*.
     """
     key = name.strip().lower()
     if key not in WAVE_VAR_ALIASES:
@@ -130,6 +157,7 @@ def resolve_wave_variable(
 
 
 def _parse_snapwave_inp(path: Path) -> dict[str, str]:
+    """Parse a ``snapwave.inp`` file into a flat ``{key: value}`` string dict."""
     entries: dict[str, str] = {}
     for line in path.read_text(encoding="utf-8").splitlines():
         line = line.split("#", 1)[0].strip()
@@ -141,6 +169,13 @@ def _parse_snapwave_inp(path: Path) -> dict[str, str]:
 
 
 def _read_xy_table(path: Path) -> np.ndarray:
+    """Read a whitespace/comma-separated ``x y`` coordinate text file.
+
+    Raises
+    ------
+    ValueError
+        If no valid coordinate rows are found.
+    """
     rows: list[list[float]] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
@@ -155,6 +190,20 @@ def _read_xy_table(path: Path) -> np.ndarray:
 
 
 def read_enclosure_polygon(case_dir: str | Path) -> Polygon:
+    """
+    Read the SnapWave ``enclosure.txt`` vertices from a case directory.
+
+    Parameters
+    ----------
+    case_dir
+        Case working directory (see
+        :func:`utils.simulation.snapwave_wrappers.write_polygon_vertices_to_txt`).
+
+    Returns
+    -------
+    shapely.geometry.Polygon
+        Enclosure polygon.
+    """
     coords = _read_xy_table(Path(case_dir) / "enclosure.txt")
     if coords.ndim == 1:
         coords = coords.reshape(1, 2)
@@ -162,10 +211,37 @@ def read_enclosure_polygon(case_dir: str | Path) -> Polygon:
 
 
 def read_boundary_nodes(case_dir: str | Path) -> np.ndarray:
+    """
+    Read the SnapWave ``boundary.txt`` node coordinates from a case directory.
+
+    Parameters
+    ----------
+    case_dir
+        Case working directory.
+
+    Returns
+    -------
+    numpy.ndarray
+        ``(n_nodes, 2)`` array of ``(lon, lat)`` boundary node coordinates.
+    """
     return _read_xy_table(Path(case_dir) / "boundary.txt")
 
 
 def read_forcing_table(path: str | Path) -> pd.DataFrame:
+    """
+    Read a SnapWave forcing text file (e.g. ``hs.txt``) as a time-indexed table.
+
+    Parameters
+    ----------
+    path
+        Forcing file path. First column is the time index; remaining
+        columns are per-boundary-node values.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Rows indexed by time, columns ``b0``, ``b1``, ... per boundary node.
+    """
     data = np.loadtxt(path, dtype=float)
     if data.ndim == 1:
         data = data.reshape(1, -1)
@@ -174,6 +250,21 @@ def read_forcing_table(path: str | Path) -> pd.DataFrame:
 
 
 def infer_goal_from_path(case_dir: str | Path) -> int | None:
+    """
+    Infer the goal id from a metamodel case path (``.../<goal>/<case_num>``).
+
+    Parameters
+    ----------
+    case_dir
+        Case working directory. The goal id is the last two-digit path
+        component (e.g. ``.../03/0012`` -> ``3``).
+
+    Returns
+    -------
+    int | None
+        Goal id, or ``None`` if no two-digit path component is found
+        (e.g. a dynamic case path, which has no goal subfolder).
+    """
     for part in reversed(Path(case_dir).parts):
         if re.fullmatch(r"\d{2}", part):
             return int(part)
@@ -196,6 +287,20 @@ def _resolve_map_file(case_dir: Path, inp: dict[str, str]) -> Path | None:
 
 
 def load_case_context(case_dir: str | Path) -> CaseContext:
+    """
+    Discover paths and metadata for a finished SnapWave case directory.
+
+    Parameters
+    ----------
+    case_dir
+        Case working directory containing ``snapwave.inp`` and its outputs.
+
+    Returns
+    -------
+    CaseContext
+        Resolved input/output paths (missing optional files as ``None``)
+        and the inferred goal id.
+    """
     case_dir = Path(case_dir)
     inp = _parse_snapwave_inp(case_dir / "snapwave.inp")
     grid = Path(inp["gridfile"]) if inp.get("gridfile") else None
@@ -214,6 +319,12 @@ def load_case_context(case_dir: str | Path) -> CaseContext:
 
 
 def _split_quads_to_triangles(face_nodes: np.ndarray) -> np.ndarray:
+    """Split a SnapWave map mesh's tri/quad face-node table into triangles.
+
+    ``face_nodes`` is 1-based with ``NaN`` padding for triangular faces
+    (no 4th node); each row becomes one triangle (``n0, n1, n2``) plus a
+    second one (``n0, n2, n3``) when a 4th node is present.
+    """
     n0, n1, n2 = face_nodes[:, 0], face_nodes[:, 1], face_nodes[:, 2]
     n3 = face_nodes[:, 3] if face_nodes.shape[1] > 3 else np.full_like(n0, np.nan)
 
@@ -226,6 +337,11 @@ def _split_quads_to_triangles(face_nodes: np.ndarray) -> np.ndarray:
 
 
 def _map_triangulation(map_ds: xr.Dataset) -> mtri.Triangulation:
+    """Build a matplotlib triangulation from a SnapWave map dataset's mesh.
+
+    Masks triangles with any ``NaN`` node elevation (``mesh2d_node_z``) so
+    ``tripcolor`` doesn't interpolate across dry/undefined mesh nodes.
+    """
     x = map_ds["mesh2d_node_x"].values.astype(float)
     y = map_ds["mesh2d_node_y"].values.astype(float)
     triangles = _split_quads_to_triangles(map_ds["mesh2d_face_nodes"].values)
@@ -237,12 +353,25 @@ def _map_triangulation(map_ds: xr.Dataset) -> mtri.Triangulation:
 
 
 def _forcing_row(case_dir: Path, var: str, time_index: int) -> tuple[float, np.ndarray]:
+    """Time value and per-boundary-node row from a forcing file at *time_index*.
+
+    Clamps *time_index* to the last available row instead of raising, so a
+    single ``time_index`` can be reused across forcing files with different
+    lengths.
+    """
     table = read_forcing_table(case_dir / FORCING_FILES[var])
     idx = min(time_index, len(table) - 1)
     return float(table.index[idx]), table.iloc[idx].to_numpy(float)
 
 
 def _active_boundary_index(hs_values: np.ndarray) -> int:
+    """Index of the metamodel case's single active boundary node (``hs=1``).
+
+    Raises
+    ------
+    ValueError
+        If no boundary node has a positive ``hs`` value.
+    """
     idx = int(np.argmax(hs_values))
     if hs_values[idx] <= 0:
         raise ValueError("No active boundary found (hs row has no positive entry)")
@@ -250,6 +379,7 @@ def _active_boundary_index(hs_values: np.ndarray) -> int:
 
 
 def _finite_vmin_vmax(values: np.ndarray) -> tuple[float, float]:
+    """2nd/98th percentile of the finite entries in *values* (``(0, 1)`` if none)."""
     finite = values[np.isfinite(values)]
     if finite.size == 0:
         return 0.0, 1.0
@@ -291,6 +421,7 @@ def _resolve_plot_scaling(
 def _add_colorbar(
     ax: Axes, mappable, vmin: float, vmax: float, *, fraction: float
 ) -> None:
+    """Attach a colorbar to *ax* with tick density scaled to the value span."""
     cb = plt.colorbar(mappable, ax=ax, fraction=fraction, pad=0.02)
     span = vmax - vmin
     if span <= 0:
@@ -357,6 +488,14 @@ def _plot_site_field(
     extent: tuple[float, float, float, float],
     mode: str,
 ) -> None:
+    """Scatter one wave variable at output-site locations, with colorbar.
+
+    Raises
+    ------
+    KeyError
+        If *var* cannot be resolved in *sites_ds* (caught by the caller to
+        render a "not in output" placeholder panel instead).
+    """
     _, values = resolve_wave_variable(sites_ds, var, time_index=time_index)
     lon = sites_ds["station_x"].values.astype(float)
     lat = sites_ds["station_y"].values.astype(float)
@@ -391,6 +530,14 @@ def _plot_map_tripcolor(
     style: CasePlotStyle,
     mode: str,
 ):
+    """Draw one wave variable as a shaded mesh (``tripcolor``) on *ax*.
+
+    Returns
+    -------
+    matplotlib.collections.PolyCollection | None
+        The plotted mesh, or ``None`` (with a placeholder text drawn
+        instead) when *var* has no finite values.
+    """
     tri = _map_triangulation(map_ds)
     _, values = resolve_wave_variable(
         map_ds, var, time_index=time_index, site_dim="nmesh2d_node"
@@ -423,6 +570,7 @@ def _fit_map_extent(
 
 
 def _draw_enclosure(ax: Axes, enclosure: Polygon) -> None:
+    """Draw the SnapWave enclosure boundary as a dashed line on *ax*."""
     gpd.GeoDataFrame(geometry=[enclosure], crs="EPSG:4326").boundary.plot(
         ax=ax,
         color="#d62728",
@@ -440,6 +588,19 @@ def _draw_boundary_nodes(
     colors: np.ndarray | None = None,
     sizes: np.ndarray | None = None,
 ) -> None:
+    """Scatter boundary nodes on *ax*, optionally highlighting the active one.
+
+    Parameters
+    ----------
+    ax
+        Target matplotlib axes.
+    boundary
+        ``(n_nodes, 2)`` boundary node coordinates.
+    active_index
+        Metamodel case's single active boundary node, drawn as a red star.
+    colors, sizes
+        Optional per-node colour/size arrays (dynamic case: scaled by ``hs``).
+    """
     ax.scatter(
         boundary[:, 0],
         boundary[:, 1],
@@ -472,6 +633,11 @@ def _draw_dir_arrow(
     *,
     extent: tuple[float, float, float, float],
 ) -> None:
+    """Draw a wave-from direction arrow ending at ``(lon, lat)`` on *ax*.
+
+    Arrow length is scaled from *extent* so it reads at a consistent
+    fraction of the domain regardless of the map's geographic size.
+    """
     theta = np.deg2rad(float(dir_deg))
     length = 0.08 * max(extent[1] - extent[0], extent[3] - extent[2])
     ax.annotate(
@@ -503,6 +669,35 @@ def _plot_domain_panel(
     style: CasePlotStyle,
     extent: tuple[float, float, float, float],
 ) -> None:
+    """Draw the full-width domain panel: map/base, enclosure, boundary, sites.
+
+    Boundary nodes are drawn differently by *mode*: metamodel cases highlight
+    the single active (``hs=1``) node with its direction arrow; dynamic cases
+    colour/size every node by its forcing ``hs`` and draw an arrow per active
+    node.
+
+    Parameters
+    ----------
+    ax
+        Target matplotlib axes.
+    ctx
+        Case context from :func:`load_case_context`.
+    map_ds
+        Domain map dataset; falls back to :func:`utils.viz.case_plots.plot_base_map`
+        when ``None``.
+    sites_ds
+        Output sites dataset, overlaid as markers when not ``None``.
+    time_index
+        Forcing/output timestep to plot.
+    mode
+        ``"metamodel"`` or ``"dynamic"``.
+    map_variable
+        Variable shaded on the map mesh.
+    style
+        Plot styling config.
+    extent
+        ``(xmin, xmax, ymin, ymax)`` axes limits.
+    """
     enclosure = read_enclosure_polygon(ctx.case_dir)
     boundary = read_boundary_nodes(ctx.case_dir)
 
@@ -572,6 +767,36 @@ def _plot_case_figure(
     style: CasePlotStyle | None = None,
     title: str | None = None,
 ) -> Figure:
+    """
+    Build the shared case-diagnostic figure for :func:`plot_metamodel_case`
+    and :func:`plot_dynamic_case`.
+
+    Layout: full-width domain map on top; 2x2 site panels for
+    ``style.top_vars`` below.
+
+    Parameters
+    ----------
+    case_dir
+        Finished SnapWave case working directory.
+    mode
+        ``"metamodel"`` or ``"dynamic"`` — selects title/legend wording and
+        boundary-node highlighting in the domain panel.
+    time_index
+        Forcing/output timestep to plot.
+    show_map
+        Draw the domain mesh map when available; otherwise falls back to
+        the standard case base map.
+    map_variable
+        Variable shaded on the domain map mesh.
+    style
+        Plot styling config; defaults to :data:`DEFAULT_CASE_PLOT_STYLE`.
+    title
+        Optional title override (otherwise built from case metadata).
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
     style = style or DEFAULT_CASE_PLOT_STYLE
     ctx = load_case_context(case_dir)
     sites_ds = xr.open_dataset(ctx.sites_file) if ctx.sites_file else None
@@ -655,6 +880,7 @@ def _plot_case_figure(
 def _extent_from_enclosure(
     enclosure: Polygon, pad: float = 0.08
 ) -> tuple[float, float, float, float]:
+    """Padded ``(xmin, xmax, ymin, ymax)`` map extent around *enclosure*."""
     minx, miny, maxx, maxy = enclosure.bounds
     return minx - pad, maxx + pad, miny - pad, maxy + pad
 
@@ -669,7 +895,35 @@ def plot_metamodel_case(
     title: str | None = None,
     show: bool = True,
 ) -> Figure:
-    """Plot a finished metamodel SnapWave case from its folder."""
+    """
+    Plot a finished metamodel SnapWave case from its folder.
+
+    Full-width domain map (mesh or base map, with the active boundary node
+    and its direction arrow) on top; 2x2 output-site panels for
+    ``style.top_vars`` below.
+
+    Parameters
+    ----------
+    case_dir
+        Case working directory, e.g. ``<output_dir>/<goal>/<case_num>``.
+    time_index
+        Forcing/output timestep to plot.
+    show_map
+        Draw the domain mesh map when available; otherwise falls back to
+        the standard case base map.
+    map_variable
+        Variable shaded on the domain map mesh.
+    style
+        Plot styling config; defaults to :data:`DEFAULT_CASE_PLOT_STYLE`.
+    title
+        Optional title override (otherwise built from case metadata).
+    show
+        Call ``plt.show()`` when ``True``.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
     fig = _plot_case_figure(
         case_dir,
         mode="metamodel",
@@ -694,7 +948,35 @@ def plot_dynamic_case(
     title: str | None = None,
     show: bool = True,
 ) -> Figure:
-    """Plot a finished dynamic SnapWave case from its folder."""
+    """
+    Plot a finished dynamic SnapWave case from its folder.
+
+    Full-width domain map (mesh or base map, with boundary nodes coloured/
+    sized by forcing ``hs`` and a direction arrow per active node) on top;
+    2x2 output-site panels for ``style.top_vars`` below.
+
+    Parameters
+    ----------
+    case_dir
+        Case working directory.
+    time_index
+        Forcing/output timestep to plot.
+    show_map
+        Draw the domain mesh map when available; otherwise falls back to
+        the standard case base map.
+    map_variable
+        Variable shaded on the domain map mesh.
+    style
+        Plot styling config; defaults to :data:`DEFAULT_CASE_PLOT_STYLE`.
+    title
+        Optional title override (otherwise built from case metadata).
+    show
+        Call ``plt.show()`` when ``True``.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
     fig = _plot_case_figure(
         case_dir,
         mode="dynamic",

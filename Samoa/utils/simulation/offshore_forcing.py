@@ -31,7 +31,7 @@ def boundary_parameters(offshore: xr.Dataset) -> dict[str, list]:
     Returns
     -------
     dict[str, list]
-        Keys ``hs_goals``, ``tp_goals``, ``wd_goals``, ``ds_goals``, ``tref``
+        Keys ``hs_goals``, ``tp_goals``, ``dir_goals``, ``spr_goals``, ``tref``
         (one list entry per timestep). ``dir``/``spr`` map to SnapWave ``wd``/``ds``.
 
     Raises

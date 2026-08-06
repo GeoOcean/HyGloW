@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import cartopy.crs as ccrs
 import geopandas as gpd
@@ -29,6 +30,9 @@ from utils.config import SIMULATIONS, display_title
 from utils.directions import nautical_sector_to_wedge_angles
 from utils.geometry.output_sites import compute_output_sites, write_output_sites
 from utils.viz import case_plots as plot
+
+if TYPE_CHECKING:
+    from utils.viz.snapwave_case_plots import CasePlotStyle
 
 # SnapWave history NetCDF → HyGloW names
 POINT_VARS = {
@@ -314,6 +318,10 @@ class SnapWaveModelWrapper(BaseModelWrapper):
             Case parameter dicts for the base wrapper.
         goals_config
             ``{id: {lon, lat, angles}}`` from :func:`utils.config.goals_for_snapwave`.
+        templates_name
+            Template subset passed to the base wrapper (``"all"`` by default).
+        debug
+            Set the wrapper logger to ``DEBUG`` when ``True``, else ``INFO``.
         output_sites_df
             Pre-built output sites table; computed from AoI when omitted.
         sites_filename
@@ -356,6 +364,35 @@ class SnapWaveModelWrapper(BaseModelWrapper):
             output_sites_df = compute_output_sites(aoi_polygon=self.aoi_polygon)
         self.output_sites_df = output_sites_df.reset_index(drop=True)
         self._sites_txt = sites_filename
+
+        self.sbatch_file_example = """
+#!/bin/bash
+#SBATCH --job-name=snapwave
+#SBATCH --partition=geocean
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=2        # cores per case -- also change OMP_NUM_THREADS export below stays in sync automatically
+#SBATCH --mem=4gb
+#SBATCH --output=slurm_logs/%A_%a.out
+#SBATCH --error=slurm_logs/%A_%a.err
+
+SNAPWAVE_BIN=/home/tausiaj/GitHub-GeoOcean/SnapWave/SnapWave/lnx64/bin/snapwave
+
+# SnapWave has no thread-count logic of its own (no omp_set_num_threads,
+# no .inp parameter) -- it just inherits libgomp's default, which grabs
+# every online CPU unless told otherwise. This is the only knob.
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+
+case_dir=$(sed -n "${SLURM_ARRAY_TASK_ID}p" case_dirs.txt)
+cd "$case_dir"
+$SNAPWAVE_BIN > wrapper_out.log 2> wrapper_error.log
+rm snapwave.upw
+
+# --ntasks=1 pinned explicitly here too: with CR_Core, --cpus-per-task=1
+# gets rounded up to a full physical core (2 hw threads on hyperthreaded
+# nodes), and srun defaults its task count to allocated_cpus/cpus-per-task
+# when -n isn't given -- without this it silently launches snapwave TWICE.
+# srun --ntasks=1 --cpus-per-task=$SLURM_CPUS_PER_TASK "$SNAPWAVE_BIN" > "wrapper_out.log" 2> "wrapper_error.log"
+"""
 
     @property
     def _sites_nc(self) -> str:
@@ -560,6 +597,23 @@ class SnapWaveMetaModelWrapper(SnapWaveModelWrapper):
         use this to actually read goal labels on a case with many goals,
         instead of the map being squeezed into the left column next to the
         bar and info panels.
+
+        Parameters
+        ----------
+        cases_df
+            Optional LHS table override. Defaults to ``metamodel_parameters``.
+        sector_radius_deg, arrow_scale_deg, max_arrows_per_goal
+            Map styling controls for sectors and direction arrows.
+        show_topobathy
+            Draw bathymetry under the map panel.
+        figsize
+            Figure size in inches.
+        show
+            Call ``plt.show()`` when ``True``.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
         """
         df = (
             cases_df
@@ -590,7 +644,7 @@ class SnapWaveMetaModelWrapper(SnapWaveModelWrapper):
         time_index: int = 0,
         show_map: bool = True,
         map_variable: str = "hs",
-        style=None,
+        style: CasePlotStyle | None = None,
         show: bool = True,
     ) -> plt.Figure:
         """Plot one finished metamodel case folder (``goal/case_num``)."""
@@ -725,6 +779,24 @@ class SnapWaveDynamicModelWrapper(SnapWaveModelWrapper):
         use this to actually read goal labels on a case with many goals,
         instead of the map being squeezed into the left column next to the
         bar and info panels.
+
+        Parameters
+        ----------
+        offshore
+            Processed offshore dataset with dims ``(time, goal)`` and bulk
+            variables ``hs``, ``tp``, ``dir``, ``spr``.
+        sector_radius_deg, arrow_scale_deg, max_arrows_per_goal
+            Map styling controls for sectors and direction arrows.
+        show_topobathy
+            Draw bathymetry under the map panel.
+        figsize
+            Figure size in inches.
+        show
+            Call ``plt.show()`` when ``True``.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
         """
         fig = plot.plot_dynamic_configuration_map(
             enclosure_polygon=self.enclosure_polygon,
@@ -749,7 +821,7 @@ class SnapWaveDynamicModelWrapper(SnapWaveModelWrapper):
         time_index: int = 0,
         show_map: bool = True,
         map_variable: str = "hs",
-        style=None,
+        style: CasePlotStyle | None = None,
         show: bool = True,
     ) -> plt.Figure:
         """Plot one finished dynamic case folder."""

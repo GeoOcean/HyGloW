@@ -100,6 +100,7 @@ def _topobathy():
 
 @lru_cache(maxsize=1)
 def _aoi() -> gpd.GeoDataFrame:
+    """Load the case AoI polygon shapefile (cached)."""
     return gpd.read_file(resolve(PATHS["aoi_file"]))
 
 
@@ -354,6 +355,7 @@ def plot_case_map(
 
 
 def _site_color(source: str, label: str) -> str:
+    """Colour for one output site, keyed by its source type and label."""
     if source == "isobath":
         return ISOBATH_COLORS.get(str(label), DEFAULT_POINT_COLOR)
     if source == "mesh":
@@ -990,6 +992,31 @@ def plot_metamodel_configuration(
     Multi-panel diagnostic before building or running metamodel SnapWave cases.
 
     Layout: map and direction-range bars on the left; text summary on the right.
+
+    Parameters
+    ----------
+    aoi_gdf, enclosure_polygon, goals_config, output_sites_df
+        Case geometry and goal configuration (see
+        :class:`utils.simulation.snapwave_wrappers.SnapWaveModelWrapper`).
+    cases_df
+        LHS cases table with ``goal``, ``tp``, ``dir``, ``spr``, ``wl`` columns.
+    bounds, num_samples_per_goal, mesh_file, enclosure_buffer_m
+        Optional metadata surfaced in the text summary panel only.
+    sector_radius_deg, arrow_scale_deg, max_arrows_per_goal
+        Map styling controls for sectors and direction arrows.
+    show_topobathy
+        Draw bathymetry under the map panel.
+    title
+        Figure title.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+
+    Raises
+    ------
+    KeyError
+        If *cases_df* is missing a required column.
     """
     required = {"goal", "tp", "dir", "spr", "wl"}
     missing = required - set(cases_df.columns)
@@ -1109,6 +1136,32 @@ def plot_dynamic_configuration(
     when wave-from directions fall outside the nominal goal sectors.
 
     Layout: map and direction-range bars on the left; text summary on the right.
+
+    Parameters
+    ----------
+    aoi_gdf, enclosure_polygon, goals_config, output_sites_df
+        Case geometry and goal configuration (see
+        :class:`utils.simulation.snapwave_wrappers.SnapWaveModelWrapper`).
+    offshore
+        Processed offshore dataset with dims ``(time, goal)`` and bulk
+        variables ``hs``, ``tp``, ``dir``, ``spr`` (see
+        :mod:`utils.simulation.offshore_forcing`).
+    offshore_name, mesh_file, enclosure_buffer_m, maps_to_save
+        Optional metadata surfaced in the text summary panel only.
+    sector_radius_deg, arrow_scale_deg, max_arrows_per_goal
+        Map styling controls for sectors and direction arrows.
+    max_dir_marks
+        Per-goal sample count above which the direction-range bars switch
+        from individual ticks to a density strip (see
+        :func:`_dense_dir_mode`).
+    show_topobathy
+        Draw bathymetry under the map panel.
+    title
+        Figure title.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
     """
     cases = _offshore_bulk_long(offshore)
     n_time = int(offshore.sizes.get("time", len(cases) // max(cases["goal"].nunique(), 1)))
