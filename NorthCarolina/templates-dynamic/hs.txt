@@ -1,2 +1,0 @@
-   0 {% for hs in hs_goals %} {{ hs }}{% endfor %}
-3600 {% for hs in hs_goals %} {{ hs }}{% endfor %}

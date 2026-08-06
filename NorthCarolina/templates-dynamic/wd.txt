@@ -1,2 +1,0 @@
-   0 {% for wd in wd_goals %} {{ wd }}{% endfor %}
-3600 {% for wd in wd_goals %} {{ wd }}{% endfor %}

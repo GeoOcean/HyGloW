@@ -1,2 +1,0 @@
-   0 {% for g in range(ngoals) %} 0{% endfor %}
-3600 {% for g in range(ngoals) %} 0{% endfor %}

@@ -1,2 +1,0 @@
-   0 {% for tp in tp_goals %} {{ tp }}{% endfor %}
-3600 {% for tp in tp_goals %} {{ tp }}{% endfor %}

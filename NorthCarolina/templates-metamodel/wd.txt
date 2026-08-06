@@ -1,2 +1,0 @@
-   0 {% for g in range(ngoals) %} {{ wd }}{% endfor %}
-3600 {% for g in range(ngoals) %} {{ wd }}{% endfor %}
