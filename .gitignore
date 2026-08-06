@@ -188,26 +188,26 @@ cython_debug/
 *cases/
 *CASES*/
 *outputs/
-*JennBuoys/
-NorthCarolina/assets/
 
 # MacOS
 *.DS_Store
 
 # Repo tmp files
-pymesh2d/
 */tmp/
-Samoa/OLD_results/
-Samoa/*.py
 
-# Arquetypes
+# Testing/OLD Arquetypes
 Cantabria/
+Netherlands/
+NorthCarolina/
+
+NewSouthWales/inputs/
 
 # QGIS
 QGIS/
 
 # VS Code
 .vscode/
+.claude/
 
 # EuropePolygons still test
 EuropePolygons/

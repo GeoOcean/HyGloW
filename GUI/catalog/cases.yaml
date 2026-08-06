@@ -37,22 +37,3 @@ cases:
       whacs: done
       hindcast: todo
       buoy_validation: todo
-
-  - id: cantabria
-    case_dir: Cantabria
-    institution: GeoOcean
-    authors:
-      - name: tausiaj
-        github: https://github.com/tausiaj
-        role: downscaling & metamodel
-    repository: https://github.com/tausiaj/HyGloW
-    updated: "2026-07-17"
-    pipeline:
-      aoi: done
-      mesh: todo
-      goals: todo
-      lhs: todo
-      fit: todo
-      whacs: todo
-      hindcast: todo
-      buoy_validation: todo

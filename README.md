@@ -1,50 +1,62 @@
 # HyGloW — Hybrid Global Wave downscaling
 
-HyGloW downscales offshore wave hindcasts to nearshore sites without the cost
-of running a full spectral wave model at every timestep. For each region, a
-small number of physics-based **SnapWave** propagation runs train a
-statistical **metamodel** (MDA → PCA → Gaussian Process) that then
-reconstructs full time series — bulk parameters or spectra — at nearshore
-buoys and output sites cheaply.
+HyGloW turns an offshore wave hindcast into nearshore wave conditions —
+buoys, tide gauges, any point you care about — without running a full
+spectral wave model at every timestep. For your region, a small number of
+physics-based **SnapWave** runs train a statistical **metamodel** that then
+reconstructs the whole time series (bulk parameters or full spectra) cheaply.
 
-A **case** is a self-contained folder for one region: its own area of
-interest, mesh, goal points, observations catalogue, and results. Cases can
-live in this repository or in a contributor's own repo — what makes a folder
-a HyGloW case is conformance to the [case contract](hyglow/contract/CONTRACT.md).
-
-## Layout
-
-| Path             | What it is                                                                          |
-| ---------------- | ------------------------------------------------------------------------------------ |
-| `hyglow/`        | The engine, contract, and CLI (`python -m hyglow ...`) — scaffolds and validates cases |
-| `Samoa/`         | Reference case — Samoan archipelago                                                |
-| `NewSouthWales/` | Reference case — NSW coast, Australia                                              |
-| `GUI/`           | *HyGloW Results Explorer* — a Dash portal that reads any case's contract files       |
-| `EuropePolygons/` | Candidate area-of-interest polygons for future European cases ([details](EuropePolygons/README.md)) |
+If you have an area of interest, a bathymetry source, and an offshore wave
+hindcast, you can have nearshore wave conditions there. That's what this
+repo helps you do.
 
 ## Quickstart
 
+**0. Install dependencies** (once):
+
+- A conda/Python environment with `bluemath_tk`, `wavespectra`, `xarray`,
+  `geopandas`, `rioxarray`, `pandas`, `scipy`, `matplotlib`.
+- [**SnapWave**](https://github.com/danoroelvink/snapwave/) — the nearshore
+  propagation model. It's an external binary: clone that repo and compile it
+  yourself (see its own README for build instructions). You'll need it
+  before the notebooks that actually run cases (step 05 onward below).
+- `bluemesh2d` (the mesher) — installed per case with `pip`, see step 1.
+
+**1. Create your case:**
+
 ```bash
-# Scaffold a new self-contained case (engine + notebooks + config skeleton)
 python -m hyglow start --name MyCase
-
-# Check a case against the contract as you go
-python -m hyglow validate MyCase/            # development mode: gaps are warnings
-python -m hyglow validate MyCase/ --publish  # strict: portal-ready check
-
-# Browse existing cases
-cd GUI && python app.py   # http://localhost:8050
+cd MyCase
+pip install -r requirements.txt
 ```
 
-Full CLI reference (including `update`, which re-syncs a case's engine code
-from the template): [`hyglow/README.md`](hyglow/README.md).
+This gives you a self-contained folder: engine code, numbered notebooks,
+and a config skeleton. Nothing is downloaded for you — you fill in your
+region's data as you go.
 
-## Cases
+**2. Open `MyCase/README.md`** and work through the numbered notebooks in
+order — that README is your main guide from here on, with the full
+notebook-by-notebook walkthrough.
 
-| Case                                   | Region             | Status                                                                                     |
-| --------------------------------------- | ------------------- | -------------------------------------------------------------------------------------------- |
-| [Samoa](Samoa/README.md)               | Samoan archipelago | Full pipeline: mesh → LHS → metamodel fit → offshore hindcast → buoy/spectra validation      |
+**3. Check your progress anytime:**
+
+```bash
+python -m hyglow validate MyCase/            # development mode: gaps are warnings
+python -m hyglow validate MyCase/ --publish  # strict: is this ready to share?
+```
+
+## Want to see a finished example first?
+
+| Case                                     | Region               | Status                                                                                          |
+| ---------------------------------------- | -------------------- | ----------------------------------------------------------------------------------------------- |
+| [Samoa](Samoa/README.md)                 | Samoan archipelago   | Full pipeline: mesh → LHS → metamodel fit → offshore hindcast → buoy/spectra validation         |
 | [NewSouthWales](NewSouthWales/README.md) | NSW coast, Australia | Mesh, 26 goals, and a 35-buoy observations catalogue done; metamodel fit and validation pending |
+
+Or browse every published case in the results portal:
+
+```bash
+cd GUI && python app.py   # http://localhost:8050
+```
 
 ## The pipeline, in one paragraph
 
@@ -58,17 +70,25 @@ hindcast and running SnapWave once per hindcast timestep (the **dynamic**
 reference run) → validating the metamodel against that dynamic run and
 against real buoy records.
 
-Step-by-step notebook table: [`hyglow/template/README.md`](hyglow/template/README.md).
+## Repository layout
 
-## Environment
+| Path              | What it is                                                                                          |
+| ----------------- | --------------------------------------------------------------------------------------------------- |
+| `hyglow/`         | The engine, contract, and CLI (`python -m hyglow ...`) — scaffolds and validates cases              |
+| `Samoa/`          | Reference case — Samoan archipelago                                                                 |
+| `NewSouthWales/`  | Reference case — NSW coast, Australia                                                               |
+| `GUI/`            | *HyGloW Results Explorer* — a Dash portal that reads any case's contract files                      |
+| `EuropePolygons/` | Candidate area-of-interest polygons for future European cases ([details](EuropePolygons/README.md)) |
 
-Conda environment with `bluemath_tk`, `wavespectra`, `xarray`, `geopandas`,
-`rioxarray`, `pandas`, `scipy`, `matplotlib`, plus
-[SnapWave](https://github.com/danoroelvink/snapwave/) (external binary,
-compiled separately). See a case's README for its exact package list, and
-`GUI/requirements.txt` for the portal's (lighter) dependencies.
+Full CLI reference (including `update`, which re-syncs a case's engine code
+from the template): [`hyglow/README.md`](hyglow/README.md).
 
-## Contributing a case
+## Contributing a case back
+
+A **case** is a self-contained folder for one region — its own area of
+interest, mesh, goal points, observations catalogue, and results. Cases can
+live in this repository or in your own repo; what makes a folder a HyGloW
+case is conformance to the [case contract](hyglow/contract/CONTRACT.md).
 
 1. `python -m hyglow start --name YourCase`
 2. Fill in `YourCase/YourCase.json` and work through the numbered notebooks.
