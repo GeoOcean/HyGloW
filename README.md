@@ -6,6 +6,7 @@
   <img alt="Status" src="https://img.shields.io/badge/status-active%20development-orange">
   <img alt="Contributions" src="https://img.shields.io/badge/contributions-welcome-brightgreen">
   <img alt="Built for" src="https://img.shields.io/badge/built%20for-oceanographers-1f93b3">
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-GPLv3-blue"></a>
 </p>
 
 HyGloW turns an offshore wave hindcast into nearshore wave conditions —
@@ -125,3 +126,14 @@ Engine code (`utils/`) is **vendored** into every case so each one runs
 standalone. If you fix a bug in your case's copy, please also land it in
 [`hyglow/template/`](hyglow/template/) so `python -m hyglow update` can carry
 the fix to every other case.
+
+---
+
+## Authors
+
+Built by the [**GeoOcean**](https://github.com/GeoOcean) research group
+(Universidad de Cantabria). Questions, doubts, or just want to say hi?
+Reach out to Javier Tausía ([@tausiaj](https://github.com/tausiaj),
+[tausiaj@unican.es](mailto:tausiaj@unican.es)).
+
+Licensed under [GPLv3](LICENSE).
