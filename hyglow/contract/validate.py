@@ -24,9 +24,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 1
-SUPPORTED_SCHEMA_VERSIONS = (1,)
-
 REQUIRED_METRICS_COLUMNS = {
     "goal",
     "mda_candidate",
@@ -45,6 +42,8 @@ INFO = "INFO"
 
 @dataclass
 class Finding:
+    """One validator result: a severity level, a stable dotted code, and a message."""
+
     severity: str
     code: str
     message: str
@@ -81,6 +80,12 @@ class _Report:
 
 
 def find_case_config(case_dir: Path) -> Path | None:
+    """Locate the case config JSON inside *case_dir*.
+
+    Convention: ``{Case}/{Case}.json`` (case-insensitive fallback). If exactly
+    one other top-level JSON exists that is not a goals/observations file, it
+    is accepted as a fallback. Returns ``None`` if no config can be resolved.
+    """
     name = case_dir.name
     for candidate in (case_dir / f"{name}.json", case_dir / f"{name.lower()}.json"):
         if candidate.is_file():
@@ -94,6 +99,7 @@ def find_case_config(case_dir: Path) -> Path | None:
 
 
 def _load_json(path: Path, report: _Report, code: str) -> Any | None:
+    """Parse *path* as JSON, reporting *code* as an error (not raising) on failure."""
     try:
         with path.open(encoding="utf-8") as f:
             return json.load(f)
@@ -103,6 +109,7 @@ def _load_json(path: Path, report: _Report, code: str) -> Any | None:
 
 
 def _scan_todos(value: Any, trail: str, hits: list[str]) -> None:
+    """Recursively collect dotted-path *trail*s of any string containing ``"TODO"``."""
     if isinstance(value, str) and "TODO" in value:
         hits.append(trail)
     elif isinstance(value, dict):
@@ -114,6 +121,7 @@ def _scan_todos(value: Any, trail: str, hits: list[str]) -> None:
 
 
 def _is_number(value: Any) -> bool:
+    """``True`` for ``int``/``float``, excluding ``bool`` (a ``bool`` is technically an ``int``)."""
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
@@ -123,25 +131,13 @@ def _is_number(value: Any) -> bool:
 
 
 def _check_identity(config: dict, report: _Report) -> None:
+    """Check ``name``, ``description``, and scan the whole config for TODOs."""
     name = config.get("name")
     if not isinstance(name, str) or not name.strip():
         report.error("config.name", "'name' must be a non-empty string")
     description = config.get("description")
     if not isinstance(description, str) or not description.strip():
         report.gap("config.description", "'description' is missing or empty")
-
-    version = config.get("schema_version")
-    if version is None:
-        report.warn(
-            "config.schema_version",
-            f"'schema_version' missing — add \"schema_version\": {SCHEMA_VERSION}",
-        )
-    elif not isinstance(version, int) or version not in SUPPORTED_SCHEMA_VERSIONS:
-        report.error(
-            "config.schema_version",
-            f"unsupported schema_version {version!r}; "
-            f"supported: {SUPPORTED_SCHEMA_VERSIONS}",
-        )
 
     todos: list[str] = []
     _scan_todos(config, "", todos)
@@ -153,6 +149,7 @@ def _check_identity(config: dict, report: _Report) -> None:
 
 
 def _check_paths(case_dir: Path, config: dict, report: _Report) -> None:
+    """Check ``paths`` is a dict of strings, and warn about relative entries that don't exist yet."""
     paths = config.get("paths", {})
     if not isinstance(paths, dict):
         report.error("config.paths", "'paths' must be a dict")
@@ -168,6 +165,7 @@ def _check_paths(case_dir: Path, config: dict, report: _Report) -> None:
 
 
 def _check_goals(case_dir: Path, config: dict, report: _Report) -> None:
+    """Check ``simulations.goals_file`` is set, parses, and each goal has valid target/angles."""
     goals_file = config.get("simulations", {}).get("goals_file")
     if not isinstance(goals_file, str) or not goals_file:
         report.gap("goals.declared", "simulations.goals_file is not set")
@@ -181,11 +179,15 @@ def _check_goals(case_dir: Path, config: dict, report: _Report) -> None:
         return
     goals = data.get("goals")
     if not isinstance(goals, dict) or not goals:
-        report.error("goals.structure", f"{path.name}: 'goals' must be a non-empty dict")
+        report.error(
+            "goals.structure", f"{path.name}: 'goals' must be a non-empty dict"
+        )
         return
     for gid, goal in goals.items():
         target = goal.get("target", {})
-        if not (_is_number(target.get("longitude")) and _is_number(target.get("latitude"))):
+        if not (
+            _is_number(target.get("longitude")) and _is_number(target.get("latitude"))
+        ):
             report.error(
                 "goals.target",
                 f"goal {gid}: target.longitude/latitude must be numeric",
@@ -201,19 +203,24 @@ def _check_goals(case_dir: Path, config: dict, report: _Report) -> None:
 
 
 def _check_observations(case_dir: Path, config: dict, report: _Report) -> None:
+    """Check ``onshore_waves`` is set and points to a valid GeoJSON FeatureCollection."""
     onshore = config.get("onshore_waves")
     if not isinstance(onshore, str) or not onshore:
         report.gap("observations.declared", "'onshore_waves' is not set")
         return
     path = case_dir / onshore
     if not path.is_file():
-        report.gap("observations.file", f"observations file does not exist yet: {onshore}")
+        report.gap(
+            "observations.file", f"observations file does not exist yet: {onshore}"
+        )
         return
     data = _load_json(path, report, "observations.parse")
     if data is None:
         return
     if data.get("type") != "FeatureCollection":
-        report.error("observations.type", f"{path.name} must be a GeoJSON FeatureCollection")
+        report.error(
+            "observations.type", f"{path.name} must be a GeoJSON FeatureCollection"
+        )
         return
     features = data.get("features", [])
     seen_ids: set[str] = set()
@@ -222,18 +229,27 @@ def _check_observations(case_dir: Path, config: dict, report: _Report) -> None:
         geometry = feat.get("geometry", {})
         coords = geometry.get("coordinates", [])
         if geometry.get("type") != "Point" or len(coords) < 2:
-            report.error("observations.geometry", f"feature {i}: must be a Point with [lon, lat]")
+            report.error(
+                "observations.geometry", f"feature {i}: must be a Point with [lon, lat]"
+            )
         instrument = props.get("instrument_id")
         if not isinstance(instrument, str) or not instrument:
-            report.error("observations.instrument", f"feature {i}: missing 'instrument_id'")
+            report.error(
+                "observations.instrument", f"feature {i}: missing 'instrument_id'"
+            )
         elif instrument in seen_ids:
-            report.error("observations.instrument", f"duplicate instrument_id {instrument!r}")
+            report.error(
+                "observations.instrument", f"duplicate instrument_id {instrument!r}"
+            )
         else:
             seen_ids.add(instrument)
-    report.info("observations.ok", f"{len(features)} observation site(s) in {path.name}")
+    report.info(
+        "observations.ok", f"{len(features)} observation site(s) in {path.name}"
+    )
 
 
 def _check_offshore(config: dict, report: _Report) -> None:
+    """Check ``offshore_waves`` is a list (or single dict) of entries each with a ``name``."""
     block = config.get("offshore_waves", [])
     entries = [block] if isinstance(block, dict) else block
     if not isinstance(entries, list):
@@ -245,6 +261,11 @@ def _check_offshore(config: dict, report: _Report) -> None:
 
 
 def _check_outputs(case_dir: Path, report: _Report) -> None:
+    """Check ``outputs/goal_*/validation_metrics.csv`` files have the required columns.
+
+    In ``--publish`` mode, also warns if no portal figures exist under
+    ``outputs/course_figures/``.
+    """
     metrics_files = sorted((case_dir / "outputs").glob("goal_*/validation_metrics.csv"))
     if not metrics_files:
         report.gap(
@@ -265,7 +286,9 @@ def _check_outputs(case_dir: Path, report: _Report) -> None:
                 f"{path.parent.name}/{path.name} missing required columns: {sorted(missing)}",
             )
     if metrics_files:
-        report.info("outputs.ok", f"{len(metrics_files)} validation_metrics.csv file(s)")
+        report.info(
+            "outputs.ok", f"{len(metrics_files)} validation_metrics.csv file(s)"
+        )
 
     figures = sorted((case_dir / "outputs" / "course_figures").glob("fig*.png"))
     if not figures and report.publish:
@@ -278,6 +301,11 @@ def _check_outputs(case_dir: Path, report: _Report) -> None:
 
 
 def _check_engine(case_dir: Path, config: dict, report: _Report) -> None:
+    """Level 2 checks: validate the ``metamodel`` section against the engine contract.
+
+    Skipped entirely (with an info finding) when ``metamodel`` is absent —
+    only cases that opt into the metamodel workflow need to satisfy this.
+    """
     mm = config.get("metamodel")
     if mm is None:
         report.info("engine.skip", "no 'metamodel' section — Level 2 checks skipped")
@@ -288,7 +316,9 @@ def _check_engine(case_dir: Path, config: dict, report: _Report) -> None:
 
     candidates = mm.get("mda_candidates")
     if not isinstance(candidates, list) or not candidates:
-        report.error("engine.mda_candidates", "metamodel.mda_candidates must be a non-empty list")
+        report.error(
+            "engine.mda_candidates", "metamodel.mda_candidates must be a non-empty list"
+        )
     else:
         for n in candidates:
             if not isinstance(n, int) or isinstance(n, bool) or n <= 0:
@@ -298,13 +328,22 @@ def _check_engine(case_dir: Path, config: dict, report: _Report) -> None:
                 )
 
     inputs = mm.get("mda_inputs")
-    if not isinstance(inputs, list) or not inputs or not all(isinstance(c, str) for c in inputs):
-        report.error("engine.mda_inputs", "metamodel.mda_inputs must be a non-empty list of strings")
+    if (
+        not isinstance(inputs, list)
+        or not inputs
+        or not all(isinstance(c, str) for c in inputs)
+    ):
+        report.error(
+            "engine.mda_inputs",
+            "metamodel.mda_inputs must be a non-empty list of strings",
+        )
         inputs = []
 
     directional = mm.get("mda_directional_variables", [])
     if not isinstance(directional, list):
-        report.error("engine.directional", "metamodel.mda_directional_variables must be a list")
+        report.error(
+            "engine.directional", "metamodel.mda_directional_variables must be a list"
+        )
     else:
         unknown = set(directional) - set(inputs)
         if unknown:
@@ -316,7 +355,10 @@ def _check_engine(case_dir: Path, config: dict, report: _Report) -> None:
     vars_ = mm.get("vars_to_predict")
     predict_names: set[str] = set()
     if not isinstance(vars_, dict) or not vars_:
-        report.error("engine.vars_to_predict", "metamodel.vars_to_predict must be a non-empty dict")
+        report.error(
+            "engine.vars_to_predict",
+            "metamodel.vars_to_predict must be a non-empty dict",
+        )
     else:
         predict_names = set(vars_)
         for name, spec in vars_.items():
@@ -399,20 +441,28 @@ def _check_engine(case_dir: Path, config: dict, report: _Report) -> None:
                         f"unsupported wavespectra stats: {unknown}; allowed: {list(STATS)}",
                     )
         if "save_spectra" not in recon:
-            report.error("engine.reconstruction", "reconstruction.save_spectra is required")
+            report.error(
+                "engine.reconstruction", "reconstruction.save_spectra is required"
+            )
         elif not isinstance(recon["save_spectra"], bool):
-            report.error("engine.reconstruction", "reconstruction.save_spectra must be a bool")
+            report.error(
+                "engine.reconstruction", "reconstruction.save_spectra must be a bool"
+            )
 
     paths = mm.get("paths", {})
     for key in ("pca_dir", "gp_dir"):
         if key not in paths or not isinstance(paths[key], str):
-            report.error("engine.paths", f"metamodel.paths.{key} must be a template string")
+            report.error(
+                "engine.paths", f"metamodel.paths.{key} must be a template string"
+            )
 
     sim = config.get("simulations", {})
     for key in ("metamodel_templates", "dynamic_templates"):
         folder = sim.get(key)
         if isinstance(folder, str) and folder and not (case_dir / folder).is_dir():
-            report.warn("engine.templates", f"simulations.{key} folder missing: {folder}")
+            report.warn(
+                "engine.templates", f"simulations.{key} folder missing: {folder}"
+            )
 
 
 # ----------------------------------------------------------------------
@@ -421,7 +471,27 @@ def _check_engine(case_dir: Path, config: dict, report: _Report) -> None:
 
 
 def validate_case(case_dir: str | Path, *, publish: bool = False) -> list[Finding]:
-    """Validate one case folder against the contract; returns all findings."""
+    """Validate one case folder against the contract (see ``CONTRACT.md``).
+
+    Runs the Level 1 portal checks (identity, paths, goals, observations,
+    offshore catalog, outputs) and, if the config declares a ``metamodel``
+    section, the Level 2 engine checks.
+
+    Parameters
+    ----------
+    case_dir
+        Path to the case folder.
+    publish
+        Strict mode: expected-in-development gaps (missing inputs, TODO
+        placeholders, no outputs yet) become errors instead of warnings.
+
+    Returns
+    -------
+    list[Finding]
+        Every finding produced, in check order. Empty only if *case_dir*
+        can't be resolved to a config at all (that itself is a ``Finding``,
+        so this is never actually empty in practice).
+    """
     case_dir = Path(case_dir).resolve()
     report = _Report(publish)
 
@@ -455,6 +525,13 @@ def validate_case(case_dir: str | Path, *, publish: bool = False) -> list[Findin
 
 
 def main(argv: list[str] | None = None) -> int:
+    """CLI entry point: parse args, run :func:`validate_case`, print findings.
+
+    Returns
+    -------
+    int
+        ``0`` if there were no errors, ``1`` otherwise (warnings never fail).
+    """
     parser = argparse.ArgumentParser(
         description="Validate a HyGloW case folder against the case contract."
     )

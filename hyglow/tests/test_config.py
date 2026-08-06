@@ -14,7 +14,6 @@ def _write_config(case_dir: Path, **overrides) -> None:
     config = {
         "name": "TestCase",
         "description": "desc",
-        "schema_version": 1,
         "paths": {"aoi_file": "inputs/AoI_Polygons/TestCase_AoI.shp"},
         "onshore_waves": "inputs/Observations/TestCase_observations.json",
         "offshore_waves": [{"name": "WHACS", "data_path": "x.zarr"}],
@@ -47,7 +46,6 @@ class TestCaseConfig(unittest.TestCase):
         case = CaseConfig(self.case_dir)
         self.assertEqual(case.name, "TestCase")
         self.assertEqual(case.description, "desc")
-        self.assertEqual(case.schema_version, 1)
 
     def test_name_falls_back_to_dir_name_when_unset(self) -> None:
         _write_config(self.case_dir, name="")

@@ -1,8 +1,9 @@
 """Isobath extraction and SnapWave output-site construction.
 
-Used by :class:`utils.snapwave_wrapper.SnapWaveModelWrapper` to build the
-``output_sites.txt`` file written into every SnapWave case. Site layout is
-configured in the case config JSON → ``simulations.output_sites_config``.
+Used by :class:`utils.simulation.snapwave_wrappers.SnapWaveModelWrapper` to
+build the ``output_sites.txt`` file written into every SnapWave case. Site
+layout is configured in the case config JSON →
+``simulations.output_sites_config``.
 
 Row order in the output table (SnapWave matches by position):
 
@@ -30,7 +31,7 @@ from utils.config import OUTPUT_SITES_CONFIG, PATHS, resolve
 _X_NAMES = ("x", "lon", "longitude")
 _Y_NAMES = ("y", "lat", "latitude")
 
-# Columns expected by snapwave_wrapper.SITE_COORDS
+# Columns expected by utils.simulation.snapwave_wrappers.SITE_COORDS
 OUTPUT_SITE_COLUMNS = (
     "lon",
     "lat",

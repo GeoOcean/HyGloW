@@ -1,4 +1,4 @@
-# HyGloW case contract — schema version 1
+# HyGloW case contract
 
 A **case** is a self-contained folder describing one nearshore wave-downscaling
 region. Cases can live in any repository and be produced by any modelling
@@ -33,15 +33,14 @@ python validate.py MyCase/ --publish
 `{Case}/{Case}.json` (file name matches the folder name; case-insensitive
 fallback accepted).
 
-| Key                      | Type   | Required | Notes                                     |
-| ------------------------ | ------ | -------- | ----------------------------------------- |
-| `name`                   | str    | yes      | Display name                              |
-| `description`            | str    | publish  | One-line summary                          |
-| `schema_version`         | int    | yes      | This document's version (currently `1`)   |
-| `paths`                  | dict   | no       | Declared input paths (existence warned)   |
-| `simulations.goals_file` | str    | yes      | Relative path to the goals JSON           |
-| `onshore_waves`          | str    | publish  | Relative path to observations GeoJSON     |
-| `offshore_waves`         | list   | no       | Each entry: `name` (+ `data_path`)        |
+| Key                      | Type | Required | Notes                                   |
+| ------------------------ | ---- | -------- | --------------------------------------- |
+| `name`                   | str  | yes      | Display name                            |
+| `description`            | str  | publish  | One-line summary                        |
+| `paths`                  | dict | no       | Declared input paths (existence warned) |
+| `simulations.goals_file` | str  | yes      | Relative path to the goals JSON         |
+| `onshore_waves`          | str  | publish  | Relative path to observations GeoJSON   |
+| `offshore_waves`         | list | no       | Each entry: `name` (+ `data_path`)      |
 
 Values containing `TODO` are allowed in development and rejected at publish.
 
@@ -68,7 +67,7 @@ A GeoJSON `FeatureCollection` of `Point` features. Each feature's
 `outputs/goal_*/validation_metrics.csv` — one per goal, produced by the
 case's holdout validation. Required columns (extra columns are fine):
 
-```
+```text
 goal, mda_candidate, group, variable, n, bias, rmse, r2
 ```
 
@@ -88,32 +87,27 @@ At publish, at least one metrics file must exist.
 
 ## Level 2 — Engine contract (`metamodel` section present)
 
-| Key                                       | Rule                                              |
-| ----------------------------------------- | ------------------------------------------------- |
-| `mda_candidates`                          | non-empty list of positive ints (last = biggest)  |
-| `mda_inputs`                              | non-empty list of strings                         |
-| `mda_directional_variables`               | list, subset of `mda_inputs`                      |
-| `vars_to_predict`                         | non-empty dict; each value `"raw"` or a dict with `vars_to_stack` (non-empty list) and `pca_variance` in (0, 1] |
-| `site_filter`                             | dict; keys end with `_max` or `_min`              |
-| `pca_preprocessing`                       | optional dict of dicts                            |
-| `validation.metrics_variables`            | non-empty list, subset of `vars_to_predict`       |
-| `reconstruction.variables`                | non-empty dict; keys subset of `vars_to_predict`; values valid wavespectra stats |
-| `reconstruction.save_spectra`             | bool, required                                    |
-| `paths.pca_dir` / `paths.gp_dir`          | template strings                                  |
-| `simulations.metamodel_templates` / `dynamic_templates` | folders should exist                |
+| Key                                                     | Rule                                                                                                            |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `mda_candidates`                                        | non-empty list of positive ints (last = biggest)                                                                |
+| `mda_inputs`                                            | non-empty list of strings                                                                                       |
+| `mda_directional_variables`                             | list, subset of `mda_inputs`                                                                                    |
+| `vars_to_predict`                                       | non-empty dict; each value `"raw"` or a dict with `vars_to_stack` (non-empty list) and `pca_variance` in (0, 1] |
+| `site_filter`                                           | dict; keys end with `_max` or `_min`                                                                            |
+| `pca_preprocessing`                                     | optional dict of dicts                                                                                          |
+| `validation.metrics_variables`                          | non-empty list, subset of `vars_to_predict`                                                                     |
+| `reconstruction.variables`                              | non-empty dict; keys subset of `vars_to_predict`; values valid wavespectra stats                                |
+| `reconstruction.save_spectra`                           | bool, required                                                                                                  |
+| `paths.pca_dir` / `paths.gp_dir`                        | template strings                                                                                                |
+| `simulations.metamodel_templates` / `dynamic_templates` | folders should exist                                                                                            |
 
 The wavespectra-stats check is skipped (with a note) when `wavespectra` is
 not importable — the validator itself never requires third-party packages.
 
 ---
 
-## Versioning
-
-- `schema_version` is a plain integer; breaking changes bump it.
-- The validator accepts the current version, and the previous one with
-  deprecation warnings.
-- Every change to this document is recorded below.
-
 ## Changelog
 
-- **v1** (2026-07): initial contract, extracted from the Samoa reference case.
+Every change to this document is recorded here.
+
+- **2026-07**: initial contract, extracted from the Samoa reference case.

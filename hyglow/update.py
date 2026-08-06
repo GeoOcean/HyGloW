@@ -1,15 +1,16 @@
 """Re-sync a case's vendored engine from the canonical template.
 
 ``python -m hyglow update MyCase/`` compares the case's engine files
-(``utils/``, the mesher, ``tests/``) against ``hyglow/template/`` using the
-hashes recorded in ``.hyglow/manifest.json``:
+(``utils/``, ``tests/``) against ``hyglow/template/`` using the hashes
+recorded in ``.hyglow/manifest.json``:
 
 - files the user never touched are updated to the template version;
 - files with local modifications are reported and left alone
   (``--force`` overwrites them — the polite message is: if your fix is
   good, PR it to the template so everyone benefits);
 - files present in the case but gone from the template (e.g. a legacy
-  ``pymesh2d/``) are reported as orphaned, never deleted.
+  vendored ``bluemesh2d/`` or ``pymesh2d/``, now pip dependencies) are
+  reported as orphaned, never deleted.
 
 Cases created before the manifest existed are handled conservatively:
 without a shipped-state record, every differing file counts as locally
@@ -34,6 +35,7 @@ class UpdateError(RuntimeError):
 
 
 def _load_manifest(case_dir: Path) -> dict | None:
+    """Read ``.hyglow/manifest.json`` from *case_dir*, or ``None`` if absent."""
     path = case_dir / MANIFEST_REL
     if not path.is_file():
         return None
@@ -41,7 +43,27 @@ def _load_manifest(case_dir: Path) -> dict | None:
 
 
 def plan_update(case_dir: Path) -> dict[str, list[str]]:
-    """Classify every synced engine file. Returns lists keyed by action."""
+    """Classify every synced engine file by the action ``update_case`` would take.
+
+    Parameters
+    ----------
+    case_dir
+        Case folder to compare against ``hyglow/template/``.
+
+    Returns
+    -------
+    dict[str, list[str]]
+        Case-relative paths keyed by action: ``up_to_date``, ``update``
+        (differs but untouched since shipping — safe to sync), ``add`` (new
+        in the template), ``modified`` (differs and locally edited, or of
+        unknown provenance), ``orphaned`` (in the case but gone from the
+        template — reported, never synced or deleted).
+
+    Raises
+    ------
+    UpdateError
+        If the template itself has no engine files to compare against.
+    """
     template = _file_hashes(TEMPLATE_DIR, SYNCED_DIRS)
     if not template:
         raise UpdateError(f"Template has no engine files under {TEMPLATE_DIR}")
@@ -83,6 +105,12 @@ def _summarize_orphans(orphaned: list[str]) -> list[str]:
 
 
 def _write_manifest(case_dir: Path, synced_hashes: dict[str, str]) -> None:
+    """Update ``.hyglow/manifest.json`` with the shipped-state hashes for synced files.
+
+    Preserves the manifest's original ``created`` timestamp and merges in
+    the current hyglow/schema version, an ``updated`` timestamp, and
+    *synced_hashes* as the new ``engine_files`` record.
+    """
     manifest = _load_manifest(case_dir) or {}
     manifest.setdefault(
         "created", datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -104,7 +132,28 @@ def _write_manifest(case_dir: Path, synced_hashes: dict[str, str]) -> None:
 def update_case(
     case_dir: str | Path, *, force: bool = False, dry_run: bool = False
 ) -> int:
-    """Sync the case's engine from the template; returns a CLI exit code."""
+    """Sync the case's engine from the template, printing a human-readable plan.
+
+    Parameters
+    ----------
+    case_dir
+        Case folder to update.
+    force
+        Overwrite locally modified files too (normally left alone).
+    dry_run
+        Print the plan without writing anything.
+
+    Returns
+    -------
+    int
+        CLI exit code (always ``0`` — sync problems are reported per-file,
+        not treated as failures).
+
+    Raises
+    ------
+    UpdateError
+        If *case_dir* is not a directory, or it is the template itself.
+    """
     case_dir = Path(case_dir).resolve()
     if not case_dir.is_dir():
         raise UpdateError(f"Not a directory: {case_dir}")

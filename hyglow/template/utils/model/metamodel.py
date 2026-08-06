@@ -69,7 +69,7 @@ FORCING_COLS = tuple(
     c for c in MDA_INPUTS if c != "wl"
 )  # validity mask for hindcast rows (wl optional)
 
-# WHACS: bulk = partition -1; wind sea + swells = 0–3 (see offshore_waves.py)
+# WHACS: bulk = partition -1; wind sea + swells = 0–3 (see utils/simulation/offshore_forcing.py)
 BULK_PARTITION = -1
 SPECTRAL_PARTITIONS = (0, 1, 2, 3)
 
@@ -1660,6 +1660,8 @@ def _predict_offshore(
         PCA variance override; must match fitted models.
     models
         Pre-loaded model dict from :func:`load_models`; loaded if omitted.
+    device
+        Optional PyTorch device for GP inference when models are loaded here.
 
     Returns
     -------
@@ -1806,6 +1808,7 @@ def _time_label_for_cache(time: str | slice) -> str:
     if isinstance(time, slice):
 
         def _fmt(value: Any) -> str:
+            """Format one slice bound as a compact timestamp, or ``""`` if unset."""
             if value is None:
                 return ""
             return pd.Timestamp(value).strftime("%Y%m%dT%H%M")

@@ -9,6 +9,7 @@ from . import __version__
 
 
 def _cmd_start(args: argparse.Namespace) -> int:
+    """Handle ``hyglow start``: scaffold a new case folder and print next steps."""
     from .scaffold import ScaffoldError, start_case
 
     try:
@@ -38,6 +39,7 @@ Next steps (see {target.name}/README.md):
 
 
 def _cmd_update(args: argparse.Namespace) -> int:
+    """Handle ``hyglow update``: re-sync a case's vendored engine from the template."""
     from .update import UpdateError, update_case
 
     try:
@@ -48,6 +50,7 @@ def _cmd_update(args: argparse.Namespace) -> int:
 
 
 def _cmd_validate(args: argparse.Namespace) -> int:
+    """Handle ``hyglow validate``: run the case contract validator."""
     from .contract.validate import main as validate_main
 
     argv = [args.case_dir] + (["--publish"] if args.publish else [])
@@ -55,6 +58,7 @@ def _cmd_validate(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Entry point for ``python -m hyglow`` — parses argv and dispatches to a subcommand."""
     parser = argparse.ArgumentParser(
         prog="hyglow",
         description="HyGloW — hybrid global wave downscaling toolkit",
@@ -90,11 +94,11 @@ def main(argv: list[str] | None = None) -> int:
         "update",
         help="Re-sync a case's vendored engine from the template",
         description=(
-            "Update the case's engine files (utils/, mesher, tests/) to the "
-            "current hyglow/template/ versions. Locally modified files are "
-            "kept unless --force. Notebooks and SnapWave templates are never "
-            "touched. Orphaned files (e.g. a legacy pymesh2d/) are reported, "
-            "never deleted."
+            "Update the case's engine files (utils/, tests/) to the current "
+            "hyglow/template/ versions. Locally modified files are kept "
+            "unless --force. Notebooks and SnapWave templates are never "
+            "touched. Orphaned files (e.g. a legacy vendored bluemesh2d/ or "
+            "pymesh2d/, now pip dependencies) are reported, never deleted."
         ),
     )
     p_update.add_argument("case_dir", help="Path to the case folder")

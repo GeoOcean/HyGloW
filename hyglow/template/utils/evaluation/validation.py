@@ -151,7 +151,7 @@ def resolve_comparison_variables(
 
 
 def _scatter_grid_shape(n: int) -> tuple[int, int]:
-    """Return ``(nrows, ncols)`` for up to four scatter panels in a 2×2 grid."""
+    """Return ``(nrows, ncols)`` for *n* scatter panels: a 2x2 grid up to 4, else roughly square."""
     if n <= 1:
         return 1, 1
     if n == 2:
@@ -326,7 +326,28 @@ def closest_goal_for_point(
     goals: Mapping[str, dict[str, Any]],
     catalog_key: str,
 ) -> tuple[str, float]:
-    """Nearest goal hindcast node in ``catalog_key`` (e.g. ``whacs``)."""
+    """Nearest goal hindcast node in ``catalog_key`` (e.g. ``whacs``).
+
+    Parameters
+    ----------
+    lon, lat
+        Query point coordinates.
+    goals
+        Goals mapping from :func:`utils.config.load_goals`.
+    catalog_key
+        Offshore catalog key (see :func:`utils.config.offshore_catalog_key`)
+        used to look up each goal's ``hindcast`` snap point.
+
+    Returns
+    -------
+    goal_id, distance_m
+        Closest goal id and its great-circle distance to *(lon, lat)*.
+
+    Raises
+    ------
+    ValueError
+        If no goal has a hindcast snap for *catalog_key*.
+    """
     best_goal: str | None = None
     best_dist = float("inf")
     for gid, goal in goals.items():
@@ -348,7 +369,32 @@ def closest_goals_table(
     offshore_names: Iterable[str] | None = None,
     goals: Mapping[str, dict[str, Any]] | None = None,
 ) -> pd.DataFrame:
-    """Map each buoy site to the closest goal hindcast node per offshore source."""
+    """Map each buoy site to the closest goal hindcast node per offshore source.
+
+    Parameters
+    ----------
+    sites
+        SnapWave/buoy site labels (see :func:`utils.observation.onshore_sites.snapwave_site_id`).
+    offshore_names
+        Offshore catalog names to map against; default every entry in
+        ``offshore_waves`` from the case config JSON.
+    goals
+        Goals mapping; default :func:`utils.config.load_goals`.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per ``(site, offshore)`` pair with columns ``site``,
+        ``offshore``, ``goal``, ``distance_m``, ``hindcast_lon``, ``hindcast_lat``.
+
+    Raises
+    ------
+    KeyError
+        If a site's buoy instrument is not in the onshore-waves GeoJSON.
+    ValueError
+        If an offshore catalog has no hindcast snap for some goal (raised by
+        :func:`closest_goal_for_point`).
+    """
     goals = dict(goals or load_goals())
     buoy_coords = obs.get_coordinates()
     names = (
@@ -397,6 +443,34 @@ def load_offshore_hindcast_at_buoys(
 
     One entry per configured offshore source (e.g. WHACS). Each dataset has
     ``(time, sites)`` with the requested bulk variables present in the zarr.
+
+    Parameters
+    ----------
+    time
+        Period passed to ``.sel(time=...)`` on the offshore zarr.
+    sites
+        Buoy/SnapWave site labels to map.
+    offshore_names
+        Offshore catalog names; default every entry in ``offshore_waves``
+        from the case config JSON.
+    goals
+        Goals mapping; default :func:`utils.config.load_goals`.
+    variables
+        Bulk variables to keep; default ``metamodel.validation.metrics_variables``.
+    load
+        Eager-load each output dataset.
+
+    Returns
+    -------
+    estimates
+        ``{"{offshore_name} (closest goal)": dataset}`` on ``(time, sites)``.
+    mapping
+        Site → closest-goal table from :func:`closest_goals_table`.
+
+    Raises
+    ------
+    ValueError
+        If an offshore source has none of the requested variables.
     """
     site_ids = [obs.snapwave_site_id(s) for s in sites]
     mapping = closest_goals_table(site_ids, offshore_names=offshore_names, goals=goals)
@@ -437,7 +511,28 @@ def align_pair(
     sites: str | Iterable[str] | None = None,
     time: str | slice | None = None,
 ) -> tuple[xr.Dataset, xr.Dataset]:
-    """Inner join on shared ``sites`` and ``time``."""
+    """Inner join *estimate* and *reference* on shared ``sites`` and ``time``.
+
+    Parameters
+    ----------
+    estimate, reference
+        Datasets to align; must share a ``sites`` coordinate and a ``time`` dimension.
+    sites
+        Site selector resolved via :func:`utils.geometry.sites.resolve_sites`;
+        default the intersection of both datasets' site labels.
+    time
+        Optional ``.sel(time=...)`` applied to both datasets before alignment.
+
+    Returns
+    -------
+    estimate, reference
+        Datasets restricted to shared sites and inner-joined on time.
+
+    Raises
+    ------
+    ValueError
+        If no sites are shared, or no time steps overlap after alignment.
+    """
     if sites is not None:
         site_ids = resolve_sites(estimate, sites)
     else:
@@ -471,7 +566,31 @@ def compare_all(
     reference_label: str = "Buoy",
     pca_variance: mm.PcaVariance = None,
 ) -> dict[str, ComparisonResult]:
-    """Run :func:`compare` for several models against the same buoy reference."""
+    """Run :func:`compare` for several models against the same buoy reference.
+
+    Each estimate is independently aligned to *reference* via :func:`align_pair`
+    before comparison, so models covering different sites/time spans are all handled.
+
+    Parameters
+    ----------
+    reference
+        Common reference dataset (e.g. buoy observations).
+    estimates
+        Model name → dataset to compare against *reference*.
+    sites, time
+        Passed to :func:`align_pair` for each estimate.
+    variables
+        Metrics variables to score.
+    reference_label
+        Reference label stored on each result's metrics table.
+    pca_variance
+        Passed through to :func:`compare` (labels metamodel PCA settings, if any).
+
+    Returns
+    -------
+    dict[str, ComparisonResult]
+        One result per estimate, keyed by model name.
+    """
     results: dict[str, ComparisonResult] = {}
     for name, est in estimates.items():
         aligned_est, aligned_ref = align_pair(est, reference, sites=sites, time=time)
@@ -487,7 +606,18 @@ def compare_all(
 
 
 def metrics_summary(results: Mapping[str, ComparisonResult]) -> pd.DataFrame:
-    """Concatenate :attr:`ComparisonResult.metrics` tables with a ``model`` column."""
+    """Concatenate :attr:`ComparisonResult.metrics` tables with a ``model`` column.
+
+    Parameters
+    ----------
+    results
+        Model name → result, e.g. from :func:`compare_all`.
+
+    Returns
+    -------
+    pandas.DataFrame
+        All metrics tables stacked, with an added ``model`` column.
+    """
     return pd.concat(
         [r.metrics.assign(model=name) for name, r in results.items()],
         ignore_index=True,
@@ -509,6 +639,7 @@ class ComparisonResult:
     _groups: list[tuple[str, str, list[str]]] = field(repr=False)
 
     def site_ids(self, group: str) -> list[str]:
+        """Site labels belonging to one validation group (see :func:`find_group`)."""
         return find_group(self.estimate, group)[2]
 
     def plot(
@@ -520,6 +651,7 @@ class ComparisonResult:
         reference_label: str = "Reference",
         **kwargs: Any,
     ) -> Figure:
+        """Map + density scatters for one validation group (see :func:`plot_group`)."""
         name, _, site_ids = find_group(self.estimate, group)
         return plot_group(
             self.estimate,
@@ -533,6 +665,7 @@ class ComparisonResult:
         )
 
     def plot_map(self, group: str, **kwargs: Any) -> tuple[Figure, plt.Axes]:
+        """Site map for one validation group (see :func:`plot_map`)."""
         name, _, site_ids = find_group(self.estimate, group)
         return plot_map(self.estimate, site_ids, group_name=name, **kwargs)
 
@@ -545,6 +678,7 @@ class ComparisonResult:
         reference_label: str = "Reference",
         **kwargs: Any,
     ) -> Figure:
+        """Density scatter panels for one validation group (see :func:`plot_scatter`)."""
         name, _, site_ids = find_group(self.estimate, group)
         return plot_scatter(
             self.estimate,
@@ -566,6 +700,7 @@ class ComparisonResult:
         reference_label: str = "Reference",
         **kwargs: Any,
     ) -> Figure:
+        """Line plot of estimate vs reference at one site (see :func:`plot_timeseries`)."""
         return plot_timeseries(
             self.estimate,
             self.reference,
@@ -585,6 +720,7 @@ class ComparisonResult:
         reference_label: str = "Reference",
         **kwargs: Any,
     ) -> list[Figure]:
+        """Run :meth:`plot` for every validation group (or a *groups* subset)."""
         active = self._groups
         if groups is not None:
             wanted = set(groups)
@@ -632,6 +768,7 @@ class HoldoutValidationResult(ComparisonResult):
         reference_label: str | None = None,
         **kwargs: Any,
     ) -> Figure:
+        """As :meth:`ComparisonResult.plot`, defaulting labels to Metamodel/SnapWave."""
         return super().plot(
             group,
             variables=variables,
@@ -649,6 +786,7 @@ class HoldoutValidationResult(ComparisonResult):
         reference_label: str | None = None,
         **kwargs: Any,
     ) -> Figure:
+        """As :meth:`ComparisonResult.plot_scatter`, defaulting labels to Metamodel/SnapWave."""
         return super().plot_scatter(
             group,
             variables=variables,
@@ -666,6 +804,7 @@ class HoldoutValidationResult(ComparisonResult):
         reference_label: str | None = None,
         **kwargs: Any,
     ) -> list[Figure]:
+        """As :meth:`ComparisonResult.plot_all`, defaulting labels to Metamodel/SnapWave."""
         return super().plot_all(
             variables=variables,
             groups=groups,
@@ -773,6 +912,7 @@ def _tag_metrics(
     estimate_label: str = HOLDOUT_ESTIMATE_LABEL,
     reference_label: str = HOLDOUT_REFERENCE_LABEL,
 ) -> pd.DataFrame:
+    """Insert holdout identifying columns (goal, n, labels, …) into a metrics table in place."""
     table.insert(0, "goal", goal)
     table.insert(1, "mda_candidate", n)
     table.insert(2, "n_test_cases", n_test)
@@ -836,7 +976,26 @@ def sweep(
     pca_variance: mm.PcaVariance = None,
     save: bool = True,
 ) -> pd.DataFrame:
-    """Holdout metrics for every MDA candidate size on one goal."""
+    """Holdout metrics for every MDA candidate size on one goal.
+
+    Parameters
+    ----------
+    goal
+        Goal id from the case goals JSON (fitted models must exist).
+    candidates
+        MDA train sizes to validate; default ``mda_candidates`` from config.
+    variables
+        Metrics variables to score.
+    pca_variance
+        PCA fractions used at fit time.
+    save
+        Write the concatenated table to :func:`validation_metrics_path`.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One :func:`validate` metrics table per candidate, concatenated.
+    """
     goal = str(goal)
     cand = [int(c) for c in (candidates or MDA_CANDIDATES)]
     context = mm.load_context(goal)
@@ -874,7 +1033,26 @@ def sweep_all(
     pca_variance: mm.PcaVariance = None,
     save: bool = True,
 ) -> pd.DataFrame:
-    """Run :func:`sweep` for every goal and concatenate."""
+    """Run :func:`sweep` for every goal and concatenate.
+
+    Parameters
+    ----------
+    goals
+        Goals to sweep; default all configured goals.
+    candidates
+        MDA train sizes to validate; default ``mda_candidates`` from config.
+    variables
+        Metrics variables to score.
+    pca_variance
+        PCA fractions used at fit time.
+    save
+        Write each goal's table to :func:`validation_metrics_path`.
+
+    Returns
+    -------
+    pandas.DataFrame
+        All goals' :func:`sweep` tables concatenated.
+    """
     active = [str(g) for g in (goals or load_goals().keys())]
     frames = [
         sweep(
@@ -900,6 +1078,7 @@ def _paired_values(
     variable: str,
     site_ids: list[str],
 ) -> tuple[np.ndarray, np.ndarray]:
+    """Flat, coincident-finite estimate/reference arrays for one variable and site subset."""
     est = estimate.sel(sites=site_ids)[variable].values.ravel()
     ref = reference.sel(sites=site_ids)[variable].values.ravel()
     return _coincident_values(est, ref)
@@ -936,6 +1115,21 @@ def _scatter_panel(
     reference_label: str = "Reference",
     cmap: str = "viridis",
 ) -> None:
+    """Draw one density scatter panel with a 1:1 line and a bias/RMSE/R²/n annotation.
+
+    Parameters
+    ----------
+    ax
+        Target axes; drawn on in place.
+    estimate, reference
+        Flat arrays of paired values for one variable.
+    variable
+        Key into :data:`PARAMETERS` (selects label, units, circular handling).
+    estimate_label, reference_label
+        Axis labels.
+    cmap
+        Colormap for the density-colored scatter.
+    """
     spec = PARAMETERS[variable]
     est, ref = _coincident_values(estimate, reference)
     if spec["circular"]:
@@ -1007,7 +1201,30 @@ def plot_scatter(
     figsize: tuple[float, float] | None = None,
     cmap: str = "viridis",
 ) -> Figure:
-    """Density scatter panels for one validation group."""
+    """Density scatter panels for one validation group.
+
+    Parameters
+    ----------
+    estimate, reference
+        Aligned datasets with ``sites`` and wave variables.
+    group_name
+        Title for the figure.
+    site_ids
+        Sites in this group (see :func:`utils.geometry.sites.metric_groups`).
+    variables
+        Metrics variables to plot; default from config.
+    estimate_label, reference_label
+        Axis labels for each scatter panel.
+    figsize
+        Figure size; default scales with the panel grid.
+    cmap
+        Colormap for the density-colored scatter.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        One panel per variable, up to a 2x2 (or larger) grid.
+    """
     keys = _available_metrics_variables(estimate, reference, variables)
     nrows, ncols = _scatter_grid_shape(len(keys))
     if figsize is None:
@@ -1043,7 +1260,27 @@ def plot_map(
     title: str | None = None,
     ax: plt.Axes | None = None,
 ) -> tuple[Figure, plt.Axes]:
-    """Map of validation sites coloured by source / depth label."""
+    """Map of validation sites coloured by source / depth label.
+
+    Parameters
+    ----------
+    estimate
+        Dataset carrying ``SITE_META`` coordinates (``site_longitude``,
+        ``site_latitude``, ``site_source``, ``site_label``).
+    site_ids
+        Sites to plot.
+    group_name
+        Used as the map title when *title* is not given.
+    title
+        Explicit map title; overrides *group_name*.
+    ax
+        Existing axes to draw on; a new base map is created if omitted.
+
+    Returns
+    -------
+    fig, ax
+        Figure and axes with the site map drawn.
+    """
     from utils.viz.case_plots import plot_base_map, plot_validation_sites
 
     subset = estimate.sel(sites=site_ids)
@@ -1076,7 +1313,33 @@ def plot_group(
     figsize: tuple[float, float] | None = None,
     cmap: str = "viridis",
 ) -> Figure:
-    """Map + density scatters for one validation group."""
+    """Map + density scatters for one validation group.
+
+    Combines :func:`plot_map` (top row) with the :func:`plot_scatter` panels
+    (below) in one figure.
+
+    Parameters
+    ----------
+    estimate, reference
+        Aligned datasets with ``sites`` and wave variables.
+    group_name
+        Title for the site map.
+    site_ids
+        Sites in this group.
+    variables
+        Metrics variables to plot; default from config.
+    estimate_label, reference_label
+        Axis labels for each scatter panel.
+    figsize
+        Figure size; default scales with the panel grid.
+    cmap
+        Colormap for the density-colored scatter.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        Site map above a grid of per-variable scatter panels.
+    """
     from utils.viz.case_plots import plot_base_map, plot_validation_sites
 
     keys = _available_metrics_variables(estimate, reference, variables)
@@ -1142,7 +1405,26 @@ def plot_timeseries(
     reference_label: str = "Reference",
     figsize: tuple[float, float] = (12, 8),
 ) -> Figure:
-    """Line plot of estimate vs reference at one site."""
+    """Line plot of estimate vs reference at one site.
+
+    Parameters
+    ----------
+    estimate, reference
+        Aligned datasets with ``sites`` and wave variables on a ``time`` axis.
+    site
+        Site label to plot.
+    variables
+        Metrics variables to plot; default from config.
+    estimate_label, reference_label
+        Line labels.
+    figsize
+        Figure size.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        One row per variable, sharing the time axis.
+    """
     site = str(site)
     keys = _available_metrics_variables(estimate, reference, variables)
     fig, axes = plt.subplots(len(keys), 1, figsize=figsize, sharex=True)
@@ -1187,7 +1469,34 @@ def plot_buoy_timeseries(
     reference_label: str = "Buoy",
     figsize: tuple[float, float] = (12, 8),
 ) -> Figure:
-    """Time series at one buoy: observations vs all model estimates."""
+    """Time series at one buoy: observations vs all model estimates.
+
+    Unlike :func:`plot_timeseries` (one estimate), this overlays several
+    named model datasets on the same reference observations — e.g. bulk
+    metamodel, spectral metamodel, dynamic SnapWave, closest-goal offshore
+    hindcast (see ``10_Validate_Buoy_Observations.ipynb``).
+
+    Parameters
+    ----------
+    reference
+        Buoy observation dataset with ``sites`` and wave variables.
+    estimates
+        Model name → dataset; only variables present in *every* estimate
+        (and in *reference*) are plotted.
+    site
+        Buoy site label to plot.
+    variables
+        Metrics variables to plot; default from config.
+    reference_label
+        Reference series label.
+    figsize
+        Figure size.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        One row per variable; circular variables (``dir``) use scatter markers.
+    """
     site = str(site)
     keys = _metrics_variables(variables)
     keys = [k for k in keys if k in PARAMETERS and k in reference.data_vars]
@@ -1258,7 +1567,23 @@ SWEEP_BY = ("bulk", "source", "group", "label", "buoy")
 
 
 def load_sweep_metrics(goal: str | int) -> pd.DataFrame:
-    """Load ``validation_metrics.csv`` written by :func:`sweep`."""
+    """Load ``validation_metrics.csv`` written by :func:`sweep`.
+
+    Parameters
+    ----------
+    goal
+        Goal id from the case goals JSON.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Sweep metrics table with ``goal`` coerced to string.
+
+    Raises
+    ------
+    FileNotFoundError
+        If :func:`sweep` has not been run (and saved) for this goal.
+    """
     path = validation_metrics_path(goal)
     if not path.exists():
         raise FileNotFoundError(f"No sweep metrics at {path}. Run sweep() first.")
@@ -1273,6 +1598,7 @@ def _filter_sweep(
     goals: Iterable[str] | None = None,
     variables: Iterable[str] | None = None,
 ) -> pd.DataFrame:
+    """Subset a sweep metrics table to the requested goals and variables."""
     df = metrics.copy()
     df["goal"] = df["goal"].astype(str)
     if goals is not None:
@@ -1283,6 +1609,7 @@ def _filter_sweep(
 
 
 def _weighted_stats(group: pd.DataFrame) -> pd.Series:
+    """Sample-count-weighted mean bias/rmse/r2 (plus summed ``n``) for one sweep group."""
     w = group["n"].to_numpy(dtype=float)
     if w.sum() <= 0:
         return pd.Series({s: np.nan for s in SWEEP_STATS} | {"n": 0})
@@ -1312,6 +1639,30 @@ def aggregate_sweep(
     - ``group`` — per validation group (``5m``, ``10m``, ``Apia``, buoy id, …)
     - ``label`` — per ``site_label``
     - ``buoy`` — buoy groups only (same granularity as ``group``)
+
+    Parameters
+    ----------
+    metrics
+        Sweep metrics table (from :func:`sweep`, :func:`sweep_all`, or
+        :func:`load_sweep_metrics`).
+    by
+        Grouping mode; one of :data:`SWEEP_BY`.
+    goals
+        Goals to keep; default all present in *metrics*.
+    variables
+        Metrics variables to keep; default from config.
+
+    Returns
+    -------
+    pandas.DataFrame
+        For ``group``/``buoy``, the filtered rows unchanged; otherwise one
+        n-weighted row per ``(goal, mda_candidate, ..., variable)`` group
+        with columns ``bias``, ``rmse``, ``r2``, ``n``.
+
+    Raises
+    ------
+    ValueError
+        If *by* is not one of :data:`SWEEP_BY`.
     """
     if by not in SWEEP_BY:
         raise ValueError(f"by must be one of {SWEEP_BY}, got {by!r}")
@@ -1342,6 +1693,7 @@ def aggregate_sweep(
 
 
 def _sweep_line_color(name: str, source: str = "") -> str:
+    """Line color for one sweep series: isobath/mesh palette, hashed for buoys, else default."""
     from utils.viz.case_plots import DEFAULT_POINT_COLOR, ISOBATH_COLORS, MESH_COLORS
 
     if name in ISOBATH_COLORS:
@@ -1354,6 +1706,7 @@ def _sweep_line_color(name: str, source: str = "") -> str:
 
 
 def _sweep_series_key(row: pd.Series, by: str) -> str:
+    """Series-grouping key for one sweep row under the given ``by`` mode."""
     if by == "bulk":
         return "all sites"
     if by == "source":
@@ -1364,6 +1717,7 @@ def _sweep_series_key(row: pd.Series, by: str) -> str:
 
 
 def _sweep_line_label(row: pd.Series, by: str, *, multi_goal: bool) -> str:
+    """Legend label for one sweep line, prefixing the goal id when several goals are plotted."""
     if by == "bulk":
         return f"goal {row['goal']}" if multi_goal else "all sites"
     name = _sweep_series_key(row, by)
@@ -1383,6 +1737,31 @@ def plot_sweep(
 
     Rows = metrics, columns = variables (hs, tp, dir, spr). One line per series
     defined by ``by`` (bulk, source, group, label, or buoy).
+
+    Parameters
+    ----------
+    metrics
+        Sweep metrics table, aggregated internally via :func:`aggregate_sweep`.
+    by
+        Grouping mode; one of :data:`SWEEP_BY`.
+    goals
+        Goals to keep; default all present in *metrics*.
+    variables
+        Metrics variables (columns) to plot; default from config.
+    figsize
+        Figure size; default scales with the panel grid.
+    title
+        Figure title; default summarises *by* and the plotted goal(s).
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        ``len(SWEEP_STATS)`` rows by ``len(variables)`` columns of line plots.
+
+    Raises
+    ------
+    ValueError
+        If no sweep rows remain after filtering by *goals*/*variables*.
     """
     vars_ = _metrics_variables(variables)
     agg = aggregate_sweep(metrics, by=by, goals=goals, variables=vars_)
@@ -1482,7 +1861,24 @@ def plot_sweep_suite(
     variables: Iterable[str] | None = None,
     by: Iterable[str] | None = None,
 ) -> dict[str, Figure]:
-    """One :func:`plot_sweep` figure per grouping mode."""
+    """One :func:`plot_sweep` figure per grouping mode.
+
+    Parameters
+    ----------
+    metrics
+        Sweep metrics table.
+    goals
+        Goals to keep; default all present in *metrics*.
+    variables
+        Metrics variables to plot; default from config.
+    by
+        Grouping modes to generate; default all of :data:`SWEEP_BY`.
+
+    Returns
+    -------
+    dict[str, matplotlib.figure.Figure]
+        One figure per grouping mode, keyed by mode name.
+    """
     modes = list(by or SWEEP_BY)
     return {
         mode: plot_sweep(metrics, by=mode, goals=goals, variables=variables)
@@ -1491,34 +1887,34 @@ def plot_sweep_suite(
 
 
 __all__ = [
-    "LOGGER_NAME",
-    "MAX_DENSITY_POINTS",
     "ComparisonResult",
     "HoldoutValidationResult",
+    "LOGGER_NAME",
+    "MAX_DENSITY_POINTS",
+    "SWEEP_BY",
+    "SWEEP_STATS",
+    "aggregate_sweep",
     "align_pair",
     "closest_goals_table",
     "compare",
     "compare_all",
     "compute_metrics",
     "load_offshore_hindcast_at_buoys",
+    "load_sweep_metrics",
     "logger",
     "metric_groups",
     "metrics_summary",
     "metrics_table",
-    "resolve_comparison_variables",
-    "aggregate_sweep",
-    "load_sweep_metrics",
     "plot_buoy_timeseries",
     "plot_group",
     "plot_map",
     "plot_scatter",
-    "plot_timeseries",
     "plot_sweep",
     "plot_sweep_suite",
+    "plot_timeseries",
+    "resolve_comparison_variables",
     "sweep",
     "sweep_all",
     "validate",
     "validation_metrics_path",
-    "SWEEP_BY",
-    "SWEEP_STATS",
 ]

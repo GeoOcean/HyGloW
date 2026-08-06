@@ -51,6 +51,13 @@ class CaseConfig:
     """Configuration for one HyGloW case folder."""
 
     def __init__(self, case_dir: str | Path):
+        """Load the config JSON for *case_dir* immediately (see :meth:`reload`).
+
+        Raises
+        ------
+        CaseConfigError
+            If *case_dir* does not exist or no config JSON can be found.
+        """
         self.case_dir = Path(case_dir).resolve()
         if not self.case_dir.is_dir():
             raise CaseConfigError(f"Case directory does not exist: {self.case_dir}")
@@ -70,16 +77,13 @@ class CaseConfig:
 
     @property
     def name(self) -> str:
+        """Display name from the config JSON, falling back to the folder name."""
         return str(self.data.get("name") or self.case_dir.name)
 
     @property
     def description(self) -> str:
+        """Long description from the config JSON (``""`` if unset)."""
         return str(self.data.get("description") or "")
-
-    @property
-    def schema_version(self) -> int | None:
-        version = self.data.get("schema_version")
-        return int(version) if version is not None else None
 
     # ------------------------------------------------------------------
     # Sections
@@ -87,27 +91,33 @@ class CaseConfig:
 
     @property
     def paths(self) -> dict[str, Any]:
+        """The config JSON's ``paths`` section (``{}`` if unset)."""
         return self.data.get("paths", {})
 
     @property
     def onshore_waves(self) -> str | None:
+        """Relative path to the observations GeoJSON, or ``None`` if unset."""
         return self.data.get("onshore_waves")
 
     @property
     def offshore_waves(self) -> list[dict[str, Any]]:
+        """The config JSON's ``offshore_waves`` catalog, always as a list."""
         block = self.data.get("offshore_waves", [])
         return [block] if isinstance(block, dict) else list(block)
 
     @property
     def simulations(self) -> dict[str, Any]:
+        """The config JSON's ``simulations`` section (``{}`` if unset)."""
         return self.data.get("simulations", {})
 
     @property
     def output_sites_config(self) -> dict[str, Any]:
+        """The config JSON's ``simulations.output_sites_config`` section (``{}`` if unset)."""
         return self.simulations.get("output_sites_config", {})
 
     @property
     def metamodel(self) -> dict[str, Any]:
+        """The config JSON's ``metamodel`` section (``{}`` if unset)."""
         return self.data.get("metamodel", {})
 
     # ------------------------------------------------------------------
@@ -121,6 +131,7 @@ class CaseConfig:
 
     @property
     def outputs_dir(self) -> Path:
+        """The case's ``outputs/`` directory."""
         return self.case_dir / "outputs"
 
     def goal_metrics_files(self) -> list[Path]:

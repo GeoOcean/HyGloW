@@ -1,7 +1,6 @@
 {
     "name": "__CASE_NAME__",
     "description": "TODO: one-line description of the __CASE_NAME__ case",
-    "schema_version": 1,
     "paths": {
         "aoi_file": "inputs/AoI_Polygons/__CASE_NAME___AoI.shp",
         "topobathy_file": "inputs/GEBCO/__CASE_NAME___GEBCO.tiff",

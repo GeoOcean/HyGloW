@@ -49,6 +49,15 @@ class ScaffoldError(RuntimeError):
 
 
 def _resolve_source_case(from_case: str) -> Path:
+    """Locate an existing case folder named *from_case* for ``--from-case`` cloning.
+
+    Looks under the current working directory first, then the repo root.
+
+    Raises
+    ------
+    ScaffoldError
+        If no directory named *from_case* with a ``utils/`` subfolder is found.
+    """
     for base in (Path.cwd(), REPO_ROOT):
         candidate = (base / from_case).resolve()
         if (candidate / "utils").is_dir():
@@ -70,6 +79,7 @@ def _strip_notebook(source: Path, target: Path) -> None:
 
 
 def _render_template(template_name: str, target: Path, name: str) -> None:
+    """Copy ``TEMPLATE_DIR / template_name`` to *target*, substituting ``__CASE_NAME__``."""
     text = (TEMPLATE_DIR / template_name).read_text(encoding="utf-8")
     target.write_text(text.replace("__CASE_NAME__", name), encoding="utf-8")
 
@@ -102,6 +112,30 @@ def start_case(
 
     Sources from ``hyglow/template/`` by default; from an existing case's
     folder when *from_case* is given (clone mode).
+
+    Parameters
+    ----------
+    name
+        Case name; becomes the folder name and the config JSON stem. Must
+        start with a letter and contain only letters, digits, ``_`` or ``-``.
+    dest
+        Parent directory the case folder is created under.
+    from_case
+        Name of an existing case to clone the engine and notebooks from
+        (outputs stripped), instead of the built-in template.
+    notebooks
+        Copy the pipeline notebooks. ``False`` skips them entirely.
+
+    Returns
+    -------
+    Path
+        The new case folder, ``dest/name``.
+
+    Raises
+    ------
+    ScaffoldError
+        If *name* is invalid, the target already exists, *from_case* can't
+        be resolved, or source and target would be the same folder.
     """
     if not _NAME_RE.fullmatch(name):
         raise ScaffoldError(

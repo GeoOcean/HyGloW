@@ -23,7 +23,6 @@ def _minimal_config(**overrides) -> dict:
     config = {
         "name": "TestCase",
         "description": "A minimal valid case.",
-        "schema_version": 1,
         "paths": {},
         "onshore_waves": None,
         "offshore_waves": [],
@@ -83,12 +82,6 @@ class TestValidateCase(unittest.TestCase):
         self._write_config(config)
         findings = validate_case(self.case_dir, publish=False)
         self.assertIn("config.name", [f.code for f in _errors(findings)])
-
-    def test_unsupported_schema_version_is_an_error(self) -> None:
-        config = _minimal_config(schema_version=999)
-        self._write_config(config)
-        findings = validate_case(self.case_dir)
-        self.assertIn("config.schema_version", [f.code for f in _errors(findings)])
 
     def test_todo_placeholder_is_a_gap(self) -> None:
         config = _minimal_config(description="TODO: fill this in")

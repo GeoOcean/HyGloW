@@ -8,6 +8,20 @@ installing the `hyglow` package itself.
 **Config:** `__CASE_NAME__.json` (auto-loaded by `utils.config`).
 Run notebooks with `__CASE_NAME__/` as the working directory.
 
+## 0. Install dependencies
+
+- `pip install -r requirements.txt` — installs `bluemesh2d` (the mesher used
+  by `02_Create_mesh_by_bluemesh2d.ipynb`; it's pip-only, not on conda-forge).
+- The rest of the scientific stack is expected to already be in your (conda)
+  environment: `bluemath_tk`, `wavespectra`, `xarray`, `geopandas`,
+  `rioxarray`, `pandas`, `scipy`, `matplotlib`
+  (`conda install -c conda-forge bluemath-tk` covers the first one).
+- [**SnapWave**](https://github.com/danoroelvink/snapwave/) — the nearshore
+  propagation model that actually runs each case. It's an external binary:
+  clone that repo and compile it yourself (see its README for build
+  instructions). You don't need it for notebooks 01–04, but you do from
+  05 onward.
+
 ## Getting started
 
 1. **Fill in the config** — open `__CASE_NAME__.json` and replace the `TODO`
@@ -29,35 +43,28 @@ Run notebooks with `__CASE_NAME__/` as the working directory.
    | 08    | `08_Dynamic_Cases_Generation.ipynb`            | Dynamic reference runs         |
    | 09–11 | Validation notebooks                           | Reconstruct vs dynamic / buoys |
 
-4. **Check your progress against the case contract** (the portal reads only
-   contract files, so this is also the publish gate):
+4. **Check your progress against the case contract** (this is also the
+   publish gate — the portal only ever reads contract files):
 
    ```bash
    python -m hyglow validate __CASE_NAME__/            # while developing
    python -m hyglow validate __CASE_NAME__/ --publish  # portal-ready check
    ```
 
-5. **Run the unit tests** (from this folder):
+## Stuck, or want to see it done first?
 
-   ```bash
-   python -m unittest discover -s tests -v
-   ```
+**Samoa** (in the main HyGloW repository) is the most complete worked
+example — its README documents the full pipeline, the metamodel workflow,
+and the commit/re-run checklist in detail. **NewSouthWales** shows a case
+mid-pipeline (mesh, goals, and observations done; fit and validation
+pending). Both are real, runnable cases you can read notebook-by-notebook
+alongside your own.
 
-## Reference
+## For developers
 
-This folder was created from the versioned template in `hyglow/template/`
-(the canonical reference). Two worked examples live in the main HyGloW
-repository: **Samoa** is the most complete one — its README documents the
-full pipeline, the metamodel workflow, and the commit/re-run checklist in
-detail — and **NewSouthWales** shows a case mid-pipeline (mesh, goals, and
-observations done; fit and validation pending).
-
-`.hyglow/manifest.json` records which engine snapshot this case was created
-from. Treat `utils/` as vendored code: if you fix a bug there, please PR it
-to the main HyGloW repository so everyone benefits.
-
-## Dependencies
-
-The following dependencies are expected to be in your (conda) environment: 
-bluemath_tk, bluemesh2d, wavespectra, xarray, geopandas, rioxarray, pandas, scipy, matplotlib (you can do `conda install -c conda-forge bluemath-tk`)
-— plus SnapWave (external binary), check [SnapWave repository](https://github.com/danoroelvink/snapwave/).
+- Run the vendored unit tests from this folder: `python -m unittest discover -s tests -v`
+- This folder was created from the versioned template in `hyglow/template/`.
+  `.hyglow/manifest.json` records which engine snapshot it came from — treat
+  `utils/` as vendored code, and if you fix a bug in it here, please also
+  PR the fix to `hyglow/template/` in the main HyGloW repository so
+  `python -m hyglow update` can carry it to every other case.
