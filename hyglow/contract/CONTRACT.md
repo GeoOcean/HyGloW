@@ -81,7 +81,7 @@ At publish, at least one metrics file must exist.
 
 ### 5. Portal figures (optional)
 
-`outputs/course_figures/fig*.png` — showcase figures for the portal gallery.
+`outputs/gui_figures/fig*.png` — showcase figures for the portal gallery.
 
 ---
 

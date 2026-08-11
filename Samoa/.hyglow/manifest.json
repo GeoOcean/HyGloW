@@ -3,7 +3,7 @@
   "hyglow_version": "0.3.0",
   "schema_version": 1,
   "source": "hyglow-template@0.3.0",
-  "updated": "2026-08-06T07:48:06+00:00",
+  "updated": "2026-08-11T11:38:24+00:00",
   "engine_files": {
     "utils/__init__.py": "1cca045a7af34d3bc9213933ecdef953811c2567858c3e11078967084f04a2b2",
     "utils/config.py": "40c1a1e7e9464494addffe3a6bcb240907ce6480858c79da88a3e2a1fcdbbc9b",
@@ -25,6 +25,7 @@
     "utils/viz/__init__.py": "873994e23298e4cdaa8aad8e944c64506d2d2d8009ef507104c1e0c3eaf1e4e7",
     "utils/viz/case_plots.py": "97ef212774bea237c9666e93adec983f55a24be90d16d6c95d6e3080c3fc4548",
     "utils/viz/snapwave_case_plots.py": "5c3608865d811e9d80a3a680ffc3de4171bacd45fb1813759e0efe432061db53",
+    "utils/viz/spectra_plots.py": "c8f074e2201e61bab1a9c3a59e0987616deba5401e8404dae2f0e81f843b86fd",
     "tests/test_directions.py": "9be37bad9aacc4d1c5da1d31d04ca27e3a9a6f7266077c3e7cafd6213c0bf330",
     "tests/test_logging_config.py": "b5e18cf3b789a53738a733116f6d41d4876dfdc413f93e11bcb9b333fa24d02c",
     "tests/test_metamodel_helpers.py": "ed84a48a230afe7e4ca57c45a705f76995e8dc3e8af5b3276442102cbcd80efa",

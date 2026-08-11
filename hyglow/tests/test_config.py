@@ -128,7 +128,7 @@ class TestCaseConfig(unittest.TestCase):
         metrics_dir = self.case_dir / "outputs" / "goal_01"
         metrics_dir.mkdir(parents=True)
         (metrics_dir / "validation_metrics.csv").write_text("goal\n1\n")
-        fig_dir = self.case_dir / "outputs" / "course_figures"
+        fig_dir = self.case_dir / "outputs" / "gui_figures"
         fig_dir.mkdir(parents=True)
         (fig_dir / "fig01_domain.png").touch()
 

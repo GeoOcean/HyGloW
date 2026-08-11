@@ -264,7 +264,7 @@ def _check_outputs(case_dir: Path, report: _Report) -> None:
     """Check ``outputs/goal_*/validation_metrics.csv`` files have the required columns.
 
     In ``--publish`` mode, also warns if no portal figures exist under
-    ``outputs/course_figures/``.
+    ``outputs/gui_figures/``.
     """
     metrics_files = sorted((case_dir / "outputs").glob("goal_*/validation_metrics.csv"))
     if not metrics_files:
@@ -290,9 +290,9 @@ def _check_outputs(case_dir: Path, report: _Report) -> None:
             "outputs.ok", f"{len(metrics_files)} validation_metrics.csv file(s)"
         )
 
-    figures = sorted((case_dir / "outputs" / "course_figures").glob("fig*.png"))
+    figures = sorted((case_dir / "outputs" / "gui_figures").glob("fig*.png"))
     if not figures and report.publish:
-        report.warn("outputs.figures", "no portal figures in outputs/course_figures/")
+        report.warn("outputs.figures", "no portal figures in outputs/gui_figures/")
 
 
 # ----------------------------------------------------------------------

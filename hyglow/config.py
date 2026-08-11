@@ -139,8 +139,8 @@ class CaseConfig:
         return sorted(self.outputs_dir.glob("goal_*/validation_metrics.csv"))
 
     def figure_files(self) -> list[Path]:
-        """Course figures published to the portal."""
-        return sorted((self.outputs_dir / "course_figures").glob("fig*.png"))
+        """Showcase figures published to the GUI portal."""
+        return sorted((self.outputs_dir / "gui_figures").glob("fig*.png"))
 
     # ------------------------------------------------------------------
     # Goals and observations
