@@ -100,6 +100,7 @@ def _topobathy():
 
 @lru_cache(maxsize=1)
 def _aoi() -> gpd.GeoDataFrame:
+    """Load the case AoI polygon shapefile (cached)."""
     return gpd.read_file(resolve(PATHS["aoi_file"]))
 
 
@@ -354,6 +355,7 @@ def plot_case_map(
 
 
 def _site_color(source: str, label: str) -> str:
+    """Colour for one output site, keyed by its source type and label."""
     if source == "isobath":
         return ISOBATH_COLORS.get(str(label), DEFAULT_POINT_COLOR)
     if source == "mesh":
@@ -746,6 +748,120 @@ def _configuration_figure(
     return fig, ax_map, ax_bars, ax_info, goal_ids, colors
 
 
+def _boxes_overlap(
+    a: tuple[float, float, float, float],
+    b: tuple[float, float, float, float],
+    margin: float = 0.0,
+) -> bool:
+    ax0, ay0, ax1, ay1 = a
+    bx0, by0, bx1, by1 = b
+    return not (
+        ax1 + margin < bx0 or bx1 + margin < ax0 or ay1 + margin < by0 or by1 + margin < ay0
+    )
+
+
+def _label_candidate_ring(radius: float) -> list[tuple[tuple[float, float], str, str]]:
+    """8 compass-direction offsets at a fixed point radius, with matching ha/va."""
+    dirs = [
+        (1, 1, "left", "bottom"),
+        (1, -1, "left", "top"),
+        (-1, 1, "right", "bottom"),
+        (-1, -1, "right", "top"),
+        (0, 1, "center", "bottom"),
+        (0, -1, "center", "top"),
+        (1, 0, "left", "center"),
+        (-1, 0, "right", "center"),
+    ]
+    out = []
+    for ux, uy, ha, va in dirs:
+        norm = (ux**2 + uy**2) ** 0.5 or 1
+        out.append(((radius * ux / norm, radius * uy / norm), ha, va))
+    return out
+
+
+# Candidate (offset points, ha, va) tried near-to-far for each goal label, as
+# rings of 8 compass directions at growing radius. Kept dense at short range
+# (few goals never need more than the first ring) and reaching out to ~55pt
+# so a tight cluster of goals (e.g. several sectors sharing one headland)
+# still finds a free spot instead of stacking labels on top of each other.
+_LABEL_CANDIDATES: list[tuple[tuple[float, float], str, str]] = [
+    c for radius in (6, 11, 16, 22, 28, 34, 42, 55) for c in _label_candidate_ring(radius)
+]
+
+
+def _place_goal_label(
+    ax: Axes,
+    renderer,
+    lon: float,
+    lat: float,
+    text: str,
+    *,
+    fontsize: float,
+    color: str,
+    halo: list,
+    placed_boxes: list[tuple[float, float, float, float]],
+) -> None:
+    """Annotate a goal label at the first candidate slot that clears earlier labels.
+
+    Measures each candidate's real rendered bbox (via ``renderer``) rather
+    than a guessed text size, so it works for any font/DPI. On a long,
+    tightly packed coastline every close slot can be taken before all goals
+    are placed — the last-tried candidate is kept as a guaranteed fallback,
+    with a thin leader line back to its point so the larger offset stays
+    unambiguous.
+    """
+    inv = ax.transData.inverted()
+    # Fixed padding (not a fraction of label width) so short labels like
+    # "G15"/"G17" still get real breathing room next to each other.
+    dpi = ax.figure.dpi
+    px0, py0 = inv.transform((0, 0))
+    px1, _ = inv.transform((3.5 * dpi / 72.0, 0))
+    pad = abs(px1 - px0)
+    chosen = _LABEL_CANDIDATES[0]
+    chosen_box = None
+    for candidate in _LABEL_CANDIDATES:
+        (dx_pt, dy_pt), ha, va = candidate
+        probe = ax.annotate(
+            text,
+            (lon, lat),
+            xytext=(dx_pt, dy_pt),
+            textcoords="offset points",
+            fontsize=fontsize,
+            ha=ha,
+            va=va,
+        )
+        bbox = probe.get_window_extent(renderer)
+        x0, y0 = inv.transform((bbox.x0, bbox.y0))
+        x1, y1 = inv.transform((bbox.x1, bbox.y1))
+        probe.remove()
+        box = (min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1))
+        chosen, chosen_box = candidate, box
+        if not any(_boxes_overlap(box, other, margin=pad) for other in placed_boxes):
+            break
+    placed_boxes.append(chosen_box)
+
+    (dx_pt, dy_pt), ha, va = chosen
+    leader = (dx_pt**2 + dy_pt**2) ** 0.5 > 9
+    ax.annotate(
+        text,
+        (lon, lat),
+        xytext=(dx_pt, dy_pt),
+        textcoords="offset points",
+        fontsize=fontsize,
+        color="black",
+        weight="bold",
+        ha=ha,
+        va=va,
+        zorder=7,
+        path_effects=halo,
+        arrowprops=(
+            dict(arrowstyle="-", color=color, lw=0.7, alpha=0.75, shrinkA=0, shrinkB=3)
+            if leader
+            else None
+        ),
+    )
+
+
 def _plot_configuration_map(
     ax_map: Axes,
     *,
@@ -770,23 +886,30 @@ def _plot_configuration_map(
         label="enclosure",
     )
 
+    # Axis limits are fixed by the enclosure alone, so they can be set (and
+    # locked in with a draw) before the goal loop — label placement below
+    # needs the real data<->pixel scale to measure text boxes accurately.
+    minx, miny, maxx, maxy = gpd.GeoDataFrame(
+        geometry=[enclosure_polygon], crs="EPSG:4326"
+    ).total_bounds
+    pad = 0.08
+    ax_map.set_xlim(minx - pad, maxx + pad)
+    ax_map.set_ylim(miny - pad, maxy + pad)
+    ax_map.set_aspect("equal", adjustable="box")
+    ax_map.figure.canvas.draw()
+    renderer = ax_map.figure.canvas.get_renderer()
+    placed_label_boxes: list[tuple[float, float, float, float]] = []
+
     # Many goals along a short/folded coastline sit close together — shrink
-    # markers/labels and cycle the label through 4 quadrants so a cluster of
-    # nearby goals (e.g. several sectors sharing one corner) fans out
-    # instead of stacking into an unreadable block.
+    # markers/labels so a cluster of nearby goals (e.g. several sectors
+    # sharing one corner) has room to fan out instead of stacking up.
     n_goals = len(goals_config)
     crowded = n_goals > 15
     star_ms = 9 if crowded else 12
     label_fontsize = 7.5 if crowded else 9
     label_halo = [pe.withStroke(linewidth=2.2, foreground="white")]
-    label_offsets = [
-        ((5, 5), "left", "bottom"),
-        ((5, -5), "left", "top"),
-        ((-5, -5), "right", "top"),
-        ((-5, 5), "right", "bottom"),
-    ]
 
-    for i, goal_key in enumerate(sorted(goals_config, key=int)):
+    for goal_key in sorted(goals_config, key=int):
         vals = goals_config[goal_key]
         lon, lat = vals["lon"], vals["lat"]
         left, right = vals["angles"]
@@ -806,19 +929,16 @@ def _plot_configuration_map(
             )
         )
         ax_map.plot(lon, lat, marker="*", color=color, markersize=star_ms, zorder=6)
-        offset, ha, va = label_offsets[i % 4] if crowded else label_offsets[0]
-        ax_map.annotate(
+        _place_goal_label(
+            ax_map,
+            renderer,
+            lon,
+            lat,
             f"G{goal_key}",
-            (lon, lat),
-            xytext=offset,
-            textcoords="offset points",
             fontsize=label_fontsize,
-            color="black",
-            weight="bold",
-            ha=ha,
-            va=va,
-            zorder=7,
-            path_effects=label_halo,
+            color=color,
+            halo=label_halo,
+            placed_boxes=placed_label_boxes,
         )
 
         sub = cases[cases["goal"] == int(goal_key)]
@@ -857,13 +977,6 @@ def _plot_configuration_map(
                 zorder=3,
             )
 
-    minx, miny, maxx, maxy = gpd.GeoDataFrame(
-        geometry=[enclosure_polygon], crs="EPSG:4326"
-    ).total_bounds
-    pad = 0.08
-    ax_map.set_xlim(minx - pad, maxx + pad)
-    ax_map.set_ylim(miny - pad, maxy + pad)
-    ax_map.set_aspect("equal", adjustable="box")
     # "best" avoids the plotted AoI/enclosure/site artists; goal labels are
     # drawn afterwards on this same axes and aren't considered, but this is
     # still strictly better than a fixed corner on domains where the goal
@@ -990,6 +1103,31 @@ def plot_metamodel_configuration(
     Multi-panel diagnostic before building or running metamodel SnapWave cases.
 
     Layout: map and direction-range bars on the left; text summary on the right.
+
+    Parameters
+    ----------
+    aoi_gdf, enclosure_polygon, goals_config, output_sites_df
+        Case geometry and goal configuration (see
+        :class:`utils.simulation.snapwave_wrappers.SnapWaveModelWrapper`).
+    cases_df
+        LHS cases table with ``goal``, ``tp``, ``dir``, ``spr``, ``wl`` columns.
+    bounds, num_samples_per_goal, mesh_file, enclosure_buffer_m
+        Optional metadata surfaced in the text summary panel only.
+    sector_radius_deg, arrow_scale_deg, max_arrows_per_goal
+        Map styling controls for sectors and direction arrows.
+    show_topobathy
+        Draw bathymetry under the map panel.
+    title
+        Figure title.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+
+    Raises
+    ------
+    KeyError
+        If *cases_df* is missing a required column.
     """
     required = {"goal", "tp", "dir", "spr", "wl"}
     missing = required - set(cases_df.columns)
@@ -1109,6 +1247,32 @@ def plot_dynamic_configuration(
     when wave-from directions fall outside the nominal goal sectors.
 
     Layout: map and direction-range bars on the left; text summary on the right.
+
+    Parameters
+    ----------
+    aoi_gdf, enclosure_polygon, goals_config, output_sites_df
+        Case geometry and goal configuration (see
+        :class:`utils.simulation.snapwave_wrappers.SnapWaveModelWrapper`).
+    offshore
+        Processed offshore dataset with dims ``(time, goal)`` and bulk
+        variables ``hs``, ``tp``, ``dir``, ``spr`` (see
+        :mod:`utils.simulation.offshore_forcing`).
+    offshore_name, mesh_file, enclosure_buffer_m, maps_to_save
+        Optional metadata surfaced in the text summary panel only.
+    sector_radius_deg, arrow_scale_deg, max_arrows_per_goal
+        Map styling controls for sectors and direction arrows.
+    max_dir_marks
+        Per-goal sample count above which the direction-range bars switch
+        from individual ticks to a density strip (see
+        :func:`_dense_dir_mode`).
+    show_topobathy
+        Draw bathymetry under the map panel.
+    title
+        Figure title.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
     """
     cases = _offshore_bulk_long(offshore)
     n_time = int(offshore.sizes.get("time", len(cases) // max(cases["goal"].nunique(), 1)))

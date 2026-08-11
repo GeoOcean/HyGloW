@@ -1207,7 +1207,7 @@ def plot_buoy_timeseries(
                 ref.values,
                 label=reference_label,
                 color=_MODEL_COLORS.get(reference_label, "black"),
-                s=8,
+                s=3,
                 alpha=0.75,
                 zorder=3,
             )
@@ -1218,7 +1218,7 @@ def plot_buoy_timeseries(
                     est_aligned.values,
                     label=name,
                     color=_MODEL_COLORS.get(name, f"C{i}"),
-                    s=6,
+                    s=2,
                     alpha=0.65,
                     zorder=2,
                 )

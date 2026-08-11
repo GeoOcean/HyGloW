@@ -1,0 +1,635 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "MHL",
+        "recording": "1992-2017",
+        "depth": -85.0,
+        "name": "Sydney offshore Waverider buoy (WAVESYD)",
+        "instrument_id": "Sydney_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.4126,
+          -33.7733
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "MHL",
+        "recording": "1976-2017",
+        "depth": -75.0,
+        "name": "Port Kembla offshore Waverider buoy (WAVEPOK, KEM)",
+        "instrument_id": "PortKembla_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.9833,
+          -34.4667
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "MHL",
+        "recording": "1985-2017",
+        "depth": -80.0,
+        "name": "Crowdy Head offshore Waverider buoy (WAVECRH, CRO)",
+        "instrument_id": "CrowdyHead_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.8575,
+          -31.815
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "MHL",
+        "recording": "1976-2017",
+        "depth": -70.0,
+        "name": "Coffs Harbour offshore Waverider buoy (WAVECOH, COH)",
+        "instrument_id": "CoffsHarbour_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.265,
+          -30.375
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "MHL",
+        "recording": "1976-2017",
+        "depth": -65.0,
+        "name": "Byron Bay offshore Waverider buoy (WAVEBYB, BYR)",
+        "instrument_id": "ByronBay_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          153.7,
+          -28.75
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "MHL",
+        "recording": "2012-2017",
+        "depth": -100.0,
+        "name": "Eden offshore Waverider buoy (WAVEEDN, EDE)",
+        "instrument_id": "Eden_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.0972,
+          -37.1591
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "MHL",
+        "recording": "1986-2015",
+        "depth": -75.0,
+        "name": "Batemans Bay offshore Waverider buoy (WAVEBAB, BAT)",
+        "instrument_id": "BatemansBay_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.338,
+          -35.73
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "NSW DCCEEW",
+        "recording": "2018-08-16 to 2019-03-12",
+        "depth": -12.31,
+        "name": "Farquhar nearshore wave buoy",
+        "instrument_id": "Farquhar_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.63301,
+          -31.93132
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "NSW DCCEEW",
+        "recording": "2018-08-16 to 2018-12-04",
+        "depth": -12.53,
+        "name": "OldBarA nearshore wave buoy",
+        "instrument_id": "OldBarA_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.59317,
+          -31.98063
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "NSW DCCEEW",
+        "recording": "2018-10-03 to 2019-03-11",
+        "depth": -12.97,
+        "name": "OldBarB nearshore wave buoy",
+        "instrument_id": "OldBarB_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.59238,
+          -31.98135
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "NSW DCCEEW",
+        "recording": "2019-03-21 to 2019-06-04",
+        "depth": -11.45,
+        "name": "BoomerangA nearshore wave buoy",
+        "instrument_id": "BoomerangA_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.54684,
+          -32.34228
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "NSW DCCEEW",
+        "recording": "2019-07-24 to 2020-05-20",
+        "depth": -13.29,
+        "name": "BoomerangA2 nearshore wave buoy",
+        "instrument_id": "BoomerangA2_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.54759,
+          -32.34284
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "NSW DCCEEW",
+        "recording": "2019-03-21 to 2019-06-18",
+        "depth": -33.03,
+        "name": "BoomerangB nearshore wave buoy",
+        "instrument_id": "BoomerangB_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.55802,
+          -32.34791
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "NSW DCCEEW",
+        "recording": "2019-07-24 to 2020-01-16",
+        "depth": -32.85,
+        "name": "BoomerangB2 nearshore wave buoy",
+        "instrument_id": "BoomerangB2_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          152.55781,
+          -32.34831
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "NSW DCCEEW",
+        "recording": "2019-12-06 to 2020-02-26",
+        "depth": -13.62,
+        "name": "Worimi nearshore wave buoy",
+        "instrument_id": "Worimi_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.82245,
+          -32.87583
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "NSW DCCEEW",
+        "recording": "2019-12-06 to 2021-04-09",
+        "depth": -13.16,
+        "name": "Stockton nearshore wave buoy",
+        "instrument_id": "Stockton_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.79869,
+          -32.90213
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "NSW DCCEEW",
+        "recording": "2016-03-02 to 2016-05-17",
+        "depth": -12.4,
+        "name": "Narrabeen nearshore wave buoy",
+        "instrument_id": "Narrabeen_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.30467,
+          -33.7188
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "NSW DCCEEW",
+        "recording": "2016-03-02 to 2016-05-17",
+        "depth": -13.17,
+        "name": "Collaroy nearshore wave buoy",
+        "instrument_id": "Collaroy_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.30596,
+          -33.72705
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "NSW DCCEEW",
+        "recording": "2016-06-03 to 2016-07-21",
+        "depth": -13.32,
+        "name": "Collaroy2 nearshore wave buoy",
+        "instrument_id": "Collaroy2_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.30605,
+          -33.72691
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "NSW DCCEEW",
+        "recording": "2019-10-21 to 2020-03-31",
+        "depth": -13.62,
+        "name": "Collaroy3 nearshore wave buoy",
+        "instrument_id": "Collaroy3_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.30593,
+          -33.7263
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "NSW DCCEEW",
+        "recording": "2020-03-31 to 2021-11-02",
+        "depth": -15.21,
+        "name": "Collaroy4 nearshore wave buoy",
+        "instrument_id": "Collaroy4_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.30732,
+          -33.72702
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "NSW DCCEEW",
+        "recording": "2021-12-21 to 2023-08-31",
+        "depth": -14.52,
+        "name": "Collaroy5 nearshore wave buoy",
+        "instrument_id": "Collaroy5_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.30665,
+          -33.72657
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "NSW DCCEEW",
+        "recording": "2016-08-11 to 2016-10-26",
+        "depth": -13.56,
+        "name": "Bronte nearshore wave buoy",
+        "instrument_id": "Bronte_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.27455,
+          -33.90477
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "NSW DCCEEW",
+        "recording": "2016-08-11 to 2016-10-26",
+        "depth": -13.64,
+        "name": "Maroubra nearshore wave buoy",
+        "instrument_id": "Maroubra_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.26297,
+          -33.94991
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "NSW DCCEEW",
+        "recording": "2021-06-30 to 2021-12-07",
+        "depth": -6.02,
+        "name": "Deeban nearshore wave buoy",
+        "instrument_id": "Deeban_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.1539,
+          -34.07866
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "NSW DCCEEW",
+        "recording": "2022-03-01 to 2022-11-16",
+        "depth": -6.1,
+        "name": "Deeban2 nearshore wave buoy",
+        "instrument_id": "Deeban2_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.15379,
+          -34.07849
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "NSW DCCEEW",
+        "recording": "2016-12-06 to 2017-12-18",
+        "depth": -29.96,
+        "name": "Figure8Pools nearshore wave buoy",
+        "instrument_id": "Figure8Pools_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          151.05012,
+          -34.19984
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "NSW DCCEEW",
+        "recording": "2017-06-05 to 2017-10-30",
+        "depth": -13.62,
+        "name": "Woonona nearshore wave buoy",
+        "instrument_id": "Woonona_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.92628,
+          -34.35491
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "NSW DCCEEW",
+        "recording": "2017-06-05 to 2017-10-30",
+        "depth": -14.52,
+        "name": "FairyMeadow nearshore wave buoy",
+        "instrument_id": "FairyMeadow_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.91225,
+          -34.3971
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "NSW DCCEEW",
+        "recording": "2018-06-13 to 2018-07-27",
+        "depth": -30.46,
+        "name": "Gerroa nearshore wave buoy",
+        "instrument_id": "Gerroa_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.80965,
+          -34.81436
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "NSW DCCEEW",
+        "recording": "2020-11-10 to 2021-08-24",
+        "depth": -13.18,
+        "name": "Broulee nearshore wave buoy",
+        "instrument_id": "Broulee_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.18879,
+          -35.84837
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "NSW DCCEEW",
+        "recording": "2021-11-19 to 2022-11-24",
+        "depth": -12.75,
+        "name": "Broulee2 nearshore wave buoy",
+        "instrument_id": "Broulee2_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.18879,
+          -35.84779
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "NSW DCCEEW",
+        "recording": "2020-11-10 to 2023-06-09",
+        "depth": -12.81,
+        "name": "Bengello nearshore wave buoy",
+        "instrument_id": "Bengello_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          150.1612,
+          -35.87995
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "NSW DCCEEW",
+        "recording": "2020-11-16 to 2021-05-10",
+        "depth": -13.09,
+        "name": "Merimbula nearshore wave buoy",
+        "instrument_id": "Merimbula_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          149.91653,
+          -36.9086
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "NSW DCCEEW",
+        "recording": "2021-05-10 to 2022-11-23",
+        "depth": -13.01,
+        "name": "Merimbula2 nearshore wave buoy",
+        "instrument_id": "Merimbula2_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          149.91662,
+          -36.90841
+        ]
+      }
+    }
+  ]
+}

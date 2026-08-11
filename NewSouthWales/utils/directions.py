@@ -22,8 +22,8 @@ Examples
 - ``[100, 200]`` — directions from 100° to 200° clockwise (no wrap).
 - ``[-10, 50]`` — from 350° through North to 50° clockwise.
 
-Internal geometry in :mod:`utils.hindcasts` still uses arctan2 math while
-building wedges; conversion to nautical happens once at export via
+Internal geometry in :mod:`utils.geometry.sectors` still uses arctan2 math
+while building wedges; conversion to nautical happens once at export via
 :func:`math_sector_to_nautical_clockwise`. Matplotlib wedges use
 :func:`nautical_sector_to_wedge_angles` (plotting only).
 """
@@ -59,7 +59,7 @@ def math_to_nautical(deg: float) -> float:
     """
     Convert internal math angle (CCW from East) to nautical degrees.
 
-    Used only when translating geometry from :mod:`utils.hindcasts`.
+    Used only when translating geometry from :mod:`utils.geometry.sectors`.
     Not part of the user-facing API.
 
     Parameters
@@ -80,7 +80,7 @@ def math_sector_to_nautical_clockwise(low_math: float, high_math: float) -> list
     """
     Convert an internal math wedge to stored nautical [left, right] bounds.
 
-    The open-sea wedge in :class:`~utils.hindcasts.AoIRingSectors` is built
+    The open-sea wedge in :class:`~utils.geometry.sectors.AoIRingSectors` is built
     from ``low_math`` to ``high_math`` counter-clockwise from East. This
     function returns the equivalent nautical clockwise sector with ``left <
     right``.

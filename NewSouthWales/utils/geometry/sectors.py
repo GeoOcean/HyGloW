@@ -43,7 +43,24 @@ def _read_catalog(path: Path) -> gpd.GeoDataFrame:
 
 
 def load_catalogs(hindcasts_dir: Path | str) -> dict[str, gpd.GeoDataFrame]:
-    """Load every ``*_coords.gpkg`` in ``hindcasts_dir`` (stem → catalog name)."""
+    """
+    Load every ``*_coords.gpkg`` in ``hindcasts_dir`` (stem → catalog name).
+
+    Parameters
+    ----------
+    hindcasts_dir
+        Directory containing one ``<name>_coords.gpkg`` per hindcast catalog.
+
+    Returns
+    -------
+    dict[str, geopandas.GeoDataFrame]
+        Catalog name → node coordinates GeoDataFrame.
+
+    Raises
+    ------
+    FileNotFoundError
+        If no ``*_coords.gpkg`` files are found in *hindcasts_dir*.
+    """
 
     root = Path(hindcasts_dir)
     catalogs: dict[str, gpd.GeoDataFrame] = {}
@@ -78,7 +95,26 @@ def build_ring(
     buffer_distance_m: float,
     work_crs: str,
 ) -> tuple[Polygon, gpd.GeoDataFrame]:
-    """Inland buffer ring: ``(AoI − AoI.buffer(-d)) − land`` in projected metres."""
+    """
+    Inland buffer ring: ``(AoI − AoI.buffer(-d)) − land`` in projected metres.
+
+    Parameters
+    ----------
+    aoi
+        Area-of-interest polygon(s), geographic CRS.
+    land
+        Land polygon(s), geographic CRS.
+    buffer_distance_m
+        Inward buffer distance in metres (ring width).
+    work_crs
+        Projected CRS used for the metric buffer operation.
+
+    Returns
+    -------
+    tuple[shapely.Polygon, geopandas.GeoDataFrame]
+        Ring geometry in geographic CRS, and the same geometry wrapped in a
+        one-row GeoDataFrame.
+    """
 
     aoi_xy = aoi.to_crs(work_crs)
     land_xy = land.to_crs(work_crs)
@@ -91,7 +127,8 @@ def build_ring(
     return ring_gdf.geometry.iloc[0], ring_gdf
 
 
-def _aoi_exterior_ring(aoi: gpd.GeoDataFrame, work_crs: str):
+def _aoi_exterior_ring(aoi: gpd.GeoDataFrame, work_crs: str) -> Any:
+    """Exterior ring of the (largest, if multi-) AoI polygon, in *work_crs*."""
     aoi_xy = aoi.to_crs(work_crs)
     aoi_poly = aoi_xy.geometry.iloc[0]
     if aoi_poly.geom_type == "MultiPolygon":
@@ -114,12 +151,28 @@ def sort_targets_along_aoi(
 
     Parameters
     ----------
+    targets
+        Target points to renumber (geographic CRS).
+    aoi
+        Area-of-interest polygon whose exterior contour defines the ordering.
+    work_crs
+        Projected CRS used for arc-length projection.
     clockwise
         ``True`` (default) — clockwise on the map; ``False`` — counter-clockwise;
         ``None`` — follow the shapefile vertex order.
     start_at
         Where goal ``1`` begins on the contour: ``"west"``, ``"north"``, or
         ``"ring_origin"`` (first shapefile vertex).
+
+    Returns
+    -------
+    geopandas.GeoDataFrame
+        *targets* with ``goal_id`` renumbered ``1..N`` in contour order.
+
+    Raises
+    ------
+    ValueError
+        If *start_at* is not one of ``"west"``, ``"north"``, ``"ring_origin"``.
     """
 
     if start_at not in ("west", "north", "ring_origin"):
@@ -164,6 +217,33 @@ def random_targets_in_ring(
 
     Call :func:`sort_targets_along_aoi` afterwards to assign ``goal_id`` along the
     AoI contour.
+
+    Parameters
+    ----------
+    ring
+        Candidate area, geographic CRS (see :func:`build_ring`).
+    land
+        Land polygon(s) to exclude, geographic CRS.
+    min_spacing_m
+        Minimum distance between accepted targets, in metres.
+    work_crs
+        Projected CRS used for sampling and spacing checks.
+    random_seed
+        Seed for the random number generator.
+    batch_size
+        Candidate points drawn per batch.
+    max_batches
+        Maximum number of batches before giving up.
+
+    Returns
+    -------
+    geopandas.GeoDataFrame
+        Accepted target points, geographic CRS.
+
+    Raises
+    ------
+    RuntimeError
+        If no target could be placed after *max_batches* batches.
     """
 
     ring_xy = gpd.GeoDataFrame(geometry=[ring], crs=GEO_CRS).to_crs(work_crs)
@@ -201,6 +281,7 @@ def random_targets_in_ring(
 
 
 def _row_fid(row) -> int:
+    """Extract the integer feature id from a nearest-join result row."""
     for key in ("fid", "id", "fid_right", "id_right"):
         if key in row.index and row[key] is not None and row[key] == row[key]:
             return int(row[key])
@@ -244,7 +325,23 @@ def snap_to_catalogs(
     *,
     work_crs: str,
 ) -> dict[str, dict[str, Any]]:
-    """Nearest hindcast node per catalog for one target point."""
+    """
+    Nearest hindcast node per catalog for one target point.
+
+    Parameters
+    ----------
+    target
+        Target point, geographic CRS.
+    catalogs
+        Catalog name → node coordinates GeoDataFrame (see :func:`load_catalogs`).
+    work_crs
+        Projected CRS used for the nearest-neighbour join.
+
+    Returns
+    -------
+    dict[str, dict]
+        Catalog name → ``{fid, longitude, latitude, distance_m}``.
+    """
 
     pt = gpd.GeoDataFrame(geometry=[target], crs=GEO_CRS)
     return _nearest_per_catalog(pt, catalogs, work_crs=work_crs)[0]
@@ -252,7 +349,27 @@ def snap_to_catalogs(
 
 @dataclass
 class AoIRingSectors:
-    """Pre-computed AoI exterior ring geometry for adaptive open-sea sectors."""
+    """Pre-computed AoI exterior ring geometry for adaptive open-sea sectors.
+
+    Attributes
+    ----------
+    aoi_ring
+        Exterior ring of the AoI polygon, in *work_crs* (see
+        :func:`_aoi_exterior_ring`).
+    n_segs
+        Number of ring segments (vertices, excluding the closing duplicate).
+    seg_cumlen
+        Cumulative arc length at each segment start, length ``n_segs + 1``.
+    seg_tau_deg
+        Segment tangent direction, math degrees (CCW from East), one per
+        segment.
+    turn_deg
+        Exterior turn angle at each vertex, degrees, sign-corrected for ring
+        winding direction.
+    outward_side_deg
+        Offset (``+90`` or ``-90``) from segment tangent to the outward
+        normal, depending on ring winding direction.
+    """
 
     aoi_ring: Any
     n_segs: int
@@ -263,6 +380,21 @@ class AoIRingSectors:
 
     @classmethod
     def from_aoi(cls, aoi: gpd.GeoDataFrame, work_crs: str) -> AoIRingSectors:
+        """
+        Build ring segment geometry (tangents, turn angles) from an AoI polygon.
+
+        Parameters
+        ----------
+        aoi
+            Area-of-interest polygon, geographic CRS.
+        work_crs
+            Projected CRS used for the ring geometry computation.
+
+        Returns
+        -------
+        AoIRingSectors
+            Pre-computed ring geometry for :meth:`sector_at_boundary`.
+        """
         aoi_ring = _aoi_exterior_ring(aoi, work_crs)
         is_ccw = aoi_ring.is_ccw
 
@@ -313,6 +445,7 @@ class AoIRingSectors:
         )
 
     def _segment_index(self, d: float) -> int:
+        """Ring segment index containing arc-length position *d*."""
         i = int(np.searchsorted(self.seg_cumlen, d, side="right") - 1)
         return max(0, min(self.n_segs - 1, i))
 
@@ -324,6 +457,15 @@ class AoIRingSectors:
         Projects ``point_xy`` onto the exterior ring, snaps to that boundary point,
         and builds the sector from the segment tangent / outward normal there
         (NC ``00_Compute_Goal_Directions`` geometry).
+
+        Parameters
+        ----------
+        point_xy
+            Query point in the same CRS as :attr:`aoi_ring` (typically
+            *work_crs*).
+        margin_deg
+            Extra half-width added on each side of the boundary-normal sector,
+            in degrees.
 
         Returns
         -------
@@ -357,7 +499,23 @@ def boundary_snaps(
     *,
     work_crs: str,
 ) -> dict[str, dict[str, float]]:
-    """AoI boundary snap per goal (for plotting / GPKG only, not stored in goals JSON)."""
+    """AoI boundary snap per goal (for plotting / GPKG only, not stored in goals JSON).
+
+    Parameters
+    ----------
+    targets
+        Goal target points with a ``goal_id`` column, geographic CRS.
+    sectors
+        Pre-computed ring geometry (see :meth:`AoIRingSectors.from_aoi`).
+    work_crs
+        Projected CRS used for the boundary projection.
+
+    Returns
+    -------
+    dict[str, dict[str, float]]
+        ``goal_id`` (as string) → ``{longitude, latitude}`` of the snapped
+        boundary point.
+    """
 
     targets_xy = targets.to_crs(work_crs)
     out: dict[str, dict[str, float]] = {}
@@ -387,6 +545,25 @@ def build_goals_dict(
     Each goal includes ``angles`` as nautical clockwise ``[left, right]``
     (see :mod:`utils.directions`). Boundary snap coordinates are not stored
     in the JSON (use :func:`boundary_snaps` for maps).
+
+    Parameters
+    ----------
+    targets
+        Goal target points with a ``goal_id`` column, geographic CRS.
+    catalogs
+        Catalog name → node coordinates GeoDataFrame (see :func:`load_catalogs`).
+    sectors
+        Pre-computed ring geometry (see :meth:`AoIRingSectors.from_aoi`).
+    work_crs
+        Projected CRS used for sector and nearest-neighbour computations.
+    margin_deg
+        Extra half-width added on each side of the boundary-normal sector,
+        in degrees.
+
+    Returns
+    -------
+    dict[str, dict]
+        ``goal_id`` (as string) → ``{target, angles, hindcast}``.
     """
 
     targets_xy = targets.to_crs(work_crs)
@@ -423,7 +600,20 @@ def _sector_wedge(
 
 
 def hindcast_snaps_gdf(goals: dict[str, dict[str, Any]]) -> gpd.GeoDataFrame:
-    """Flat GeoDataFrame of all hindcast snap points from a goals dict."""
+    """
+    Flat GeoDataFrame of all hindcast snap points from a goals dict.
+
+    Parameters
+    ----------
+    goals
+        Goals mapping from :func:`build_goals_dict` (or :func:`utils.config.load_goals`).
+
+    Returns
+    -------
+    geopandas.GeoDataFrame
+        One row per ``(goal_id, catalog)`` pair, with ``fid``, ``longitude``,
+        ``latitude``, ``distance_m`` columns; geographic CRS.
+    """
 
     rows: list[dict[str, Any]] = []
     for goal_key in sorted(goals, key=int):
@@ -459,6 +649,24 @@ def goals_layers(
 
     ``angle_low`` / ``angle_high`` match the nautical ``angles`` stored in the
     goals JSON (left / right clockwise boundaries).
+
+    Parameters
+    ----------
+    goals
+        Goals mapping from :func:`build_goals_dict`.
+    targets
+        Goal target points with a ``goal_id`` column, geographic CRS.
+    boundary_snaps
+        ``goal_id`` (as string) → ``{longitude, latitude}``, from
+        :func:`boundary_snaps`.
+    sector_radius_deg
+        Sector wedge radius, in degrees, for the ``sectors`` layer.
+
+    Returns
+    -------
+    dict[str, geopandas.GeoDataFrame]
+        ``{"targets", "boundary_snaps", "sectors", "links"}`` layers, all in
+        geographic CRS.
     """
 
     target_rows: list[dict[str, Any]] = []
@@ -528,7 +736,30 @@ def save_goals_gpkg(
     ring: gpd.GeoDataFrame | None = None,
     sector_radius_deg: float = 0.35,
 ) -> Path:
-    """Write all goal layers to one GeoPackage (one layer per hindcast catalog)."""
+    """
+    Write all goal layers to one GeoPackage (one layer per hindcast catalog).
+
+    Parameters
+    ----------
+    goals
+        Goals mapping from :func:`build_goals_dict`.
+    targets
+        Goal target points with a ``goal_id`` column, geographic CRS.
+    boundary_snaps
+        ``goal_id`` (as string) → ``{longitude, latitude}``, from
+        :func:`boundary_snaps`.
+    path
+        Output ``.gpkg`` path (overwritten if it exists).
+    ring
+        Optional buffer-ring GeoDataFrame, added as a ``buffer_ring`` layer.
+    sector_radius_deg
+        Sector wedge radius, in degrees, for the ``sectors`` layer.
+
+    Returns
+    -------
+    Path
+        Written GeoPackage path.
+    """
 
     path = Path(path)
     layers = goals_layers(
