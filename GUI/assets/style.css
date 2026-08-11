@@ -238,7 +238,7 @@ body {
     color: #86efac;
 }
 
-.status-pill.progress {
+.status-pill.wip {
     background: rgba(251, 191, 36, 0.18);
     border-color: rgba(251, 191, 36, 0.5);
     color: #fde68a;
@@ -379,9 +379,67 @@ body {
     text-transform: capitalize;
 }
 
+.gallery-img-wrap {
+    position: relative;
+    cursor: zoom-in;
+    line-height: 0;
+}
+
 .gallery-img {
     width: 100%;
     display: block;
+    transition: filter 0.15s ease;
+}
+
+.gallery-expand-icon {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    width: 1.9rem;
+    height: 1.9rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: rgba(2, 6, 23, 0.65);
+    border: 1px solid var(--glass-border);
+    color: var(--text);
+    font-size: 1.05rem;
+    line-height: 1;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    pointer-events: none;
+}
+
+.gallery-img-wrap:hover .gallery-img {
+    filter: brightness(1.08);
+}
+
+.gallery-img-wrap:hover .gallery-expand-icon {
+    opacity: 1;
+}
+
+.gallery-modal .modal-content {
+    background: var(--glass);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    color: var(--text);
+}
+
+.gallery-modal .modal-header {
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.gallery-modal .btn-close {
+    filter: invert(1) grayscale(1) brightness(1.6);
+}
+
+.gallery-modal-img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 6px;
 }
 
 /* Dash dropdown dark theme */
@@ -407,8 +465,24 @@ body {
 }
 
 @media (max-width: 900px) {
+    /* Case panel and controls panel are side-by-side floating cards on
+       desktop, but at this width there isn't room for both next to the
+       map — stack them full-width at the top instead, each capped and
+       independently scrollable, so they never overlap each other. */
     .case-panel {
-        max-height: 38vh;
+        left: 1rem;
+        right: 1rem;
+        width: auto;
+        max-height: 24vh;
+    }
+
+    .controls-panel {
+        top: calc(24vh + 1.5rem);
+        left: 1rem;
+        right: 1rem;
+        width: auto;
+        max-height: 20vh;
+        overflow-y: auto;
     }
 
     .legend-panel {
@@ -416,12 +490,6 @@ body {
     }
 
     .results-drawer {
-        max-height: 36vh;
-    }
-
-    .controls-panel {
-        top: auto;
-        bottom: calc(36vh + 1.5rem);
-        right: 1rem;
+        max-height: 34vh;
     }
 }

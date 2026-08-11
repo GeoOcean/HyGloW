@@ -256,7 +256,7 @@ def load_all_metrics(case: dict) -> pd.DataFrame:
 
 
 def list_figures(case: dict) -> list[Path]:
-    fig_dir = case_root(case) / "outputs" / "course_figures"
+    fig_dir = case_root(case) / "outputs" / "gui_figures"
     if not fig_dir.is_dir():
         return []
     return sorted(fig_dir.glob("fig*.png"))

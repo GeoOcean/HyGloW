@@ -6,7 +6,7 @@ Lightweight Dash portal for HyGloW use cases. Reads each case's standard files:
 - `{Case}/inputs/Goals/{Case}_Goals.json` — goal locations (via `simulations.goals_file`)
 - `{Case}/inputs/Observations/{Case}_observations.json` — buoy GeoJSON (via `onshore_waves`)
 - `{Case}/outputs/goal_*/validation_metrics.csv` — holdout validation
-- `{Case}/outputs/course_figures/fig*.png` — showcase figures
+- `{Case}/outputs/gui_figures/fig*.png` — showcase figures
 
 Portal metadata (authors, institution, pipeline status) lives in `catalog/cases.yaml`.
 

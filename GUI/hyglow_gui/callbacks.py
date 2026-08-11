@@ -1,5 +1,5 @@
 import plotly.express as px
-from dash import Input, Output, State, dash_table, dcc, html, no_update
+from dash import ALL, Input, Output, State, ctx, dcc, html, no_update
 import dash_bootstrap_components as dbc
 
 from .layout import case_panel
@@ -136,26 +136,7 @@ def register_callbacks(app):
                 color_discrete_sequence=["#22d3ee", "#a78bfa", "#34d399", "#fb923c"],
             )
             fig.update_layout(**CHART_LAYOUT)
-            table = dash_table.DataTable(
-                data=subset.to_dict("records"),
-                columns=[{"name": c, "id": c} for c in subset.columns],
-                page_size=8,
-                sort_action="native",
-                filter_action="native",
-                style_table={"overflowX": "auto"},
-                style_header={
-                    "backgroundColor": "#1e293b",
-                    "color": "#e2e8f0",
-                    "border": "1px solid #334155",
-                },
-                style_cell={
-                    "backgroundColor": "#0f172a",
-                    "color": "#cbd5e1",
-                    "border": "1px solid #334155",
-                    "fontSize": "0.85rem",
-                },
-            )
-            return html.Div([dcc.Graph(figure=fig, config={"displayModeBar": False}), table], className="drawer-charts")
+            return html.Div(dcc.Graph(figure=fig, config={"displayModeBar": False}), className="drawer-charts")
 
         if tab == "tab-sweep":
             sweep = metrics[
@@ -181,12 +162,34 @@ def register_callbacks(app):
             html.Div(
                 [
                     html.Div(name.replace("_", " ").replace(".png", ""), className="gallery-caption"),
-                    html.Img(src=f"/case-figures/{case_id}/{name}", className="gallery-img"),
+                    html.Div(
+                        [
+                            html.Img(src=f"/case-figures/{case_id}/{name}", className="gallery-img"),
+                            html.Span("⤢", className="gallery-expand-icon"),
+                        ],
+                        id={"type": "gallery-figure", "index": name},
+                        n_clicks=0,
+                        className="gallery-img-wrap",
+                    ),
                 ],
                 className="gallery-item",
             )
             for name in (figure_names or [])
         ]
         if not cards:
-            return dbc.Alert("No course figures found in outputs/course_figures/.", color="secondary", className="drawer-alert")
+            return dbc.Alert("No GUI figures found in outputs/gui_figures/.", color="secondary", className="drawer-alert")
         return html.Div(cards, className="gallery-grid")
+
+    @app.callback(
+        Output("gallery-modal", "is_open"),
+        Output("gallery-modal-img", "src"),
+        Output("gallery-modal-title", "children"),
+        Input({"type": "gallery-figure", "index": ALL}, "n_clicks"),
+        State("case-select", "value"),
+        prevent_initial_call=True,
+    )
+    def open_gallery_modal(n_clicks_list, case_id):
+        if not any(n_clicks_list) or not isinstance(ctx.triggered_id, dict):
+            return no_update, no_update, no_update
+        name = ctx.triggered_id["index"]
+        return True, f"/case-figures/{case_id}/{name}", name.replace("_", " ").replace(".png", "")

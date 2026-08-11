@@ -21,7 +21,7 @@ server = app.server
 @app.server.route("/case-figures/<case_id>/<path:filename>")
 def serve_figure(case_id: str, filename: str):
     case = load_case(case_id)
-    directory = case_root(case) / "outputs" / "course_figures"
+    directory = case_root(case) / "outputs" / "gui_figures"
     return send_from_directory(directory, filename)
 
 

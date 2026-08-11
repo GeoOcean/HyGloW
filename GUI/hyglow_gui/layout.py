@@ -27,7 +27,10 @@ def _pipeline_pill_class(value) -> str:
         return "done"
     if status in ("todo", "pending", "not_started"):
         return "todo"
-    return "progress"
+    # Not "progress" — that class name collides with Bootstrap's built-in
+    # .progress (progress-bar) component, which forces height:1rem and
+    # overflow:hidden and silently clips the pill's text mid-line.
+    return "wip"
 
 
 def _pipeline_badges(case: dict) -> html.Div:
@@ -138,6 +141,20 @@ def results_drawer() -> html.Div:
     )
 
 
+def gallery_modal() -> dbc.Modal:
+    return dbc.Modal(
+        [
+            dbc.ModalHeader(dbc.ModalTitle(id="gallery-modal-title"), close_button=True),
+            dbc.ModalBody(html.Img(id="gallery-modal-img", className="gallery-modal-img")),
+        ],
+        id="gallery-modal",
+        is_open=False,
+        size="xl",
+        centered=True,
+        className="gallery-modal",
+    )
+
+
 def header() -> html.Div:
     return html.Header(
         html.Div(
@@ -198,6 +215,7 @@ def build_layout() -> html.Div:
             ),
             dcc.Store(id="figures-store", data=[p.name for p in figures]),
             dcc.Store(id="region-store", data=bounds),
+            gallery_modal(),
         ],
         className="app-shell",
     )
