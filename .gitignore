@@ -209,3 +209,6 @@ QGIS/
 
 # EuropePolygons still test
 EuropePolygons/
+
+# Some raw files
+NewSouthWales/inputs/Observations/raw/
