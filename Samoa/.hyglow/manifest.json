@@ -3,7 +3,7 @@
   "hyglow_version": "0.3.0",
   "schema_version": 1,
   "source": "hyglow-template@0.3.0",
-  "updated": "2026-08-11T11:38:24+00:00",
+  "updated": "2026-08-12T09:25:21+00:00",
   "engine_files": {
     "utils/__init__.py": "1cca045a7af34d3bc9213933ecdef953811c2567858c3e11078967084f04a2b2",
     "utils/config.py": "40c1a1e7e9464494addffe3a6bcb240907ce6480858c79da88a3e2a1fcdbbc9b",
@@ -15,7 +15,7 @@
     "utils/geometry/sectors.py": "c679fbab426fd632c76ef4035422d82bc8c4517aeadd549098bc054c42bd0ac0",
     "utils/geometry/sites.py": "654ba86431a098368fc72511c5e81ae95cb317ad3c0b45d52697daf1ad47bacb",
     "utils/model/__init__.py": "4e62ca4f95ee1ccd94e2fbb8135c28c623adf819ab71286870ae05e0779150f0",
-    "utils/model/metamodel.py": "c3717e2915cccacbe0ed435b792537369de0282b220a4ed6d60f6e159d974161",
+    "utils/model/metamodel.py": "fddaaae36671bfde727ff522eb73c84708c90dc5625dd545ea8a306a7d8b84b5",
     "utils/observation/__init__.py": "78836c7fa3be9656f7bfbe7c9dae0873d545aa37aaf160d58384fafc84c86ead",
     "utils/observation/onshore_sites.py": "ac0fe1cf8c9d6bf27db8a75427fdce7b29f2b4dc6eb2a8b9cee5bad3951951b1",
     "utils/simulation/__init__.py": "821751e21173b933c7e223a39815566be785eb58af18733a3b088d2745e48373",
