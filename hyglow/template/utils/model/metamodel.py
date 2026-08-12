@@ -77,6 +77,34 @@ SPECTRAL_PARTITIONS = (0, 1, 2, 3)
 SPECTRAL_FREQ = np.logspace(np.log10(0.035), np.log10(0.5), 29)
 SPECTRAL_DIR = np.arange(0.0, 360.0, 5)
 
+# Directional spreading (`spr`) is GP-predicted, not raw-passthrough, so it can
+# occasionally extrapolate to a non-physical near-zero or negative value for
+# rare storm-forcing combinations. wavespectra's Cartwright spreading function
+# (wavespectra.construct.direction.cartwright) computes
+# ``s = 2 / deg2rad(dspr)**2 - 1``: as dspr -> 0 that exponent explodes, the
+# discretised cos(...)**(2*s) spreading curve underflows to exactly zero at
+# every point on SPECTRAL_DIR's 5-degree grid, and the normalisation step
+# (``1 / gth.sum()``) then divides by that zero -> `inf`, silently poisoning
+# the whole reconstructed spectrum (and anything averaged over it — a single
+# bad hour turns an entire monthly/seasonal mean spectrum blank). Predicted
+# `spr` is floored to this value in `predict()` before it ever reaches
+# wavespectra, rather than each caller having to guard against it downstream.
+MIN_DIRECTIONAL_SPREAD_DEG = 1.0
+
+# `reconstruct()` batches every *uncached* month into as few GP prediction
+# calls as possible (see `_reconstruct_periods_batch`) since each call's cost
+# is dominated by a large fixed per-call overhead, not by row count — one
+# call covering 3 months costs far less than 3 separate one-month calls. But
+# batching *too much* at once grows GPyTorch's per-call kernel evaluation past
+# available GPU memory: on a 5.61 GiB GPU, a full 11-year (132-month) batch
+# and a 12-month batch both hit CUDA OOM partway through the 26-goal loop,
+# while a 3-month batch measured fine (confirmed empirically, not derived —
+# GP prediction memory is driven by *row count per call*, i.e. time span,
+# independent of how many sites are requested). Raise this only after
+# confirming headroom on the target GPU (or pass device="cpu" to
+# reconstruct() for unbounded-but-slower CPU inference).
+RECONSTRUCT_BATCH_MONTHS = 3
+
 
 def _set_gp_device(gp: Any, device: str) -> None:
     """Move a fitted :class:`~bluemath_tk.interpolation.gps.ExactGPInterpolation` to *device*."""
@@ -1419,6 +1447,10 @@ def predict(
             arr = pts[name]
             if "time" in arr.dims:
                 arr = arr.rename(time="case_num")
+        if name == "spr":
+            # Floor GP-extrapolated non-physical spread; see
+            # MIN_DIRECTIONAL_SPREAD_DEG's module-level docstring for why.
+            arr = arr.clip(min=MIN_DIRECTIONAL_SPREAD_DEG)
         out[name] = arr.sel(sites=site_ids)
 
     meta = cases.sel(sites=site_ids)
@@ -2302,6 +2334,150 @@ def _reconstruct_period(
     return result
 
 
+def _reconstruct_periods_batch(
+    offshore_store: xr.Dataset,
+    periods: list[str],
+    n: int,
+    *,
+    active: list[str],
+    site_ids: list[str],
+    spectral: bool,
+    pca_variance: PcaVariance,
+    wl: float,
+    cache_kw: Mapping[str, Any],
+    use_cache: bool = True,
+    device: str | None = None,
+    save_spectra: bool | None = None,
+    variables: Mapping[str, str] | None = None,
+) -> dict[str, xr.Dataset]:
+    """Reconstruct several uncached months in one GP prediction pass per goal.
+
+    GP inference cost is dominated by a large *fixed* per-call overhead (each
+    call loops over every PCA component and dispatches one GPyTorch forward
+    pass per component), not by how many rows it predicts — reconstructing a
+    single month's ~50-700 valid hours measured about the same wall time as a
+    whole year's ~1000+ hours in one call. ``reconstruct()``'s original month
+    -by-month loop called :func:`_predict_offshore` once per (goal, partition,
+    month), so a multi-year request re-paid that fixed cost once per month —
+    e.g. an 11-year request paid it 132 times instead of once.
+
+    This concatenates every *missing* month's offshore forcing into one
+    combined selection, runs the goal x partition prediction loop and
+    :func:`_wavespectra_sum` exactly once over the whole span, then splits the
+    combined result back into each month's own cache file — so per-month
+    cache granularity (and thus cheap partial/overlapping future requests)
+    behaves exactly as before; only the redundant re-prediction is removed.
+
+    Parameters
+    ----------
+    offshore_store
+        Full offshore dataset (not yet time-sliced).
+    periods
+        Calendar-month labels to compute; caller has already confirmed none
+        of these are cached.
+    n, active, site_ids, spectral, pca_variance, wl, use_cache, device,
+    save_spectra, variables
+        Same as :func:`reconstruct`.
+    cache_kw
+        Shared kwargs for :func:`reconstruction_cache_path` (built once by
+        the caller, so every month's cache path matches what a normal
+        single-month :func:`_reconstruct_period` call would have produced).
+
+    Returns
+    -------
+    dict[str, xarray.Dataset]
+        Month label -> bulk-parameter dataset, one entry per period that had
+        offshore data (periods with zero timesteps are omitted, same as the
+        original per-month loop).
+
+    Raises
+    ------
+    ValueError
+        If no goal x partition produced valid predictions for any requested
+        month.
+    """
+    variable_map = _reconstruction_variables(override=variables)
+    save_spec = _reconstruction_save_spectra(override=save_spectra)
+
+    period_offshore = {p: offshore_store.sel(time=p) for p in periods}
+    period_offshore = {
+        p: off for p, off in period_offshore.items() if off.sizes.get("time", 0) > 0
+    }
+    if not period_offshore:
+        return {}
+
+    combined_offshore = xr.concat(list(period_offshore.values()), dim="time")
+    part_ids = _reconstruction_partitions(spectral, combined_offshore)
+
+    logger.info(
+        "Reconstruct batch: %d month(s) n=%d goals=%s partitions=%s sites=%d",
+        len(period_offshore),
+        n,
+        active,
+        part_ids,
+        len(site_ids),
+    )
+
+    chunks: list[xr.Dataset] = []
+    for goal in active:
+        goal_models = load_models(goal, n, pca_variance=pca_variance, device=device)
+        try:
+            for part in part_ids:
+                pred = _predict_offshore(
+                    combined_offshore,
+                    goal,
+                    n,
+                    site_ids,
+                    partition=part,
+                    wl=wl,
+                    pca_variance=pca_variance,
+                    models=goal_models,
+                    device=device,
+                )
+                if pred is None:
+                    continue
+                chunks.append(
+                    pred.expand_dims(goal=[int(goal)], partition=[part]).load()
+                )
+        finally:
+            del goal_models
+            _release_gp_memory()
+
+    if not chunks:
+        raise ValueError(f"Reconstruction produced no data for {periods!r}")
+
+    combined_result, combined_spectra = _wavespectra_sum(
+        xr.merge(chunks),
+        site_ids,
+        variables=variable_map,
+        save_spectra=save_spec,
+        load=True,
+    )
+
+    out: dict[str, xr.Dataset] = {}
+    for period in period_offshore:
+        month_result = combined_result.sel(time=period)
+        if use_cache:
+            month_path = reconstruction_cache_path(period, **cache_kw)
+            _save_reconstruction_cache(month_result, month_path)
+            if save_spec and combined_spectra is not None:
+                month_spec = combined_spectra.sel(time=period)
+                spectra_path = reconstruction_spectra_cache_path(month_path)
+                _save_reconstruction_cache(month_spec, spectra_path)
+                logger.info(
+                    "Saved spectra cache: %s (%.2f MB)",
+                    spectra_path.name,
+                    spectra_path.stat().st_size * 1e-6,
+                )
+        out[period] = month_result
+    logger.info(
+        "Reconstruction batch done: %d month(s), %d site(s)",
+        len(out),
+        month_result.sizes["sites"] if out else 0,
+    )
+    return out
+
+
 def reconstruct(
     time: str | slice,
     n: int,
@@ -2462,39 +2638,59 @@ def reconstruct(
         return result
 
     logger.info(
-        "Reconstruct time=%r spans %d month(s) — processing month by month",
+        "Reconstruct time=%r spans %d month(s)",
         time,
         len(periods),
     )
-    monthly: list[xr.Dataset] = []
-    for i, period in enumerate(periods, start=1):
-        offshore = offshore_store.sel(time=period)
-        if offshore.sizes.get("time", 0) == 0:
-            logger.debug(
-                "Month %d/%d %r: no timesteps — skipped", i, len(periods), period
-            )
+    # Two passes: first split into already-cached vs missing months without
+    # computing anything, then reconstruct every missing month in one batch
+    # (see _reconstruct_periods_batch) instead of one _predict_offshore call
+    # per month — GP inference's fixed per-call overhead otherwise gets
+    # re-paid for every single month of a long request.
+    monthly_by_period: dict[str, xr.Dataset] = {}
+    missing_periods: list[str] = []
+    for period in periods:
+        if offshore_store.sel(time=period).sizes.get("time", 0) == 0:
+            logger.debug("Month %r: no timesteps — skipped", period)
             continue
         month_path = reconstruction_cache_path(period, **cache_kw)
         if use_cache and not recompute:
             cached_month = _load_reconstruction_cache(month_path, load=False)
             if cached_month is not None:
-                logger.info(
-                    "Reconstruct month %d/%d: %r (cache)", i, len(periods), period
-                )
-                monthly.append(cached_month)
+                monthly_by_period[period] = cached_month
                 continue
-        logger.info("Reconstruct month %d/%d: %r", i, len(periods), period)
-        monthly.append(
-            _reconstruct_period(
-                offshore,
-                n,
-                time_label=period,
-                load=False,
-                cache_path=month_path,
-                **period_kw,
-            )
-        )
+        missing_periods.append(period)
 
+    if missing_periods:
+        logger.info(
+            "Reconstructing %d missing month(s) of %d (%d already cached), in "
+            "batches of up to %d month(s)",
+            len(missing_periods),
+            len(periods),
+            len(monthly_by_period),
+            RECONSTRUCT_BATCH_MONTHS,
+        )
+        for i in range(0, len(missing_periods), RECONSTRUCT_BATCH_MONTHS):
+            batch = missing_periods[i : i + RECONSTRUCT_BATCH_MONTHS]
+            monthly_by_period.update(
+                _reconstruct_periods_batch(
+                    offshore_store,
+                    batch,
+                    n,
+                    active=active,
+                    site_ids=site_ids,
+                    spectral=spectral,
+                    pca_variance=pca_variance,
+                    wl=wl,
+                    cache_kw=cache_kw,
+                    use_cache=use_cache,
+                    device=device,
+                    save_spectra=save_spectra,
+                    variables=variable_map,
+                )
+            )
+
+    monthly = [monthly_by_period[p] for p in periods if p in monthly_by_period]
     if not monthly:
         raise ValueError("Reconstruction produced no data (check time range)")
 
