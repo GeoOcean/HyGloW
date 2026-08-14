@@ -15,9 +15,12 @@ Site grouping and selection: :mod:`utils.geometry.sites`.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
+import os
 import re
+import time
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable, Literal, Mapping
@@ -185,7 +188,9 @@ WAVESPECTRA_MEMORY_BUDGET_BYTES = (
 WAVESPECTRA_PEAK_MULTIPLIER = 8
 
 
-def _site_batch_size(n_hours: int, n_parts: int) -> int:
+def _site_batch_size(
+    n_hours: int, n_parts: int, *, budget_bytes: int | None = None
+) -> int:
     """Sites per _wavespectra_sum call keeping its peak array under budget.
 
     Parameters
@@ -196,6 +201,12 @@ def _site_batch_size(n_hours: int, n_parts: int) -> int:
     n_parts
         ``len(active goals) * len(partitions)`` — up to 4x more for spectral
         mode than bulk.
+    budget_bytes
+        Override for ``WAVESPECTRA_MEMORY_BUDGET_BYTES``. Parallel
+        reconstruction (see ``workers`` on :func:`reconstruct`) passes
+        ``WAVESPECTRA_MEMORY_BUDGET_BYTES // workers`` here so N concurrent
+        workers' batches sum back to the same total budget instead of each
+        independently claiming the full 12 GiB.
 
     Returns
     -------
@@ -210,6 +221,7 @@ def _site_batch_size(n_hours: int, n_parts: int) -> int:
     # comparably-sized temporaries at once, not just this one final array —
     # see WAVESPECTRA_MEMORY_BUDGET_BYTES's docstring above for how that was
     # calibrated.
+    budget = WAVESPECTRA_MEMORY_BUDGET_BYTES if budget_bytes is None else budget_bytes
     bytes_per_site = (
         max(1, n_hours)
         * max(1, n_parts)
@@ -218,7 +230,7 @@ def _site_batch_size(n_hours: int, n_parts: int) -> int:
         * 4
         * WAVESPECTRA_PEAK_MULTIPLIER
     )
-    return max(1, WAVESPECTRA_MEMORY_BUDGET_BYTES // bytes_per_site)
+    return max(1, budget // bytes_per_site)
 
 
 def _set_gp_device(gp: Any, device: str) -> None:
@@ -1937,6 +1949,308 @@ def _wavespectra_sum(
 
 
 # ---------------------------------------------------------------------------
+# Parallel site-batching (reconstruct(..., workers=N))
+# ---------------------------------------------------------------------------
+#
+# _wavespectra_sum is the dominant cost at large site counts (see
+# WAVESPECTRA_MEMORY_BUDGET_BYTES's docstring) and is embarrassingly
+# parallel across sites — no shared state, pure CPU/numpy, no GPU involved.
+# The goal loop above it (predict()) is deliberately NOT parallelized here:
+# it's close to independent of site count already (predict() always
+# computes the full ~3,890-site catalog internally regardless of what's
+# requested), so it isn't the bottleneck at scale, and parallelizing it
+# would mean multiple processes contending for the same GPU.
+#
+# Design: split site_ids into `workers` contiguous groups up front; one
+# process-pool task per group, each internally re-running the same
+# sequential sub-batch loop _reconstruct_period uses, just against
+# WAVESPECTRA_MEMORY_BUDGET_BYTES // workers instead of the full budget —
+# so N concurrent workers' peak memory sums back to the same ~12 GiB
+# target instead of each independently claiming it (N x the memory for N x
+# the throughput would defeat the point on a shared machine). A process
+# pool, not threads: construct_partition's numpy ufuncs release the GIL,
+# but the xarray glue around them (.sel, .stack, Dataset construction)
+# doesn't, so thread speedup would be partial and hard to predict — a
+# process pool sidesteps that uncertainty.
+#
+# Uses the "spawn" start method explicitly, NOT the Linux default "fork".
+# This step itself never touches CUDA, but by the time it runs, the goal
+# loop above it already has (GPyTorch/PyTorch GP inference) — a fork()'d
+# child inherits that CUDA context, and CUDA contexts are documented as
+# unsafe across fork: the child ends up with a half-initialized driver
+# state that doesn't crash, it just hangs on internal synchronization.
+# Confirmed directly while diagnosing this: forked worker processes sat at
+# ~0% CPU indefinitely, blocked in futex_do_wait, with /proc/<pid>/fd
+# showing ~26 inherited /dev/nvidia* file descriptors despite this
+# function's own code being pure CPU/numpy. "spawn" starts each worker as
+# a genuinely fresh interpreter (re-importing this module — cheap relative
+# to the hours-long jobs this is meant for), so there's no CUDA state, no
+# open GPU fds, and nothing to inherit-and-hang on.
+_MP_SPAWN_CONTEXT = None
+
+
+def _spawn_context() -> Any:
+    """Lazily-created "spawn" multiprocessing context (see comment above)."""
+    global _MP_SPAWN_CONTEXT
+    if _MP_SPAWN_CONTEXT is None:
+        import multiprocessing
+
+        _MP_SPAWN_CONTEXT = multiprocessing.get_context("spawn")
+    return _MP_SPAWN_CONTEXT
+
+
+def _wavespectra_sum_group(
+    group_chunks: list[xr.Dataset],
+    group_site_ids: list[str],
+    *,
+    n_hours: int,
+    n_parts: int,
+    variable_map: Mapping[str, str],
+    save_spectra: bool,
+    budget_bytes: int,
+    group_label: str = "",
+) -> tuple[xr.Dataset, xr.Dataset | None]:
+    """One parallel worker's share of the site-batched merge + _wavespectra_sum.
+
+    Runs in a separate process (see :func:`_wavespectra_sum_parallel`).
+    Sequentially sub-batches *group_site_ids* against *budget_bytes* (already
+    divided by worker count by the caller) exactly like the non-parallel
+    loop in :func:`_reconstruct_period` does against the full budget.
+
+    Parameters
+    ----------
+    group_chunks
+        This worker's site subset already sliced from the goal x partition
+        prediction chunks (``[c.sel(sites=group_site_ids) for c in chunks]``
+        — done by the parent so each worker only pickles its own slice).
+    group_site_ids
+        Site labels assigned to this worker.
+    n_hours, n_parts
+        Same as :func:`_site_batch_size`.
+    variable_map
+        HyGloW name -> wavespectra stat mapping.
+    save_spectra
+        Whether to also return summed spectra.
+    budget_bytes
+        This worker's share of ``WAVESPECTRA_MEMORY_BUDGET_BYTES``.
+    group_label
+        Short label (e.g. ``"group 3/8"``) prefixed on this worker's log
+        lines so a run's ``logs/metamodel.log`` reads as interleaved
+        per-worker progress rather than unattributed noise — the log file
+        (not the notebook/console, which stays at WARNING+) is exactly the
+        right place for this level of detail on what was, until this
+        logging was added, a completely silent, now-slowest step.
+
+    Returns
+    -------
+    tuple[xarray.Dataset, xarray.Dataset | None]
+        Bulk parameters and optional spectra for this worker's whole group.
+    """
+    batch_size = _site_batch_size(n_hours, n_parts, budget_bytes=budget_bytes)
+    n_batches = -(-len(group_site_ids) // batch_size)  # ceil div
+    result_parts: list[xr.Dataset] = []
+    spectra_parts: list[xr.Dataset] = []
+    t_group = time.monotonic()
+    for batch_idx, i in enumerate(range(0, len(group_site_ids), batch_size), start=1):
+        t_batch = time.monotonic()
+        site_batch = group_site_ids[i : i + batch_size]
+        merged_batch = xr.merge([c.sel(sites=site_batch) for c in group_chunks])
+        result_batch, spectra_batch = _wavespectra_sum(
+            merged_batch,
+            site_batch,
+            variables=variable_map,
+            save_spectra=save_spectra,
+            load=True,
+        )
+        result_parts.append(result_batch)
+        if save_spectra and spectra_batch is not None:
+            spectra_parts.append(spectra_batch)
+        del merged_batch
+        logger.info(
+            "[%s] wavespectra_sum batch %d/%d (%d sites) done in %.1fs (%.1fs elapsed)",
+            group_label,
+            batch_idx,
+            n_batches,
+            len(site_batch),
+            time.monotonic() - t_batch,
+            time.monotonic() - t_group,
+        )
+        # Redundant with logging.StreamHandler.emit()'s own per-record
+        # flush, but explicit here as cheap insurance — this is a worker
+        # process (see _reset_logging_locks's docstring on why forked
+        # workers + logging need extra care), and this line is the whole
+        # point of the batch-level logging above: real-time visibility into
+        # what was, until this was added, a completely silent, now-slowest
+        # step (see the conversation this was diagnosed in).
+        for handler in logger.handlers:
+            handler.flush()
+    result = xr.concat(result_parts, dim="sites")
+    spectra = xr.concat(spectra_parts, dim="sites") if spectra_parts else None
+    return result, spectra
+
+
+def _reset_logging_locks() -> None:
+    """Worker-startup safety net for fork() + threading + logging deadlocks.
+
+    Under "spawn" (see ``_spawn_context`` above, which is what this codebase
+    actually uses), each worker gets a fresh interpreter and creates its own
+    handler/lock from scratch on import — this function is a no-op there,
+    nothing to reset. It's kept, and still passed as the pool's
+    ``initializer``, as cheap insurance against ever reverting to "fork"
+    (its original motivation): a forked child inherits ``logging.
+    FileHandler``'s lock in whatever state it was in at the instant of the
+    fork, and if another thread in the parent held it — very plausible
+    right after the goal loop's heavy GPyTorch/PyTorch activity — the child
+    inherits it already locked, with no thread left alive to ever release
+    it, and deadlocks forever on its first log call.
+    ``logging.Handler.createLock()`` is the standard, documented fix for
+    exactly that.
+    """
+    for handler in logger.handlers:
+        handler.createLock()
+
+
+_BLAS_THREAD_ENV_VARS = (
+    "OMP_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+)
+
+
+@contextlib.contextmanager
+def _single_threaded_blas_for_children():
+    """Cap BLAS/OpenMP threads to 1 in the environment the pool's workers
+    inherit, restoring the parent's own values on exit.
+
+    Each worker process's own numpy/BLAS backend otherwise sizes its
+    internal thread pool to every core on the host, independently, with no
+    idea the other N-1 sibling workers are doing the exact same thing —
+    confirmed directly while diagnosing this: 8 worker processes each
+    running ~54-55 threads, every one pinned at 100% CPU, all fighting over
+    20 physical cores (load average ~10 despite "only" 8 processes). The
+    workers here only ever process one site's construct_partition call at a
+    time anyway (see _site_batch_size at the divided per-worker budget) —
+    the intended parallelism is the N separate OS processes, not each one
+    *also* being internally multi-threaded on top of that.
+
+    Must be set here, in the parent, before the pool spawns — env vars are
+    inherited at process-creation time, but by the time any of this
+    module's own code runs inside a worker (even the pool's own
+    ``initializer``), numpy is already imported and its BLAS thread count
+    is already locked in for that process's lifetime.
+    """
+    previous = {name: os.environ.get(name) for name in _BLAS_THREAD_ENV_VARS}
+    try:
+        for name in _BLAS_THREAD_ENV_VARS:
+            os.environ[name] = "1"
+        yield
+    finally:
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+
+def _wavespectra_sum_parallel(
+    chunks: list[xr.Dataset],
+    site_ids: list[str],
+    *,
+    n_hours: int,
+    n_parts: int,
+    variable_map: Mapping[str, str],
+    save_spectra: bool,
+    workers: int,
+) -> tuple[xr.Dataset, xr.Dataset | None]:
+    """Site-batched merge + _wavespectra_sum, split across a process pool.
+
+    Parameters
+    ----------
+    chunks
+        Goal x partition prediction chunks for *all* of ``site_ids`` (the
+        same ``chunks`` the sequential loop in :func:`_reconstruct_period`
+        uses).
+    site_ids
+        Every site to process this call.
+    n_hours, n_parts
+        Same as :func:`_site_batch_size`.
+    variable_map
+        HyGloW name -> wavespectra stat mapping.
+    save_spectra
+        Whether to also return summed spectra.
+    workers
+        Number of worker processes; must be >= 2 (callers should use the
+        plain sequential loop for 1, which has no pool overhead).
+
+    Returns
+    -------
+    tuple[xarray.Dataset, xarray.Dataset | None]
+        Bulk parameters and optional spectra for every requested site.
+    """
+    from concurrent.futures import ProcessPoolExecutor, as_completed
+
+    per_worker_budget = max(1, WAVESPECTRA_MEMORY_BUDGET_BYTES // workers)
+    groups = [
+        g.tolist() for g in np.array_split(np.array(site_ids, dtype=object), workers)
+    ]
+    groups = [g for g in groups if g]
+
+    logger.info(
+        "wavespectra_sum: %d sites across %d workers (~%d sites/worker, "
+        "%.2f GiB/worker budget)",
+        len(site_ids),
+        len(groups),
+        len(groups[0]) if groups else 0,
+        per_worker_budget / 1024**3,
+    )
+
+    results: list[xr.Dataset] = []
+    spectras: list[xr.Dataset] = []
+    t_all = time.monotonic()
+    with (
+        _single_threaded_blas_for_children(),
+        ProcessPoolExecutor(
+            max_workers=len(groups),
+            mp_context=_spawn_context(),
+            initializer=_reset_logging_locks,
+        ) as executor,
+    ):
+        future_labels: dict[Any, str] = {}
+        for group_idx, group_sites in enumerate(groups, start=1):
+            group_label = f"group {group_idx}/{len(groups)}"
+            group_chunks = [c.sel(sites=group_sites) for c in chunks]
+            future = executor.submit(
+                _wavespectra_sum_group,
+                group_chunks,
+                group_sites,
+                n_hours=n_hours,
+                n_parts=n_parts,
+                variable_map=variable_map,
+                save_spectra=save_spectra,
+                budget_bytes=per_worker_budget,
+                group_label=group_label,
+            )
+            future_labels[future] = group_label
+            del group_chunks
+        for future in as_completed(future_labels):
+            result_group, spectra_group = future.result()
+            results.append(result_group)
+            if save_spectra and spectra_group is not None:
+                spectras.append(spectra_group)
+            logger.info(
+                "%s done (%.1fs elapsed overall)",
+                future_labels[future],
+                time.monotonic() - t_all,
+            )
+
+    result = xr.concat(results, dim="sites")
+    spectra = xr.concat(spectras, dim="sites") if spectras else None
+    return result, spectra
+
+
+# ---------------------------------------------------------------------------
 # Hindcast cache
 # ---------------------------------------------------------------------------
 
@@ -2314,6 +2628,7 @@ def _reconstruct_period(
     device: str | None = None,
     save_spectra: bool | None = None,
     variables: Mapping[str, str] | None = None,
+    workers: int = 1,
 ) -> xr.Dataset:
     """Reconstruct one offshore time slice already selected with ``.sel(time=...)``.
 
@@ -2356,6 +2671,12 @@ def _reconstruct_period(
     variables
         HyGloW name → wavespectra stat mapping. When ``None``, reads
         ``metamodel.reconstruction.variables`` from the case JSON.
+    workers
+        Process-pool workers for the site-batched merge + _wavespectra_sum
+        step (see :func:`_wavespectra_sum_parallel`). ``1`` (default) runs
+        the original sequential loop, unchanged. Only that step is
+        parallelized — the goal loop above it isn't (see
+        ``_wavespectra_sum_parallel``'s module comment for why).
 
     Returns
     -------
@@ -2448,28 +2769,52 @@ def _reconstruct_period(
     # own broadcast multiply both scale with site count even though
     # prediction above doesn't, so the merge + wavespectra construction runs
     # per site-batch rather than on all of site_ids at once.
-    site_batch_size = _site_batch_size(
-        offshore.sizes.get("time", 0), len(active) * len(part_ids)
-    )
-    result_parts: list[xr.Dataset] = []
-    spectra_parts: list[xr.Dataset] = []
-    for i in range(0, len(site_ids), site_batch_size):
-        site_batch = site_ids[i : i + site_batch_size]
-        merged_batch = xr.merge([c.sel(sites=site_batch) for c in chunks])
-        result_batch, spectra_batch = _wavespectra_sum(
-            merged_batch,
-            site_batch,
-            variables=variable_map,
+    n_hours = offshore.sizes.get("time", 0)
+    n_parts = len(active) * len(part_ids)
+    if workers > 1:
+        result, spectra = _wavespectra_sum_parallel(
+            chunks,
+            site_ids,
+            n_hours=n_hours,
+            n_parts=n_parts,
+            variable_map=variable_map,
             save_spectra=save_spectra,
-            load=load,
+            workers=workers,
         )
-        result_parts.append(result_batch)
-        if save_spectra and spectra_batch is not None:
-            spectra_parts.append(spectra_batch)
-        del merged_batch
+    else:
+        site_batch_size = _site_batch_size(n_hours, n_parts)
+        n_batches = -(-len(site_ids) // site_batch_size)  # ceil div
+        result_parts: list[xr.Dataset] = []
+        spectra_parts: list[xr.Dataset] = []
+        t_batches = time.monotonic()
+        for batch_idx, i in enumerate(
+            range(0, len(site_ids), site_batch_size), start=1
+        ):
+            t_batch = time.monotonic()
+            site_batch = site_ids[i : i + site_batch_size]
+            merged_batch = xr.merge([c.sel(sites=site_batch) for c in chunks])
+            result_batch, spectra_batch = _wavespectra_sum(
+                merged_batch,
+                site_batch,
+                variables=variable_map,
+                save_spectra=save_spectra,
+                load=load,
+            )
+            result_parts.append(result_batch)
+            if save_spectra and spectra_batch is not None:
+                spectra_parts.append(spectra_batch)
+            del merged_batch
+            logger.info(
+                "wavespectra_sum batch %d/%d (%d sites) done in %.1fs (%.1fs elapsed)",
+                batch_idx,
+                n_batches,
+                len(site_batch),
+                time.monotonic() - t_batch,
+                time.monotonic() - t_batches,
+            )
 
-    result = xr.concat(result_parts, dim="sites")
-    spectra = xr.concat(spectra_parts, dim="sites") if spectra_parts else None
+        result = xr.concat(result_parts, dim="sites")
+        spectra = xr.concat(spectra_parts, dim="sites") if spectra_parts else None
 
     if use_cache:
         _save_reconstruction_cache(result, cache_path)
@@ -2503,6 +2848,7 @@ def _reconstruct_periods_batch(
     device: str | None = None,
     save_spectra: bool | None = None,
     variables: Mapping[str, str] | None = None,
+    workers: int = 1,
 ) -> dict[str, xr.Dataset]:
     """Reconstruct several uncached months in one GP prediction pass per goal.
 
@@ -2536,6 +2882,8 @@ def _reconstruct_periods_batch(
         Shared kwargs for :func:`reconstruction_cache_path` (built once by
         the caller, so every month's cache path matches what a normal
         single-month :func:`_reconstruct_period` call would have produced).
+    workers
+        Same as :func:`_reconstruct_period`'s ``workers``.
 
     Returns
     -------
@@ -2605,28 +2953,54 @@ def _reconstruct_periods_batch(
     # broadcast multiply both scale with site count — merge + wavespectra_sum
     # runs per site-batch to keep memory bounded regardless of how many sites
     # were requested.
-    site_batch_size = _site_batch_size(
-        combined_offshore.sizes.get("time", 0), len(active) * len(part_ids)
-    )
-    result_parts: list[xr.Dataset] = []
-    spectra_parts: list[xr.Dataset] = []
-    for i in range(0, len(site_ids), site_batch_size):
-        site_batch = site_ids[i : i + site_batch_size]
-        merged_batch = xr.merge([c.sel(sites=site_batch) for c in chunks])
-        result_batch, spectra_batch = _wavespectra_sum(
-            merged_batch,
-            site_batch,
-            variables=variable_map,
+    n_hours = combined_offshore.sizes.get("time", 0)
+    n_parts = len(active) * len(part_ids)
+    if workers > 1:
+        combined_result, combined_spectra = _wavespectra_sum_parallel(
+            chunks,
+            site_ids,
+            n_hours=n_hours,
+            n_parts=n_parts,
+            variable_map=variable_map,
             save_spectra=save_spec,
-            load=True,
+            workers=workers,
         )
-        result_parts.append(result_batch)
-        if save_spec and spectra_batch is not None:
-            spectra_parts.append(spectra_batch)
-        del merged_batch
+    else:
+        site_batch_size = _site_batch_size(n_hours, n_parts)
+        n_batches = -(-len(site_ids) // site_batch_size)  # ceil div
+        result_parts: list[xr.Dataset] = []
+        spectra_parts: list[xr.Dataset] = []
+        t_batches = time.monotonic()
+        for batch_idx, i in enumerate(
+            range(0, len(site_ids), site_batch_size), start=1
+        ):
+            t_batch = time.monotonic()
+            site_batch = site_ids[i : i + site_batch_size]
+            merged_batch = xr.merge([c.sel(sites=site_batch) for c in chunks])
+            result_batch, spectra_batch = _wavespectra_sum(
+                merged_batch,
+                site_batch,
+                variables=variable_map,
+                save_spectra=save_spec,
+                load=True,
+            )
+            result_parts.append(result_batch)
+            if save_spec and spectra_batch is not None:
+                spectra_parts.append(spectra_batch)
+            del merged_batch
+            logger.info(
+                "wavespectra_sum batch %d/%d (%d sites) done in %.1fs (%.1fs elapsed)",
+                batch_idx,
+                n_batches,
+                len(site_batch),
+                time.monotonic() - t_batch,
+                time.monotonic() - t_batches,
+            )
 
-    combined_result = xr.concat(result_parts, dim="sites")
-    combined_spectra = xr.concat(spectra_parts, dim="sites") if spectra_parts else None
+        combined_result = xr.concat(result_parts, dim="sites")
+        combined_spectra = (
+            xr.concat(spectra_parts, dim="sites") if spectra_parts else None
+        )
 
     out: dict[str, xr.Dataset] = {}
     for period in period_offshore:
@@ -2668,6 +3042,7 @@ def reconstruct(
     device: str | None = None,
     save_spectra: bool | None = None,
     variables: Mapping[str, str] | None = None,
+    workers: int = 1,
 ) -> xr.Dataset:
     """Reconstruct nearshore waves from offshore hindcast forcing.
 
@@ -2717,6 +3092,18 @@ def reconstruct(
         ``dpspr``). When ``None``, reads ``metamodel.reconstruction.variables``.
         All wavespectra bulk stats are computed per site; only the mapped names
         are returned.
+    workers
+        Process-pool workers for the site-batched merge + wavespectra
+        summation step (the dominant cost at large site counts — see
+        ``_wavespectra_sum_parallel``). ``1`` (default) is the original
+        sequential behavior; every other reconstruct() call in this codebase
+        is unaffected by this parameter's existence. GPU inference (the goal
+        loop) is not parallelized — only pure-CPU wavespectra work is, so
+        this is safe to raise regardless of ``device``. Pick a value that
+        leaves headroom on the host: each worker gets its own share of
+        ``WAVESPECTRA_MEMORY_BUDGET_BYTES``, so total memory stays roughly
+        constant as ``workers`` grows, but CPU/core usage scales with it —
+        e.g. ``workers=os.cpu_count() // 2`` to leave half the machine free.
 
     Returns
     -------
@@ -2786,6 +3173,7 @@ def reconstruct(
         device=device,
         save_spectra=save_spectra,
         variables=variable_map,
+        workers=workers,
     )
 
     if len(periods) == 1:
@@ -2863,6 +3251,7 @@ def reconstruct(
                     device=device,
                     save_spectra=save_spectra,
                     variables=variable_map,
+                    workers=workers,
                 )
             )
 
