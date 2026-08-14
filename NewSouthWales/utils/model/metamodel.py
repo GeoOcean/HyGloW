@@ -15,8 +15,10 @@ Site grouping and selection: :mod:`utils.geometry.sites`.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
+import os
 import re
 import time
 from functools import lru_cache
@@ -1969,9 +1971,32 @@ def _wavespectra_sum(
 # pool, not threads: construct_partition's numpy ufuncs release the GIL,
 # but the xarray glue around them (.sel, .stack, Dataset construction)
 # doesn't, so thread speedup would be partial and hard to predict — a
-# process pool sidesteps that uncertainty. Uses the default fork start
-# method (Linux), so workers inherit the already-loaded case config for
-# free; nothing here touches CUDA, so fork is safe.
+# process pool sidesteps that uncertainty.
+#
+# Uses the "spawn" start method explicitly, NOT the Linux default "fork".
+# This step itself never touches CUDA, but by the time it runs, the goal
+# loop above it already has (GPyTorch/PyTorch GP inference) — a fork()'d
+# child inherits that CUDA context, and CUDA contexts are documented as
+# unsafe across fork: the child ends up with a half-initialized driver
+# state that doesn't crash, it just hangs on internal synchronization.
+# Confirmed directly while diagnosing this: forked worker processes sat at
+# ~0% CPU indefinitely, blocked in futex_do_wait, with /proc/<pid>/fd
+# showing ~26 inherited /dev/nvidia* file descriptors despite this
+# function's own code being pure CPU/numpy. "spawn" starts each worker as
+# a genuinely fresh interpreter (re-importing this module — cheap relative
+# to the hours-long jobs this is meant for), so there's no CUDA state, no
+# open GPU fds, and nothing to inherit-and-hang on.
+_MP_SPAWN_CONTEXT = None
+
+
+def _spawn_context() -> Any:
+    """Lazily-created "spawn" multiprocessing context (see comment above)."""
+    global _MP_SPAWN_CONTEXT
+    if _MP_SPAWN_CONTEXT is None:
+        import multiprocessing
+
+        _MP_SPAWN_CONTEXT = multiprocessing.get_context("spawn")
+    return _MP_SPAWN_CONTEXT
 
 
 def _wavespectra_sum_group(
@@ -2042,8 +2067,7 @@ def _wavespectra_sum_group(
             spectra_parts.append(spectra_batch)
         del merged_batch
         logger.info(
-            "[%s] wavespectra_sum batch %d/%d (%d sites) done in %.1fs "
-            "(%.1fs elapsed)",
+            "[%s] wavespectra_sum batch %d/%d (%d sites) done in %.1fs (%.1fs elapsed)",
             group_label,
             batch_idx,
             n_batches,
@@ -2051,33 +2075,83 @@ def _wavespectra_sum_group(
             time.monotonic() - t_batch,
             time.monotonic() - t_group,
         )
+        # Redundant with logging.StreamHandler.emit()'s own per-record
+        # flush, but explicit here as cheap insurance — this is a worker
+        # process (see _reset_logging_locks's docstring on why forked
+        # workers + logging need extra care), and this line is the whole
+        # point of the batch-level logging above: real-time visibility into
+        # what was, until this was added, a completely silent, now-slowest
+        # step (see the conversation this was diagnosed in).
+        for handler in logger.handlers:
+            handler.flush()
     result = xr.concat(result_parts, dim="sites")
     spectra = xr.concat(spectra_parts, dim="sites") if spectra_parts else None
     return result, spectra
 
 
 def _reset_logging_locks() -> None:
-    """Worker-startup fix for a fork() + threading + logging deadlock.
+    """Worker-startup safety net for fork() + threading + logging deadlocks.
 
-    ``logging.FileHandler`` (and its ``StreamHandler`` base) guards
-    ``emit()`` with a lock. Under the default Linux "fork" start method, a
-    freshly-forked child inherits that lock in whatever state it was in at
-    the instant of the fork — if some *other* thread in the parent (very
-    plausible right after the goal loop's heavy GPyTorch/PyTorch logging
-    activity, which spins up its own threads) happened to hold it, the
-    child inherits it already locked, with no thread left alive in the
-    child to ever release it. The child then deadlocks forever on its
-    *first* log call, silently — no traceback, no CPU use, nothing (this is
-    exactly what was observed diagnosing this: worker processes alive but
-    pinned at ~0% CPU indefinitely).
-
-    ``logging.Handler.createLock()`` is the standard, documented fix: give
-    every handler on this process's logger a brand new, definitely-unlocked
-    lock. Passed as ``ProcessPoolExecutor``'s ``initializer`` so it runs
-    once per worker before any task (including its first log call).
+    Under "spawn" (see ``_spawn_context`` above, which is what this codebase
+    actually uses), each worker gets a fresh interpreter and creates its own
+    handler/lock from scratch on import — this function is a no-op there,
+    nothing to reset. It's kept, and still passed as the pool's
+    ``initializer``, as cheap insurance against ever reverting to "fork"
+    (its original motivation): a forked child inherits ``logging.
+    FileHandler``'s lock in whatever state it was in at the instant of the
+    fork, and if another thread in the parent held it — very plausible
+    right after the goal loop's heavy GPyTorch/PyTorch activity — the child
+    inherits it already locked, with no thread left alive to ever release
+    it, and deadlocks forever on its first log call.
+    ``logging.Handler.createLock()`` is the standard, documented fix for
+    exactly that.
     """
     for handler in logger.handlers:
         handler.createLock()
+
+
+_BLAS_THREAD_ENV_VARS = (
+    "OMP_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+)
+
+
+@contextlib.contextmanager
+def _single_threaded_blas_for_children():
+    """Cap BLAS/OpenMP threads to 1 in the environment the pool's workers
+    inherit, restoring the parent's own values on exit.
+
+    Each worker process's own numpy/BLAS backend otherwise sizes its
+    internal thread pool to every core on the host, independently, with no
+    idea the other N-1 sibling workers are doing the exact same thing —
+    confirmed directly while diagnosing this: 8 worker processes each
+    running ~54-55 threads, every one pinned at 100% CPU, all fighting over
+    20 physical cores (load average ~10 despite "only" 8 processes). The
+    workers here only ever process one site's construct_partition call at a
+    time anyway (see _site_batch_size at the divided per-worker budget) —
+    the intended parallelism is the N separate OS processes, not each one
+    *also* being internally multi-threaded on top of that.
+
+    Must be set here, in the parent, before the pool spawns — env vars are
+    inherited at process-creation time, but by the time any of this
+    module's own code runs inside a worker (even the pool's own
+    ``initializer``), numpy is already imported and its BLAS thread count
+    is already locked in for that process's lifetime.
+    """
+    previous = {name: os.environ.get(name) for name in _BLAS_THREAD_ENV_VARS}
+    try:
+        for name in _BLAS_THREAD_ENV_VARS:
+            os.environ[name] = "1"
+        yield
+    finally:
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
 
 
 def _wavespectra_sum_parallel(
@@ -2118,7 +2192,9 @@ def _wavespectra_sum_parallel(
     from concurrent.futures import ProcessPoolExecutor, as_completed
 
     per_worker_budget = max(1, WAVESPECTRA_MEMORY_BUDGET_BYTES // workers)
-    groups = [g.tolist() for g in np.array_split(np.array(site_ids, dtype=object), workers)]
+    groups = [
+        g.tolist() for g in np.array_split(np.array(site_ids, dtype=object), workers)
+    ]
     groups = [g for g in groups if g]
 
     logger.info(
@@ -2133,9 +2209,14 @@ def _wavespectra_sum_parallel(
     results: list[xr.Dataset] = []
     spectras: list[xr.Dataset] = []
     t_all = time.monotonic()
-    with ProcessPoolExecutor(
-        max_workers=len(groups), initializer=_reset_logging_locks
-    ) as executor:
+    with (
+        _single_threaded_blas_for_children(),
+        ProcessPoolExecutor(
+            max_workers=len(groups),
+            mp_context=_spawn_context(),
+            initializer=_reset_logging_locks,
+        ) as executor,
+    ):
         future_labels: dict[Any, str] = {}
         for group_idx, group_sites in enumerate(groups, start=1):
             group_label = f"group {group_idx}/{len(groups)}"
@@ -2706,7 +2787,9 @@ def _reconstruct_period(
         result_parts: list[xr.Dataset] = []
         spectra_parts: list[xr.Dataset] = []
         t_batches = time.monotonic()
-        for batch_idx, i in enumerate(range(0, len(site_ids), site_batch_size), start=1):
+        for batch_idx, i in enumerate(
+            range(0, len(site_ids), site_batch_size), start=1
+        ):
             t_batch = time.monotonic()
             site_batch = site_ids[i : i + site_batch_size]
             merged_batch = xr.merge([c.sel(sites=site_batch) for c in chunks])
@@ -2722,8 +2805,7 @@ def _reconstruct_period(
                 spectra_parts.append(spectra_batch)
             del merged_batch
             logger.info(
-                "wavespectra_sum batch %d/%d (%d sites) done in %.1fs "
-                "(%.1fs elapsed)",
+                "wavespectra_sum batch %d/%d (%d sites) done in %.1fs (%.1fs elapsed)",
                 batch_idx,
                 n_batches,
                 len(site_batch),
@@ -2889,7 +2971,9 @@ def _reconstruct_periods_batch(
         result_parts: list[xr.Dataset] = []
         spectra_parts: list[xr.Dataset] = []
         t_batches = time.monotonic()
-        for batch_idx, i in enumerate(range(0, len(site_ids), site_batch_size), start=1):
+        for batch_idx, i in enumerate(
+            range(0, len(site_ids), site_batch_size), start=1
+        ):
             t_batch = time.monotonic()
             site_batch = site_ids[i : i + site_batch_size]
             merged_batch = xr.merge([c.sel(sites=site_batch) for c in chunks])
@@ -2905,8 +2989,7 @@ def _reconstruct_periods_batch(
                 spectra_parts.append(spectra_batch)
             del merged_batch
             logger.info(
-                "wavespectra_sum batch %d/%d (%d sites) done in %.1fs "
-                "(%.1fs elapsed)",
+                "wavespectra_sum batch %d/%d (%d sites) done in %.1fs (%.1fs elapsed)",
                 batch_idx,
                 n_batches,
                 len(site_batch),
