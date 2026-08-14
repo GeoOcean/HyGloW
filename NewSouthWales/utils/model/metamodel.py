@@ -76,6 +76,11 @@ SPECTRAL_PARTITIONS = (0, 1, 2, 3)
 # Fixed frequency/direction grids for wavespectra linear summation (reconstruct)
 SPECTRAL_FREQ = np.logspace(np.log10(0.035), np.log10(0.5), 29)
 SPECTRAL_DIR = np.arange(0.0, 360.0, 5)
+# float32 copies for _wavespectra_sum (see its docstring) — precomputed once
+# rather than cast on every call; these two arrays are tiny either way, this
+# is purely for tidiness.
+SPECTRAL_FREQ32 = SPECTRAL_FREQ.astype("float32")
+SPECTRAL_DIR32 = SPECTRAL_DIR.astype("float32")
 
 # Directional spreading (`spr`) is GP-predicted, not raw-passthrough, so it can
 # occasionally extrapolate to a non-physical near-zero or negative value for
@@ -98,12 +103,122 @@ MIN_DIRECTIONAL_SPREAD_DEG = 1.0
 # batching *too much* at once grows GPyTorch's per-call kernel evaluation past
 # available GPU memory: on a 5.61 GiB GPU, a full 11-year (132-month) batch
 # and a 12-month batch both hit CUDA OOM partway through the 26-goal loop,
-# while a 3-month batch measured fine (confirmed empirically, not derived —
-# GP prediction memory is driven by *row count per call*, i.e. time span,
-# independent of how many sites are requested). Raise this only after
-# confirming headroom on the target GPU (or pass device="cpu" to
-# reconstruct() for unbounded-but-slower CPU inference).
-RECONSTRUCT_BATCH_MONTHS = 3
+# while a 3-month batch measured fine. This is a GPU-VRAM constraint that
+# scales with row count (time span) per call, independent of how many sites
+# are requested — confirmed by direct instrumentation (see
+# `_reconstruct_batch_months`'s docstring): the goal loop's own host RSS
+# stayed flat (~1.5-1.7 GiB) across both a 3-site and an 18-site request, in
+# both bulk and spectral mode, so this cap does not need a site-count term.
+# Raise it only after confirming headroom on the target GPU (or pass
+# device="cpu" to reconstruct() for unbounded-but-slower CPU inference).
+RECONSTRUCT_GPU_BATCH_MONTHS_CAP = 3
+
+
+def _reconstruct_batch_months(n_sites: int) -> int:
+    """Months per `_reconstruct_periods_batch` call, capped for GPU memory.
+
+    Currently just returns `RECONSTRUCT_GPU_BATCH_MONTHS_CAP` — *n_sites* is
+    accepted (not `len(site_ids)` directly, so callers don't need to special-
+    case this) in case a future host-RAM axis needs it again, but as of the
+    `WAVESPECTRA_PEAK_MULTIPLIER` fix in `_site_batch_size`, the goal loop
+    this caps does not itself scale with site count — see that function's
+    docstring for why the real host-RAM constraint lives downstream, in
+    `_wavespectra_sum`, not here.
+
+    Parameters
+    ----------
+    n_sites
+        ``len(site_ids)`` for this `reconstruct()` call. Unused for now.
+
+    Returns
+    -------
+    int
+        `RECONSTRUCT_GPU_BATCH_MONTHS_CAP`.
+    """
+    del n_sites
+    return RECONSTRUCT_GPU_BATCH_MONTHS_CAP
+
+
+# `_reconstruct_periods_batch`/`_reconstruct_period` always predict *all*
+# requested sites in one pass rather than site-batching prediction itself —
+# confirmed safe by direct instrumentation: the goal loop's host RSS stayed
+# flat (~1.5-1.7 GiB) regardless of site count (3 vs 18) or mode (bulk vs
+# spectral), so `predict()`'s per-goal PCA inverse_transform (which always
+# reconstructs the *full* ~3,890-site catalog before subsetting to
+# `site_ids` — see `predict()`) is released promptly each iteration and
+# never became the bottleneck an earlier version of this comment assumed.
+#
+# Downstream of that, the xr.merge right after (combining the goal x
+# partition chunks into one cube) and, far more, wavespectra's own
+# `efth1d * spread` broadcast inside construct_partition, both scale with
+# site count — and the wavespectra multiply is the dominant one: its output
+# is the *full* (time, sites, goal x partition, freq, dir) array, not just
+# the small (time, sites, goal x partition) bulk-variable cube xr.merge
+# builds. A fixed site-batch size that was safe for the merge step OOM'd on
+# the wavespectra step alone (80 sites x 1 month x 104 goal x partition
+# combos tried to allocate 93.2 GiB against a single-array estimate). So the
+# batch size is computed per call from how many hours/goal x partition combos
+# are actually in play (both vary — hours with `_reconstruct_batch_months`,
+# combos with bulk vs spectral mode and len(goals)) rather than guessed as
+# one constant.
+#
+# That single-array estimate turned out to itself be an underestimate of the
+# true peak: `construct_partition`'s jonswap/cartwright/sum pipeline holds
+# several comparably-sized temporaries alive at once (the frequency
+# spectrum, the directional spread, their broadcast product, the
+# partition-sum reduction), not just the one final combined array the
+# formula below sizes against. This went unnoticed while every exercised
+# site count landed well under the computed batch threshold (bulk mode's
+# smaller n_parts gives a lot of headroom) — until an 18-site spectral-mode
+# request (n_parts=104, just under the *unmultiplied* formula's ~20-site
+# threshold, so it ran unsplit) hit a real 62 GiB host, reaching at least
+# 55 GiB RSS (the kill point, so a lower bound on the true peak — total-vm
+# in the OOM record was still climbing past 92 GiB) against a 12 GiB target.
+# That implies a true-to-estimated ratio of at least ~5x, plausibly higher
+# since the process was killed before finishing its allocation.
+# WAVESPECTRA_PEAK_MULTIPLIER=8 bakes in that safety margin; recalibrate (see
+# tmp/mem_probe.py's pattern in the conversation this was diagnosed in) if
+# construct_partition's internals change enough to move the true ratio.
+WAVESPECTRA_MEMORY_BUDGET_BYTES = (
+    12 * 1024**3
+)  # 12 GiB; leaves headroom on a 62 GiB host
+WAVESPECTRA_PEAK_MULTIPLIER = 8
+
+
+def _site_batch_size(n_hours: int, n_parts: int) -> int:
+    """Sites per _wavespectra_sum call keeping its peak array under budget.
+
+    Parameters
+    ----------
+    n_hours
+        Timesteps in the current reconstruct call (grows with
+        ``_reconstruct_batch_months``).
+    n_parts
+        ``len(active goals) * len(partitions)`` — up to 4x more for spectral
+        mode than bulk.
+
+    Returns
+    -------
+    int
+        At least 1, however small the budget — never returns 0 (which would
+        silently drop sites).
+    """
+    # 4 bytes: _wavespectra_sum computes construct_partition in float32 (see
+    # its docstring) — this must track that dtype, or batches would be sized
+    # for an array twice as big as the one actually allocated.
+    # WAVESPECTRA_PEAK_MULTIPLIER: construct_partition holds several
+    # comparably-sized temporaries at once, not just this one final array —
+    # see WAVESPECTRA_MEMORY_BUDGET_BYTES's docstring above for how that was
+    # calibrated.
+    bytes_per_site = (
+        max(1, n_hours)
+        * max(1, n_parts)
+        * len(SPECTRAL_FREQ)
+        * len(SPECTRAL_DIR)
+        * 4
+        * WAVESPECTRA_PEAK_MULTIPLIER
+    )
+    return max(1, WAVESPECTRA_MEMORY_BUDGET_BYTES // bytes_per_site)
 
 
 def _set_gp_device(gp: Any, device: str) -> None:
@@ -1757,46 +1872,65 @@ def _wavespectra_sum(
     -------
     tuple[xarray.Dataset, xarray.Dataset | None]
         Bulk parameters on ``(time, sites)`` and optional ``efth`` spectra.
+
+    Note
+    ----
+    ``jonswap``/``cartwright``/``construct_partition`` are plain xarray
+    arithmetic (no explicit site loop inside wavespectra itself), so every
+    site in *site_ids* is constructed and summed in one vectorised call
+    instead of looping per site in Python. Callers with many sites should
+    still chunk *cube*/*site_ids* themselves before calling this — see
+    :func:`_site_batch_size` — since the ``efth1d * spread`` broadcast
+    multiply inside ``construct_partition`` allocates the *full*
+    ``(time, sites, goal x partition, freq, dir)`` array, so this function's
+    own peak memory still scales with ``len(site_ids)``, just without the
+    redundant per-site Python overhead.
     """
     variable_map = _reconstruction_variables(override=variables)
     output_names = tuple(variable_map)
 
-    bulk_parts: list[xr.Dataset] = []
-    spec_parts: list[xr.Dataset] = []
-    for i, site in enumerate(site_ids, start=1):
-        logger.info("Wavespectra site %3d / %d: %s", i, len(site_ids), site)
-        parts = cube.sel(sites=[site]).stack(part=("goal", "partition"))
-        spec = construct_partition(
-            freq_name="jonswap",
-            freq_kwargs={"freq": SPECTRAL_FREQ, "fp": 1.0 / parts.tp, "hs": parts.hs},
-            dir_name="cartwright",
-            dir_kwargs={"dir": SPECTRAL_DIR, "dm": parts.dir, "dspr": parts.spr},
-        )
-        combined = spec.sum(dim="part")
-        if save_spectra:
-            site_spec = combined
-            if "sites" not in site_spec.dims:
-                site_spec = site_spec.expand_dims(sites=[site])
-            if isinstance(site_spec, xr.DataArray):
-                site_spec = site_spec.to_dataset(name="efth")
-            spec_parts.append(site_spec)
-
-        all_stats = combined.spec.stats(list(WAVESPECTRA_STATS))
-        site_bulk = xr.Dataset(
-            {hyglow: all_stats[ws_stat] for hyglow, ws_stat in variable_map.items()}
-        )
-        if "sites" not in site_bulk.dims:
-            site_bulk = site_bulk.expand_dims(sites=[site])
-        bulk_parts.append(site_bulk)
-
-    result = xr.concat(bulk_parts, dim="sites")[list(output_names)]
+    parts = cube.sel(sites=site_ids).stack(part=("goal", "partition"))
+    # float32 here: measured only a ~3% direct speedup (jonswap/cartwright are
+    # dominated by exp/cos evaluation, not memory bandwidth, so halving
+    # precision doesn't roughly halve time the way a bandwidth-bound op
+    # would) — but it does halve the peak (time, sites, goal x partition,
+    # freq, dir) array _site_batch_size sizes against, so the same memory
+    # budget fits ~2x more sites per call, meaningfully cutting how many
+    # merge + construct_partition calls a given site count needs. Verified
+    # correctness on a real reconstruction: max relative difference from
+    # float64 was 1.2e-6, well below anything that matters physically here.
+    spec = construct_partition(
+        freq_name="jonswap",
+        freq_kwargs={
+            "freq": SPECTRAL_FREQ32,
+            "fp": (1.0 / parts.tp).astype("float32"),
+            "hs": parts.hs.astype("float32"),
+        },
+        dir_name="cartwright",
+        dir_kwargs={
+            "dir": SPECTRAL_DIR32,
+            "dm": parts.dir.astype("float32"),
+            "dspr": parts.spr.astype("float32"),
+        },
+    )
+    combined = spec.sum(dim="part")
+    if "sites" not in combined.dims:
+        combined = combined.expand_dims(sites=list(site_ids))
 
     spectra: xr.Dataset | None = None
     if save_spectra:
-        spectra = xr.concat(spec_parts, dim="sites")
+        spectra = (
+            combined
+            if isinstance(combined, xr.Dataset)
+            else combined.to_dataset(name="efth")
+        )
         if load:
             spectra = spectra.load()
 
+    all_stats = combined.spec.stats(list(WAVESPECTRA_STATS))
+    result = xr.Dataset(
+        {hyglow: all_stats[ws_stat] for hyglow, ws_stat in variable_map.items()}
+    )[list(output_names)]
     if load:
         result = result.load()
     return result, spectra
@@ -2310,13 +2444,33 @@ def _reconstruct_period(
     if not chunks:
         raise ValueError(f"Reconstruction produced no data for {time_label!r}")
 
-    result, spectra = _wavespectra_sum(
-        xr.merge(chunks),
-        site_ids,
-        variables=variable_map,
-        save_spectra=save_spectra,
-        load=load,
+    # See _site_batch_size's docstring: xr.merge and, above all, wavespectra's
+    # own broadcast multiply both scale with site count even though
+    # prediction above doesn't, so the merge + wavespectra construction runs
+    # per site-batch rather than on all of site_ids at once.
+    site_batch_size = _site_batch_size(
+        offshore.sizes.get("time", 0), len(active) * len(part_ids)
     )
+    result_parts: list[xr.Dataset] = []
+    spectra_parts: list[xr.Dataset] = []
+    for i in range(0, len(site_ids), site_batch_size):
+        site_batch = site_ids[i : i + site_batch_size]
+        merged_batch = xr.merge([c.sel(sites=site_batch) for c in chunks])
+        result_batch, spectra_batch = _wavespectra_sum(
+            merged_batch,
+            site_batch,
+            variables=variable_map,
+            save_spectra=save_spectra,
+            load=load,
+        )
+        result_parts.append(result_batch)
+        if save_spectra and spectra_batch is not None:
+            spectra_parts.append(spectra_batch)
+        del merged_batch
+
+    result = xr.concat(result_parts, dim="sites")
+    spectra = xr.concat(spectra_parts, dim="sites") if spectra_parts else None
+
     if use_cache:
         _save_reconstruction_cache(result, cache_path)
         if save_spectra and spectra is not None:
@@ -2446,13 +2600,33 @@ def _reconstruct_periods_batch(
     if not chunks:
         raise ValueError(f"Reconstruction produced no data for {periods!r}")
 
-    combined_result, combined_spectra = _wavespectra_sum(
-        xr.merge(chunks),
-        site_ids,
-        variables=variable_map,
-        save_spectra=save_spec,
-        load=True,
+    # Prediction above is unbatched across sites (cheap, see
+    # _site_batch_size's docstring), but xr.merge and wavespectra's own
+    # broadcast multiply both scale with site count — merge + wavespectra_sum
+    # runs per site-batch to keep memory bounded regardless of how many sites
+    # were requested.
+    site_batch_size = _site_batch_size(
+        combined_offshore.sizes.get("time", 0), len(active) * len(part_ids)
     )
+    result_parts: list[xr.Dataset] = []
+    spectra_parts: list[xr.Dataset] = []
+    for i in range(0, len(site_ids), site_batch_size):
+        site_batch = site_ids[i : i + site_batch_size]
+        merged_batch = xr.merge([c.sel(sites=site_batch) for c in chunks])
+        result_batch, spectra_batch = _wavespectra_sum(
+            merged_batch,
+            site_batch,
+            variables=variable_map,
+            save_spectra=save_spec,
+            load=True,
+        )
+        result_parts.append(result_batch)
+        if save_spec and spectra_batch is not None:
+            spectra_parts.append(spectra_batch)
+        del merged_batch
+
+    combined_result = xr.concat(result_parts, dim="sites")
+    combined_spectra = xr.concat(spectra_parts, dim="sites") if spectra_parts else None
 
     out: dict[str, xr.Dataset] = {}
     for period in period_offshore:
@@ -2662,16 +2836,18 @@ def reconstruct(
         missing_periods.append(period)
 
     if missing_periods:
+        batch_months = _reconstruct_batch_months(len(site_ids))
         logger.info(
             "Reconstructing %d missing month(s) of %d (%d already cached), in "
-            "batches of up to %d month(s)",
+            "batches of up to %d month(s) (%d site(s))",
             len(missing_periods),
             len(periods),
             len(monthly_by_period),
-            RECONSTRUCT_BATCH_MONTHS,
+            batch_months,
+            len(site_ids),
         )
-        for i in range(0, len(missing_periods), RECONSTRUCT_BATCH_MONTHS):
-            batch = missing_periods[i : i + RECONSTRUCT_BATCH_MONTHS]
+        for i in range(0, len(missing_periods), batch_months):
+            batch = missing_periods[i : i + batch_months]
             monthly_by_period.update(
                 _reconstruct_periods_batch(
                     offshore_store,
