@@ -6,6 +6,8 @@ Open-sea propagation sectors are stored in **nautical** wave-from directions
 
 from __future__ import annotations
 
+import math
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -87,6 +89,91 @@ def load_land(land_path: Path | str) -> gpd.GeoDataFrame:
         Land geometries in ``EPSG:4326``.
     """
     return gpd.read_file(land_path).to_crs(GEO_CRS)
+
+
+def prepare_case_hindcasts(
+    aoi: gpd.GeoDataFrame,
+    out_dir: Path | str,
+    world_hindcasts_dir: Path | str,
+    world_land_path: Path | str,
+    buffer_km: float = 150.0,
+    overwrite: bool = False,
+) -> Path:
+    """
+    Crop the world-scale hindcast catalogs and land polygons down to the AoI.
+
+    Reads only the features inside the AoI's bounding box (padded by
+    ``buffer_km``) from the world master files via a bbox-filtered
+    ``geopandas.read_file`` -- backed by each format's spatial index -- so
+    global files (millions of points, a full-resolution world coastline)
+    never get loaded in full. The cropped subset is written to *out_dir* in
+    the layout :func:`load_catalogs` and :func:`load_land` expect
+    (``<name>_coords.gpkg`` per hindcast, ``land.gpkg``).
+
+    Parameters
+    ----------
+    aoi
+        Area-of-interest polygon(s), any CRS.
+    out_dir
+        Per-case output directory. If it already exists, this is a no-op
+        (delete it, or pass ``overwrite=True``, to rebuild -- e.g. after
+        moving the AoI).
+    world_hindcasts_dir
+        Directory of world-scale ``<name>_coords.gpkg`` hindcast catalogs.
+    world_land_path
+        Path to the world-scale land polygon dataset.
+    buffer_km
+        Padding around the AoI bounding box, in kilometres. Should cover the
+        largest ``max_hindcast_distance_m`` you plan to snap goals within.
+    overwrite
+        Rebuild *out_dir* even if it already exists.
+
+    Returns
+    -------
+    pathlib.Path
+        *out_dir*.
+    """
+
+    out_dir = Path(out_dir)
+    if out_dir.exists() and not overwrite:
+        return out_dir
+
+    world_hindcasts_dir = Path(world_hindcasts_dir)
+    world_land_path = Path(world_land_path)
+
+    minx, miny, maxx, maxy = aoi.to_crs(GEO_CRS).total_bounds
+    mean_lat = (miny + maxy) / 2.0
+    lat_pad = buffer_km / 111.0
+    lon_pad = buffer_km / (111.0 * max(0.15, math.cos(math.radians(mean_lat))))
+    bbox = (minx - lon_pad, miny - lat_pad, maxx + lon_pad, maxy + lat_pad)
+
+    tmp_dir = out_dir.with_name(out_dir.name + ".tmp")
+    if tmp_dir.exists():
+        shutil.rmtree(tmp_dir)
+    tmp_dir.mkdir(parents=True)
+
+    n_catalogs = 0
+    for path in sorted(world_hindcasts_dir.glob("*_coords.gpkg")):
+        gdf = gpd.read_file(path, bbox=bbox)
+        if gdf.empty:
+            shutil.rmtree(tmp_dir)
+            raise ValueError(
+                f"No {path.stem} nodes within {buffer_km} km of the AoI -- "
+                "check the AoI or increase buffer_km"
+            )
+        gdf.to_file(tmp_dir / path.name, driver="GPKG")
+        n_catalogs += 1
+    if n_catalogs == 0:
+        shutil.rmtree(tmp_dir)
+        raise FileNotFoundError(f"No *_coords.gpkg files in {world_hindcasts_dir}")
+
+    land = gpd.read_file(world_land_path, bbox=bbox)
+    land.to_file(tmp_dir / "land.gpkg", driver="GPKG")
+
+    if out_dir.exists():
+        shutil.rmtree(out_dir)
+    tmp_dir.rename(out_dir)
+    return out_dir
 
 
 def build_ring(
