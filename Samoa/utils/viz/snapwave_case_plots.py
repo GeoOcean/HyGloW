@@ -10,6 +10,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import cartopy.crs as ccrs
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
@@ -487,6 +488,8 @@ def _plot_site_field(
     style: CasePlotStyle,
     extent: tuple[float, float, float, float],
     mode: str,
+    show_satellite: bool = False,
+    satellite_source: str = cp.SATELLITE_SOURCE,
 ) -> None:
     """Scatter one wave variable at output-site locations, with colorbar.
 
@@ -496,6 +499,16 @@ def _plot_site_field(
         If *var* cannot be resolved in *sites_ds* (caught by the caller to
         render a "not in output" placeholder panel instead).
     """
+    if show_satellite:
+        cp.plot_base_map(
+            ax=ax,
+            show_topobathy=True,
+            show_isobaths=False,
+            show_aoi=False,
+            show_satellite=True,
+            satellite_source=satellite_source,
+            satellite_area=extent,
+        )
     _, values = resolve_wave_variable(sites_ds, var, time_index=time_index)
     lon = sites_ds["station_x"].values.astype(float)
     lat = sites_ds["station_y"].values.astype(float)
@@ -512,6 +525,7 @@ def _plot_site_field(
         vmax=vmax,
         edgecolors="white",
         linewidths=0.25,
+        zorder=3,
     )
     ax.set_title(var, fontsize=11)
     ax.set_xlim(extent[0], extent[1])
@@ -668,6 +682,8 @@ def _plot_domain_panel(
     map_variable: str,
     style: CasePlotStyle,
     extent: tuple[float, float, float, float],
+    show_satellite: bool = False,
+    satellite_source: str = cp.SATELLITE_SOURCE,
 ) -> None:
     """Draw the full-width domain panel: map/base, enclosure, boundary, sites.
 
@@ -697,18 +713,40 @@ def _plot_domain_panel(
         Plot styling config.
     extent
         ``(xmin, xmax, ymin, ymax)`` axes limits.
+    show_satellite, satellite_source
+        Draw a satellite basemap under the map. The SnapWave mesh only
+        covers water, so with the tripcolor mesh (``map_ds`` not ``None``)
+        this naturally gives "satellite on land, model output on the
+        ocean" for free — no masking needed, unlike the raw bathymetry
+        raster case in :func:`utils.viz.case_plots.plot_base_map`.
     """
     enclosure = read_enclosure_polygon(ctx.case_dir)
     boundary = read_boundary_nodes(ctx.case_dir)
 
     if map_ds is not None:
+        if show_satellite:
+            cp.plot_base_map(
+                ax=ax,
+                show_topobathy=False,
+                show_isobaths=False,
+                show_aoi=False,
+                show_satellite=True,
+                satellite_source=satellite_source,
+                satellite_area=extent,
+            )
         _plot_map_tripcolor(
             ax, map_ds, map_variable, time_index=time_index, style=style, mode=mode
         )
         ax.set_title(f"domain map · {map_variable}", fontsize=11)
     else:
         cp.plot_base_map(
-            ax=ax, title="domain overview", show_topobathy=True, show_aoi=True
+            ax=ax,
+            title="domain overview",
+            show_topobathy=True,
+            show_aoi=True,
+            show_satellite=show_satellite,
+            satellite_source=satellite_source,
+            satellite_area=extent,
         )
 
     _draw_enclosure(ax, enclosure)
@@ -766,6 +804,8 @@ def _plot_case_figure(
     map_variable: str = "hs",
     style: CasePlotStyle | None = None,
     title: str | None = None,
+    show_satellite: bool = False,
+    satellite_source: str = cp.SATELLITE_SOURCE,
 ) -> Figure:
     """
     Build the shared case-diagnostic figure for :func:`plot_metamodel_case`
@@ -792,6 +832,9 @@ def _plot_case_figure(
         Plot styling config; defaults to :data:`DEFAULT_CASE_PLOT_STYLE`.
     title
         Optional title override (otherwise built from case metadata).
+    show_satellite, satellite_source
+        Draw a satellite basemap under the domain panel — see
+        :func:`_plot_domain_panel`.
 
     Returns
     -------
@@ -822,7 +865,8 @@ def _plot_case_figure(
         hspace=0.32,
         wspace=0.22,
     )
-    ax_map = fig.add_subplot(gs[0, :])
+    map_kw = {"projection": ccrs.PlateCarree()} if show_satellite else {}
+    ax_map = fig.add_subplot(gs[0, :], **map_kw)
 
     if sites_ds is None:
         for i in range(len(vars_)):
@@ -831,7 +875,7 @@ def _plot_case_figure(
             ax.set_axis_off()
     else:
         for i, var in enumerate(vars_):
-            ax = fig.add_subplot(gs[1 + i // panel_cols, i % panel_cols])
+            ax = fig.add_subplot(gs[1 + i // panel_cols, i % panel_cols], **map_kw)
             try:
                 _plot_site_field(
                     ax,
@@ -841,6 +885,8 @@ def _plot_case_figure(
                     style=style,
                     extent=extent,
                     mode=mode,
+                    show_satellite=show_satellite,
+                    satellite_source=satellite_source,
                 )
             except KeyError:
                 ax.text(
@@ -863,6 +909,8 @@ def _plot_case_figure(
         map_variable=map_variable,
         style=style,
         extent=extent,
+        show_satellite=show_satellite,
+        satellite_source=satellite_source,
     )
 
     fig.suptitle(main_title, fontsize=14, fontweight="bold", y=0.98)
@@ -893,6 +941,8 @@ def plot_metamodel_case(
     map_variable: str = "hs",
     style: CasePlotStyle | None = None,
     title: str | None = None,
+    show_satellite: bool = False,
+    satellite_source: str = cp.SATELLITE_SOURCE,
     show: bool = True,
 ) -> Figure:
     """
@@ -917,6 +967,9 @@ def plot_metamodel_case(
         Plot styling config; defaults to :data:`DEFAULT_CASE_PLOT_STYLE`.
     title
         Optional title override (otherwise built from case metadata).
+    show_satellite, satellite_source
+        Draw a satellite basemap under the domain panel — see
+        :func:`_plot_domain_panel`.
     show
         Call ``plt.show()`` when ``True``.
 
@@ -932,6 +985,8 @@ def plot_metamodel_case(
         map_variable=map_variable,
         style=style,
         title=title,
+        show_satellite=show_satellite,
+        satellite_source=satellite_source,
     )
     if show:
         plt.show()
@@ -946,6 +1001,8 @@ def plot_dynamic_case(
     map_variable: str = "hs",
     style: CasePlotStyle | None = None,
     title: str | None = None,
+    show_satellite: bool = False,
+    satellite_source: str = cp.SATELLITE_SOURCE,
     show: bool = True,
 ) -> Figure:
     """
@@ -970,6 +1027,9 @@ def plot_dynamic_case(
         Plot styling config; defaults to :data:`DEFAULT_CASE_PLOT_STYLE`.
     title
         Optional title override (otherwise built from case metadata).
+    show_satellite, satellite_source
+        Draw a satellite basemap under the domain panel — see
+        :func:`_plot_domain_panel`.
     show
         Call ``plt.show()`` when ``True``.
 
@@ -985,6 +1045,8 @@ def plot_dynamic_case(
         map_variable=map_variable,
         style=style,
         title=title,
+        show_satellite=show_satellite,
+        satellite_source=satellite_source,
     )
     if show:
         plt.show()

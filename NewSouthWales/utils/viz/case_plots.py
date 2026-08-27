@@ -6,6 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+import cartopy.crs as ccrs
 import geopandas as gpd
 import matplotlib.colors as mcolors
 import matplotlib.patheffects as pe
@@ -14,6 +15,10 @@ import numpy as np
 import pandas as pd
 import rioxarray
 import xarray as xr
+from bluemath_tk.core.plotting.colors import hex_colors_land, hex_colors_water
+from bluemath_tk.core.plotting.satellite import get_satellite_image
+from bluemath_tk.core.plotting.utils import join_colormaps
+from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.gridspec import GridSpec
@@ -28,8 +33,11 @@ from utils.directions import (
 from utils.simulation.offshore_forcing import BOUNDARY_VARS
 
 FIGSIZE = (9, 7)
-TOPOBATHY_VMIN, TOPOBATHY_VMAX = -200, 0
-TOPOBATHY_CMAP, TOPOBATHY_ALPHA = "terrain", 0.85
+TOPOBATHY_VMIN, TOPOBATHY_VMAX = -1000, 0
+TOPOBATHY_LAND_VMAX = 300
+TOPOBATHY_ALPHA = 0.85
+SATELLITE_SOURCE = "arcgis"
+ISOBATH_CONTOUR_LEVELS = [-100, -50, -20, -10, -5]
 AOI_EDGE_COLOR, AOI_LINEWIDTH = "black", 1.2
 LAND_FACE_COLOR, LAND_EDGE_COLOR, LAND_ALPHA = "#c4c4c4", "#666666", 0.55
 RING_COLOR, RING_LINEWIDTH = "#e377c2", 1.0
@@ -54,6 +62,7 @@ ISOBATH_COLORS = {
     "10m": "#1f78b4",
     "20m": "#33a02c",
     "50m": "#e31a1c",
+    "100m": "#6a3d9a",
 }
 MESH_COLORS = {
     "Apia": "#9467bd",
@@ -104,6 +113,87 @@ def _aoi() -> gpd.GeoDataFrame:
     return gpd.read_file(resolve(PATHS["aoi_file"]))
 
 
+@lru_cache(maxsize=1)
+def _topobathy_cmap_norm() -> tuple[mcolors.Colormap, mcolors.BoundaryNorm]:
+    """Diverging water/land colormap for the topobathy raster, split at 0 m."""
+    return join_colormaps(
+        cmap1=hex_colors_water,
+        cmap2=hex_colors_land,
+        value_range1=(TOPOBATHY_VMIN, 0.0),
+        value_range2=(0.0, TOPOBATHY_LAND_VMAX),
+    )
+
+
+def _isobath_contour_colors() -> list[str]:
+    return [ISOBATH_COLORS[f"{abs(level)}m"] for level in ISOBATH_CONTOUR_LEVELS]
+
+
+def _plot_isobaths(ax: Axes) -> None:
+    """Draw labelled isobath contour lines over the topobathy raster.
+
+    Contour lines aren't picked up by ``ax.legend()`` on their own, so a
+    zero-length proxy line per level is added with a matching label —
+    invisible on the map itself, but it makes the isobaths appear in
+    whichever ``ax.legend()`` call the caller makes afterwards.
+    """
+    da = _topobathy()
+    colors = _isobath_contour_colors()
+    cs = ax.contour(
+        da["x"],
+        da["y"],
+        da.values,
+        levels=ISOBATH_CONTOUR_LEVELS,
+        colors=colors,
+        linewidths=0.6,
+        alpha=0.9,
+        zorder=2,
+    )
+    ax.clabel(cs, fmt=lambda v: f"{abs(int(v))}m", fontsize=6, inline=True)
+    for level, color in zip(ISOBATH_CONTOUR_LEVELS, colors):
+        ax.plot([], [], color=color, linewidth=1.2, label=f"{abs(level)}m isobath")
+
+
+def _satellite_area(pad: float = 0.05) -> tuple[float, float, float, float]:
+    """AoI bounding box as ``(lon_min, lon_max, lat_min, lat_max)``, padded."""
+    minx, miny, maxx, maxy = _aoi().total_bounds
+    return (minx - pad, maxx + pad, miny - pad, maxy + pad)
+
+
+@lru_cache(maxsize=32)
+def _cached_satellite_image(source: str, area: tuple[float, float, float, float]):
+    """Memoised :func:`get_satellite_image` — a multi-panel figure (e.g. a
+    case's domain map plus several site panels) typically requests the same
+    ``(source, area)`` several times; refetching over the network each time
+    would be pure waste."""
+    return get_satellite_image(source=source, area=area)
+
+
+def _plot_satellite(
+    ax: Axes,
+    *,
+    source: str = SATELLITE_SOURCE,
+    area: tuple[float, float, float, float] | None = None,
+) -> None:
+    """Fetch and draw a satellite/imagery basemap; requires a cartopy GeoAxes.
+
+    ``area`` should match the axes' final displayed extent (not e.g. the
+    whole-case AoI) so tiles are fetched at a zoom level with enough detail
+    for the actual viewport — it defaults to the AoI bounds, but callers
+    that crop the view further (e.g. to an enclosure) should pass their own
+    tighter bounds.
+    """
+    if not isinstance(ax, GeoAxes):
+        raise TypeError(
+            "show_satellite=True requires an axes created with "
+            "projection=ccrs.PlateCarree() (pass ax=None to let plot_base_map "
+            "create one automatically)"
+        )
+    area = area if area is not None else _satellite_area()
+    ax.set_extent(area, crs=ccrs.PlateCarree())
+    map_img, extent = _cached_satellite_image(source, area)
+    ax.imshow(map_img, extent=extent, transform=ccrs.Mercator.GOOGLE, zorder=0)
+
+
 def plot_land(land: gpd.GeoDataFrame, ax: Axes, *, label: str = "land") -> None:
     """
     Plot land polygons on an existing axes.
@@ -151,7 +241,11 @@ def plot_base_map(
     *,
     ax: Axes | None = None,
     title: str | None = None,
-    show_topobathy: bool = True,
+    show_topobathy: bool | None = None,
+    show_isobaths: bool = True,
+    show_satellite: bool = False,
+    satellite_source: str = SATELLITE_SOURCE,
+    satellite_area: tuple[float, float, float, float] | None = None,
     show_aoi: bool = True,
     land: gpd.GeoDataFrame | None = None,
     ring: gpd.GeoDataFrame | None = None,
@@ -162,11 +256,33 @@ def plot_base_map(
     Parameters
     ----------
     ax
-        Existing axes; created when ``None``.
+        Existing axes; created when ``None``. Must already be a cartopy
+        ``GeoAxes`` (``projection=ccrs.PlateCarree()``) if the caller passes
+        ``ax`` and wants ``show_satellite=True``.
     title
         Optional map title (defaults to case-aware ``"Case map"``).
-    show_topobathy, show_aoi
-        Toggle bathymetry raster and AoI outline.
+    show_topobathy
+        Draw the topobathy raster. Defaults to ``not show_satellite`` — i.e.
+        bathymetry is the background unless a satellite image is requested,
+        in which case the satellite image is the background on its own. Pass
+        ``True`` explicitly together with ``show_satellite=True`` to combine
+        both: land is left transparent so the satellite photo shows through,
+        and only the ocean is coloured by depth.
+    show_isobaths
+        Draw labelled isobath contour lines (with a legend entry per level,
+        picked up by any ``ax.legend()`` call afterwards). Independent of
+        ``show_topobathy`` — the lines read fine over a satellite image too.
+    show_satellite, satellite_source, satellite_area
+        Draw a satellite/aerial imagery basemap, fetched via
+        ``bluemath_tk``. ``satellite_source`` is one of ``"arcgis"``,
+        ``"eox"``, ``"osm"``, etc. — see
+        :func:`bluemath_tk.core.plotting.satellite.get_satellite_image`.
+        ``satellite_area`` overrides the fetch bounds (default: the AoI);
+        pass a tighter box matching the axes' final displayed extent when
+        the caller crops the view further, so tiles are fetched at a
+        matching zoom level.
+    show_aoi
+        Toggle the AoI outline.
     land, ring
         Optional land and buffer-ring overlays.
 
@@ -175,16 +291,37 @@ def plot_base_map(
     tuple[Figure, Axes]
         Figure and axes handles.
     """
-    fig, ax = plt.subplots(figsize=FIGSIZE) if ax is None else (ax.figure, ax)
+    if show_topobathy is None:
+        show_topobathy = not show_satellite
 
+    if ax is None:
+        subplot_kw = {"projection": ccrs.PlateCarree()} if show_satellite else {}
+        fig, ax = plt.subplots(figsize=FIGSIZE, subplot_kw=subplot_kw)
+    else:
+        fig = ax.figure
+
+    if show_satellite:
+        _plot_satellite(ax, source=satellite_source, area=satellite_area)
     if show_topobathy:
-        _topobathy().plot.imshow(
+        cmap, norm = _topobathy_cmap_norm()
+        da = _topobathy()
+        if show_satellite:
+            # Both layers on: keep the satellite photo showing on land and
+            # only colour the ocean, rather than washing the whole raster
+            # (land included) semi-transparently over the photo.
+            da = da.where(da < 0)
+        da.plot.imshow(
             ax=ax,
-            vmin=TOPOBATHY_VMIN,
-            vmax=TOPOBATHY_VMAX,
-            cmap=TOPOBATHY_CMAP,
+            cmap=cmap,
+            norm=norm,
             alpha=TOPOBATHY_ALPHA,
+            add_colorbar=not show_satellite,
         )
+    if show_isobaths:
+        # Independent of show_topobathy: thin contour lines read fine as a
+        # depth-context overlay on a satellite image too, unlike the filled
+        # raster (which would just wash out the photo underneath).
+        _plot_isobaths(ax)
     if land is not None:
         plot_land(land, ax)
     if ring is not None:
@@ -325,6 +462,8 @@ def plot_case_map(
     land: gpd.GeoDataFrame | None = None,
     ring: gpd.GeoDataFrame | None = None,
     color_map: dict[str, str] | None = None,
+    show_satellite: bool = False,
+    satellite_source: str = SATELLITE_SOURCE,
 ) -> tuple[Figure, Axes]:
     """
     Full case map with optional point overlay.
@@ -339,13 +478,21 @@ def plot_case_map(
         Passed to :func:`plot_points`.
     land, ring
         Optional land and buffer-ring overlays.
+    show_satellite, satellite_source
+        Passed to :func:`plot_base_map`.
 
     Returns
     -------
     tuple[Figure, Axes]
         Figure and axes handles.
     """
-    fig, ax = plot_base_map(title=title, land=land, ring=ring)
+    fig, ax = plot_base_map(
+        title=title,
+        land=land,
+        ring=ring,
+        show_satellite=show_satellite,
+        satellite_source=satellite_source,
+    )
     if points is not None and not points.empty:
         plot_points(
             points, ax, color_col=color_col, label_col=label_col, color_map=color_map
@@ -724,6 +871,8 @@ def _plot_goal_dir_range_bars(
 
 def _configuration_figure(
     cases: pd.DataFrame,
+    *,
+    show_satellite: bool = False,
 ) -> tuple[Figure, Axes, Axes, Axes, list[int], dict[int, Any]]:
     """Shared figure/gridspec skeleton for the config diagnostics: map, bar panel, info panel.
 
@@ -741,7 +890,8 @@ def _configuration_figure(
     gs = GridSpec(
         2, 2, figure=fig, width_ratios=[2.1, 1.0], height_ratios=[map_h, bars_h]
     )
-    ax_map = fig.add_subplot(gs[0, 0])
+    map_kw = {"projection": ccrs.PlateCarree()} if show_satellite else {}
+    ax_map = fig.add_subplot(gs[0, 0], **map_kw)
     ax_bars = fig.add_subplot(gs[1, 0])
     ax_info = fig.add_subplot(gs[:, 1])
     ax_info.axis("off")
@@ -873,12 +1023,30 @@ def _plot_configuration_map(
     sector_radius_deg: float,
     arrow_scale_deg: float,
     max_arrows_per_goal: int,
-    show_topobathy: bool,
+    show_topobathy: bool | None,
     title: str,
+    show_satellite: bool = False,
+    satellite_source: str = SATELLITE_SOURCE,
 ) -> None:
     """Shared base map + enclosure + goal wedges/arrows + output sites for config diagnostics."""
-    plot_base_map(ax=ax_map, title=title, show_topobathy=show_topobathy)
-    gpd.GeoDataFrame(geometry=[enclosure_polygon], crs="EPSG:4326").boundary.plot(
+    # Axis limits end up fixed by the enclosure alone (below), so the
+    # satellite fetch — if requested — uses that same tight box rather than
+    # the whole-case AoI, or tiles come in at a zoom level too coarse for
+    # this close-up view.
+    enclosure_gdf = gpd.GeoDataFrame(geometry=[enclosure_polygon], crs="EPSG:4326")
+    minx, miny, maxx, maxy = enclosure_gdf.total_bounds
+    pad = 0.08
+    satellite_area = (minx - pad, maxx + pad, miny - pad, maxy + pad)
+
+    plot_base_map(
+        ax=ax_map,
+        title=title,
+        show_topobathy=show_topobathy,
+        show_satellite=show_satellite,
+        satellite_source=satellite_source,
+        satellite_area=satellite_area,
+    )
+    enclosure_gdf.boundary.plot(
         ax=ax_map,
         color="#d62728",
         linestyle="--",
@@ -889,10 +1057,6 @@ def _plot_configuration_map(
     # Axis limits are fixed by the enclosure alone, so they can be set (and
     # locked in with a draw) before the goal loop — label placement below
     # needs the real data<->pixel scale to measure text boxes accurately.
-    minx, miny, maxx, maxy = gpd.GeoDataFrame(
-        geometry=[enclosure_polygon], crs="EPSG:4326"
-    ).total_bounds
-    pad = 0.08
     ax_map.set_xlim(minx - pad, maxx + pad)
     ax_map.set_ylim(miny - pad, maxy + pad)
     ax_map.set_aspect("equal", adjustable="box")
@@ -993,9 +1157,11 @@ def _configuration_map_figure(
     sector_radius_deg: float,
     arrow_scale_deg: float,
     max_arrows_per_goal: int,
-    show_topobathy: bool,
+    show_topobathy: bool | None,
     title: str,
     figsize: tuple[float, float],
+    show_satellite: bool = False,
+    satellite_source: str = SATELLITE_SOURCE,
 ) -> Figure:
     """Standalone, larger map panel only — no bar/info panels competing for space.
 
@@ -1005,7 +1171,8 @@ def _configuration_map_figure(
     of the combined diagnostic.
     """
     colors = _goal_colors(sorted(cases["goal"].unique()))
-    fig, ax = plt.subplots(figsize=figsize)
+    subplot_kw = {"projection": ccrs.PlateCarree()} if show_satellite else {}
+    fig, ax = plt.subplots(figsize=figsize, subplot_kw=subplot_kw)
     _plot_configuration_map(
         ax,
         enclosure_polygon=enclosure_polygon,
@@ -1018,6 +1185,8 @@ def _configuration_map_figure(
         max_arrows_per_goal=max_arrows_per_goal,
         show_topobathy=show_topobathy,
         title=title,
+        show_satellite=show_satellite,
+        satellite_source=satellite_source,
     )
     fig.tight_layout()
     return fig
@@ -1032,9 +1201,11 @@ def plot_metamodel_configuration_map(
     sector_radius_deg: float = 0.35,
     arrow_scale_deg: float = 0.15,
     max_arrows_per_goal: int = 25,
-    show_topobathy: bool = True,
+    show_topobathy: bool | None = None,
     title: str = "Metamodel configuration map",
     figsize: tuple[float, float] = (12, 11),
+    show_satellite: bool = False,
+    satellite_source: str = SATELLITE_SOURCE,
 ) -> Figure:
     """Bigger, standalone map-only companion to :func:`plot_metamodel_configuration`."""
     cases = cases_df.copy()
@@ -1050,6 +1221,8 @@ def plot_metamodel_configuration_map(
         show_topobathy=show_topobathy,
         title=title,
         figsize=figsize,
+        show_satellite=show_satellite,
+        satellite_source=satellite_source,
     )
 
 
@@ -1062,9 +1235,11 @@ def plot_dynamic_configuration_map(
     sector_radius_deg: float = 0.35,
     arrow_scale_deg: float = 0.15,
     max_arrows_per_goal: int = 25,
-    show_topobathy: bool = True,
+    show_topobathy: bool | None = None,
     title: str = "Dynamic configuration map",
     figsize: tuple[float, float] = (12, 11),
+    show_satellite: bool = False,
+    satellite_source: str = SATELLITE_SOURCE,
 ) -> Figure:
     """Bigger, standalone map-only companion to :func:`plot_dynamic_configuration`."""
     cases = _offshore_bulk_long(offshore)
@@ -1079,6 +1254,8 @@ def plot_dynamic_configuration_map(
         show_topobathy=show_topobathy,
         title=title,
         figsize=figsize,
+        show_satellite=show_satellite,
+        satellite_source=satellite_source,
     )
 
 
@@ -1096,7 +1273,9 @@ def plot_metamodel_configuration(
     sector_radius_deg: float = 0.35,
     arrow_scale_deg: float = 0.15,
     max_arrows_per_goal: int = 25,
-    show_topobathy: bool = True,
+    show_topobathy: bool | None = None,
+    show_satellite: bool = False,
+    satellite_source: str = SATELLITE_SOURCE,
     title: str = "Metamodel pre-run diagnostic",
 ) -> Figure:
     """
@@ -1137,7 +1316,9 @@ def plot_metamodel_configuration(
     cases = cases_df.copy()
     cases["goal"] = cases["goal"].astype(int)
 
-    fig, ax_map, ax_bars, ax_info, goal_ids, colors = _configuration_figure(cases)
+    fig, ax_map, ax_bars, ax_info, goal_ids, colors = _configuration_figure(
+        cases, show_satellite=show_satellite
+    )
     _plot_configuration_map(
         ax_map,
         enclosure_polygon=enclosure_polygon,
@@ -1150,6 +1331,8 @@ def plot_metamodel_configuration(
         max_arrows_per_goal=max_arrows_per_goal,
         show_topobathy=show_topobathy,
         title=title,
+        show_satellite=show_satellite,
+        satellite_source=satellite_source,
     )
     _plot_goal_dir_range_bars(ax_bars, cases, goals_config, colors)
     dense_mode = _dense_dir_mode(cases, DEFAULT_MAX_DIR_MARKS)
@@ -1235,7 +1418,9 @@ def plot_dynamic_configuration(
     arrow_scale_deg: float = 0.15,
     max_arrows_per_goal: int = 25,
     max_dir_marks: int = DEFAULT_MAX_DIR_MARKS,
-    show_topobathy: bool = True,
+    show_topobathy: bool | None = None,
+    show_satellite: bool = False,
+    satellite_source: str = SATELLITE_SOURCE,
     maps_to_save: int | None = None,
     title: str = "Dynamic pre-run diagnostic",
 ) -> Figure:
@@ -1277,7 +1462,9 @@ def plot_dynamic_configuration(
     cases = _offshore_bulk_long(offshore)
     n_time = int(offshore.sizes.get("time", len(cases) // max(cases["goal"].nunique(), 1)))
 
-    fig, ax_map, ax_bars, ax_info, goal_ids, colors = _configuration_figure(cases)
+    fig, ax_map, ax_bars, ax_info, goal_ids, colors = _configuration_figure(
+        cases, show_satellite=show_satellite
+    )
     _plot_configuration_map(
         ax_map,
         enclosure_polygon=enclosure_polygon,
@@ -1290,6 +1477,8 @@ def plot_dynamic_configuration(
         max_arrows_per_goal=max_arrows_per_goal,
         show_topobathy=show_topobathy,
         title=title,
+        show_satellite=show_satellite,
+        satellite_source=satellite_source,
     )
     _plot_goal_dir_range_bars(
         ax_bars,

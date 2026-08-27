@@ -618,6 +618,8 @@ class SnapWaveMetaModelWrapper(SnapWaveModelWrapper):
         show_map: bool = True,
         map_variable: str = "hs",
         style=None,
+        show_satellite: bool = False,
+        satellite_source: str = "arcgis",
         show: bool = True,
     ) -> plt.Figure:
         """Plot one finished metamodel case folder (``goal/case_num``)."""
@@ -630,6 +632,8 @@ class SnapWaveMetaModelWrapper(SnapWaveModelWrapper):
             show_map=show_map,
             map_variable=map_variable,
             style=style,
+            show_satellite=show_satellite,
+            satellite_source=satellite_source,
             show=show,
         )
 
@@ -777,6 +781,8 @@ class SnapWaveDynamicModelWrapper(SnapWaveModelWrapper):
         show_map: bool = True,
         map_variable: str = "hs",
         style=None,
+        show_satellite: bool = False,
+        satellite_source: str = "arcgis",
         show: bool = True,
     ) -> plt.Figure:
         """Plot one finished dynamic case folder."""
@@ -788,6 +794,8 @@ class SnapWaveDynamicModelWrapper(SnapWaveModelWrapper):
             show_map=show_map,
             map_variable=map_variable,
             style=style,
+            show_satellite=show_satellite,
+            satellite_source=satellite_source,
             show=show,
         )
 
