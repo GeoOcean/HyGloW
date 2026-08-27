@@ -4,6 +4,7 @@ import dash_bootstrap_components as dbc
 
 from .layout import case_panel
 from .loaders import (
+    book_available,
     list_figures,
     load_all_metrics,
     load_aoi,
@@ -29,6 +30,18 @@ CHART_LAYOUT = dict(
 
 
 def register_callbacks(app):
+    @app.callback(
+        Output("book-link", "href"),
+        Output("book-link", "className"),
+        Output("book-link", "title"),
+        Input("case-select", "value"),
+    )
+    def on_case_change_book_link(case_id):
+        case = load_case(case_id)
+        if book_available(case):
+            return f"/case-book/{case_id}/index.html", "header-link header-link-book", "Open the rendered notebook report"
+        return "#", "header-link header-link-book disabled", "No report built yet for this case"
+
     @app.callback(
         Output("case-sidebar", "children"),
         Output("mda-select", "options"),

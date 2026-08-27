@@ -262,6 +262,11 @@ def list_figures(case: dict) -> list[Path]:
     return sorted(fig_dir.glob("fig*.png"))
 
 
+def book_available(case: dict) -> bool:
+    """Whether a built Jupyter Book (see ``book/``) exists for this case."""
+    return (case_root(case) / "book" / "_build" / "html" / "index.html").is_file()
+
+
 def region_bounds(
     case: dict,
     config: dict,

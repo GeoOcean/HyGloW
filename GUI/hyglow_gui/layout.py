@@ -171,6 +171,14 @@ def header() -> html.Div:
                 ),
                 html.Div(
                     [
+                        html.A(
+                            "📖 Report",
+                            id="book-link",
+                            href="#",
+                            target="_blank",
+                            rel="noopener",
+                            className="header-link header-link-book",
+                        ),
                         html.A("GitHub", href="https://github.com/tausiaj/HyGloW", target="_blank", className="header-link"),
                         html.Span("GeoOcean", className="header-tag"),
                     ],

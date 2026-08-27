@@ -7,6 +7,7 @@ Lightweight Dash portal for HyGloW use cases. Reads each case's standard files:
 - `{Case}/inputs/Observations/{Case}_observations.json` — buoy GeoJSON (via `onshore_waves`)
 - `{Case}/outputs/goal_*/validation_metrics.csv` — holdout validation
 - `{Case}/outputs/gui_figures/fig*.png` — showcase figures
+- `{Case}/book/_build/html/` — rendered Jupyter Book report (optional; see below)
 
 Portal metadata (authors, institution, pipeline status) lives in `catalog/cases.yaml`.
 
@@ -40,3 +41,13 @@ Deploy the full HyGloW repo so case paths resolve, or copy lightweight exports l
 2. Ensure the case follows the standard JSON / goals / observations layout.
 3. Run validation and course-figure notebooks so outputs exist.
 4. Restart the app.
+
+## Report (Jupyter Book)
+
+The header's **📖 Report** link opens a rendered [Jupyter Book](https://jupyterbook.org)
+built from a case's own numbered notebooks (see `{Case}/book/README.md`, e.g.
+`NewSouthWales/book/`) — a narrated, sequential write-up instead of the flat
+Gallery grid. It's a static site the GUI just serves; the link is disabled
+automatically for any case without a `book/_build/html/index.html`. It does
+**not** rebuild on its own — rerun the case's `book` build after notebooks
+change (see that case's `book/README.md`).

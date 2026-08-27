@@ -82,6 +82,12 @@ body {
     color: #67e8f9;
 }
 
+.header-link-book.disabled {
+    color: #64748b;
+    pointer-events: none;
+    cursor: default;
+}
+
 .header-tag {
     padding: 0.25rem 0.65rem;
     border-radius: 999px;
