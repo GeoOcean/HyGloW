@@ -1,0 +1,32 @@
+# See docs at: https://mystmd.org/guide/frontmatter
+version: 1
+project:
+  id: dcbc1873-9197-4309-9a4d-a554e0b06e1d
+  title: HyGloW — New South Wales
+  description: >-
+    Hybrid Global / Local Wave downscaling case study for New South Wales,
+    Australia — rendered from the case's own working notebooks.
+  authors:
+    - name: Javier Tausía Hoyal
+      github: https://github.com/tausiaj
+  github: https://github.com/tausiaj/HyGloW
+  toc:
+    - file: ../README.md
+    - file: ../01_Generate_tiff_from_GEBCO.ipynb
+    - file: ../02_Create_mesh_by_bluemesh2d.ipynb
+    - file: ../03_Generate_Observations_Configuration.ipynb
+    - file: ../04_Select_Goals_by_Hindcasts.ipynb
+    - file: ../05_Metamodel_Cases_Generation.ipynb
+    - file: ../06_Validate_Metamodel.ipynb
+    - file: ../07_Download_Process_WHACS.ipynb
+    - file: ../08_Dynamic_Cases_Generation.ipynb
+    - file: ../09_Validate_Linear_Summation.ipynb
+    - file: ../10a_Validate_Offshore_Buoys.ipynb
+    - file: ../10b_Validate_Onshore_Buoys.ipynb
+    - file: ../11_Validate_Spectra.ipynb
+    - file: ../12_Final_Plots.ipynb
+site:
+  template: book-theme
+  # options:
+  #   favicon: favicon.ico
+  #   logo: site_logo.png

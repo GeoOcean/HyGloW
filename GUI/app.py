@@ -1,10 +1,10 @@
 import dash
 import dash_bootstrap_components as dbc
 from flask import send_from_directory
-from hyglow_gui.callbacks import register_callbacks
-from hyglow_gui.layout import build_layout
-from hyglow_gui.loaders import load_case
-from hyglow_gui.paths import case_root
+from hywaves_gui.callbacks import register_callbacks
+from hywaves_gui.layout import build_layout
+from hywaves_gui.loaders import load_case
+from hywaves_gui.paths import case_root
 
 app = dash.Dash(
     __name__,

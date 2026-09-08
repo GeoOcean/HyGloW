@@ -55,7 +55,7 @@ from utils.observation import onshore_sites as obs
 METRICS_VARIABLES = METAMODEL["validation"]["metrics_variables"]
 MDA_CANDIDATES = mm.MDA_CANDIDATES
 
-LOGGER_NAME = "hyglow.validation"
+LOGGER_NAME = "hywaves.validation"
 logger = get_file_logger(
     LOGGER_NAME,
     logs_path=str(resolve("logs/validation.log")),

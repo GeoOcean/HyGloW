@@ -10,8 +10,8 @@ from typing import Any
 
 import xarray as xr
 
-_HYGLOW_LOGGERS = ("hyglow.metamodel", "hyglow.validation")
-_HYGLOW_LOGGER_PREFIX = "hyglow."
+_HYWAVES_LOGGERS = ("hywaves.metamodel", "hywaves.validation")
+_HYWAVES_LOGGER_PREFIX = "hywaves."
 _BLUEMATH_LOGGER_PREFIXES = ("bluemath", "BlueMath")
 
 UTILS_DIR = Path(__file__).resolve().parent
@@ -493,7 +493,7 @@ def _quiet_bluemath_model_console(console_level: int) -> None:
     """
     import bluemath_tk.core.models as bluemath_models
 
-    if getattr(bluemath_models.BlueMathModel, "_hyglow_quieted", False):
+    if getattr(bluemath_models.BlueMathModel, "_hywaves_quieted", False):
         return
 
     original_get_file_logger = bluemath_models.get_file_logger
@@ -516,7 +516,7 @@ def _quiet_bluemath_model_console(console_level: int) -> None:
     bluemath_models.BlueMathModel.logger = property(
         quiet_logger_fget, bluemath_models.BlueMathModel.logger.fset
     )
-    bluemath_models.BlueMathModel._hyglow_quieted = True
+    bluemath_models.BlueMathModel._hywaves_quieted = True
 
 
 def configure_notebook_logging(
@@ -528,7 +528,7 @@ def configure_notebook_logging(
     """
     Show WARNING+ in the notebook; keep INFO in ``logs/*.log`` files.
 
-    Applies to HyGloW loggers (``hyglow.metamodel``, ``hyglow.validation``)
+    Applies to HyGloW loggers (``hywaves.metamodel``, ``hywaves.validation``)
     at *console_level*, and to bluemath_tk model loggers (``PCA``, ``MDA``,
     ``RBF``, GP interpolation, ...) at the stricter *bluemath_console_level*
     — their routine "Using PCA"-style banners are logged at ``WARNING`` on
@@ -546,14 +546,14 @@ def configure_notebook_logging(
     from bluemath_tk.core.logging import get_file_logger
 
     get_file_logger(
-        "hyglow.metamodel",
+        "hywaves.metamodel",
         logs_path=str(resolve("logs/metamodel.log")),
         level="INFO",
         console=True,
         console_level=console_lv,
     )
     get_file_logger(
-        "hyglow.validation",
+        "hywaves.validation",
         logs_path=str(resolve("logs/validation.log")),
         level="INFO",
         console=True,
@@ -570,7 +570,7 @@ def configure_notebook_logging(
     for name, obj in logging.Logger.manager.loggerDict.items():
         if not isinstance(obj, logging.Logger):
             continue
-        if name in _HYGLOW_LOGGERS or name.startswith(_HYGLOW_LOGGER_PREFIX):
+        if name in _HYWAVES_LOGGERS or name.startswith(_HYWAVES_LOGGER_PREFIX):
             level_for_console = console_lv
         elif name in bluemath_model_names or name.startswith(_BLUEMATH_LOGGER_PREFIXES):
             level_for_console = bluemath_lv

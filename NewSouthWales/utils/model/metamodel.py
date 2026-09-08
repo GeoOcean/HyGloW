@@ -50,7 +50,7 @@ from utils.config import (
 from utils.directions import in_nautical_sector
 from utils.geometry.sites import SITE_META, resolve_sites
 
-LOGGER_NAME = "hyglow.metamodel"
+LOGGER_NAME = "hywaves.metamodel"
 logger = get_file_logger(
     LOGGER_NAME,
     logs_path=str(resolve("logs/metamodel.log")),
@@ -1941,7 +1941,7 @@ def _wavespectra_sum(
 
     all_stats = combined.spec.stats(list(WAVESPECTRA_STATS))
     result = xr.Dataset(
-        {hyglow: all_stats[ws_stat] for hyglow, ws_stat in variable_map.items()}
+        {hywaves: all_stats[ws_stat] for hywaves, ws_stat in variable_map.items()}
     )[list(output_names)]
     if load:
         result = result.load()

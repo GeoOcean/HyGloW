@@ -27,12 +27,12 @@ portal (`GUI/`) all live here, and every regional use case is built from it.
 There are two ways to use it:
 
 - **Just want nearshore waves for your region?** Fork or clone this repo,
-  run `hyglow start`, and work in your own case folder from there —
+  run `hywaves start`, and work in your own case folder from there —
   Quickstart below. Once scaffolded, a case is self-contained: you don't
   need to keep up with this repo unless you want engine improvements later
-  (`hyglow update`).
+  (`hywaves update`).
 - **Want to help build the toolkit itself** — the engine, the GUI, the case
-  contract? Fork it and open a PR against `hyglow/` or `GUI/`, same as any
+  contract? Fork it and open a PR against `hywaves/` or `GUI/`, same as any
   open-source project.
 
 Expect rough edges while this is young. Issues and PRs are welcome either way.
@@ -52,7 +52,7 @@ Expect rough edges while this is young. Issues and PRs are welcome either way.
 **1. Create your case:**
 
 ```bash
-python -m hyglow start --name MyCase
+python -m hywaves start --name MyCase
 cd MyCase
 ```
 
@@ -67,8 +67,8 @@ notebook-by-notebook walkthrough.
 **3. Check your progress anytime:**
 
 ```bash
-python -m hyglow validate MyCase/            # development mode: gaps are warnings
-python -m hyglow validate MyCase/ --publish  # strict: is this ready to share?
+python -m hywaves validate MyCase/            # development mode: gaps are warnings
+python -m hywaves validate MyCase/ --publish  # strict: is this ready to share?
 ```
 
 ## Want to see a finished example first?
@@ -100,31 +100,31 @@ against real buoy records.
 
 | Path             | What it is                                                                             |
 | ---------------- | -------------------------------------------------------------------------------------- |
-| `hyglow/`        | The engine, contract, and CLI (`python -m hyglow ...`) — scaffolds and validates cases |
+| `hywaves/`        | The engine, contract, and CLI (`python -m hywaves ...`) — scaffolds and validates cases |
 | `Samoa/`         | Reference case — Samoan archipelago                                                    |
 | `NewSouthWales/` | Reference case — NSW coast, Australia                                                  |
 | `GUI/`           | *HyGloW Results Explorer* — a Dash portal that reads any case's contract files         |
 
 Full CLI reference (including `update`, which re-syncs a case's engine code
-from the template): [`hyglow/README.md`](hyglow/README.md).
+from the template): [`hywaves/README.md`](hywaves/README.md).
 
 ## Contributing a case back
 
 A **case** is a self-contained folder for one region — its own area of
 interest, mesh, goal points, observations catalogue, and results. Cases can
 live in this repository or in your own repo; what makes a folder a HyGloW
-case is conformance to the [case contract](hyglow/contract/CONTRACT.md).
+case is conformance to the [case contract](hywaves/contract/CONTRACT.md).
 
-1. `python -m hyglow start --name YourCase`
+1. `python -m hywaves start --name YourCase`
 2. Fill in `YourCase/YourCase.json` and work through the numbered notebooks.
-3. `python -m hyglow validate YourCase/ --publish`
+3. `python -m hywaves validate YourCase/ --publish`
 4. Open a PR here (using your fork), or host it in your own repo and point the GUI catalog
    (`GUI/catalog/cases.yaml`) at it — the contract is the only thing that
    needs to match.
 
 Engine code (`utils/`) is **vendored** into every case so each one runs
 standalone. If you fix a bug in your case's copy, please also land it in
-[`hyglow/template/`](hyglow/template/) so `python -m hyglow update` can carry
+[`hywaves/template/`](hywaves/template/) so `python -m hywaves update` can carry
 the fix to every other case.
 
 ---

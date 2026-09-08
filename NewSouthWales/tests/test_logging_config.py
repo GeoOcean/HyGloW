@@ -12,7 +12,7 @@ from utils.config import configure_notebook_logging
 
 class TestLoggingConfig(unittest.TestCase):
     def test_configure_notebook_logging_sets_console_only(self) -> None:
-        logger = logging.getLogger("hyglow.test_logging")
+        logger = logging.getLogger("hywaves.test_logging")
         logger.handlers.clear()
         logger.setLevel(logging.INFO)
         logger.propagate = False
@@ -60,7 +60,7 @@ class TestBluemathModelConsoleQuieting(unittest.TestCase):
         # process's logger for that name currently is. If nothing has
         # configured that name yet this kernel, it has no handlers and
         # propagate=True, so every record falls through to the root logger.
-        name = "_HyglowTestUnpickledModel"
+        name = "_HywavesTestUnpickledModel"
         bare_logger = logging.getLogger(name)
         bare_logger.handlers = []
         bare_logger.propagate = True

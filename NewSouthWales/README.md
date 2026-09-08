@@ -30,7 +30,7 @@ reference case.
 
 ## Status
 
-Checked with `python -m hyglow validate NewSouthWales/` (run from the repo root):
+Checked with `python -m hywaves validate NewSouthWales/` (run from the repo root):
 
 | Stage | State |
 | --- | --- |
