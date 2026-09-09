@@ -17,6 +17,7 @@ Site grouping for plots and metrics tables: :mod:`utils.geometry.sites`.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Mapping
@@ -308,6 +309,29 @@ def metrics_table(
 def validation_metrics_path(goal: str | int) -> Path:
     """CSV path for :func:`sweep` output on one goal."""
     return mm.goal_output_dir(goal) / "validation_metrics.csv"
+
+
+def _slug(label: str) -> str:
+    """Filesystem-safe stand-in for a period label used in output filenames."""
+    return re.sub(r"[^A-Za-z0-9_-]+", "-", label).strip("-")
+
+
+def metamodel_validation_path(period: str) -> Path:
+    """CSV path for the linear-summation-vs-dynamic comparison (``09_Validate_Linear_Summation.ipynb``)."""
+    return resolve("outputs/metamodel_validation") / f"linear_summation_{_slug(period)}.csv"
+
+
+def buoy_validation_path(name: str, period_label: str) -> Path:
+    """CSV path for a buoy validation summary (``10a``/``10b`` notebooks).
+
+    Parameters
+    ----------
+    name
+        Buoy subset the summary covers, e.g. ``"offshore"`` or ``"onshore"``.
+    period_label
+        Human-readable period used in the notebook (e.g. ``"2001-2011"``).
+    """
+    return resolve("outputs/buoy_validation") / f"{name}_summary_{_slug(period_label)}.csv"
 
 
 def _haversine_m(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
@@ -1246,6 +1270,150 @@ def plot_buoy_timeseries(
     axes[-1].set_xlabel("Time")
     fig.suptitle(site, fontsize=11)
     fig.tight_layout()
+    return fig
+
+
+# Kept separate from _MODEL_COLORS (used by plot_timeseries/plot_buoy_timeseries
+# above) rather than repointing it — those keep matplotlib's default C0/C1/...
+# cycle elsewhere; these hex values are the ones the GUI's own charts use
+# (GUI/hywaves_gui/colors.py MODEL_COLORS), so a buoy's summary PNG reads as
+# the same colors as the boxplots around it once embedded in the GUI.
+_BUOY_SUMMARY_COLORS: dict[str, str] = {
+    "Buoy": "#111111",
+    "Bulk metamodel": "#22d3ee",
+    "Spectral metamodel": "#a78bfa",
+    "WHACS (closest goal)": "#fb923c",
+}
+
+
+def buoy_summary_figure_path(site: str) -> Path:
+    """PNG path for :func:`plot_buoy_summary` on one buoy site."""
+    return resolve("outputs/buoy_validation/figures") / f"{site}.png"
+
+
+def plot_buoy_summary(
+    reference: xr.Dataset,
+    estimates: Mapping[str, xr.Dataset],
+    site: str,
+    *,
+    variables: Iterable[str] | None = None,
+    reference_label: str = "Buoy",
+    estimate_label: str = "Spectral metamodel",
+    period_label: str | None = None,
+    cmap: str = "viridis",
+    figsize: tuple[float, float] | None = None,
+) -> Figure:
+    """One combined figure per buoy: density scatters on top, one wide
+    Hs/Tp time series below — both buoy vs. *estimate_label* only.
+
+    Meant to be saved once per site (see ``10a``/``10b``) and shown as a
+    static image in the GUI's Buoy Validation tab. Deliberately narrower
+    than a full model comparison (see :func:`plot_buoy_timeseries` /
+    :func:`plot_scatter` for that): this is a fast per-buoy skim of the
+    production model (spectral metamodel) against the actual observation.
+
+    Parameters
+    ----------
+    reference
+        Buoy observations, ``(time, sites)``.
+    estimates
+        Model name -> aligned-shape dataset; only ``estimate_label`` is used.
+    site
+        SnapWave site id (e.g. ``"buoy_Sydney_Buoy"``).
+    variables
+        Subset of metrics variables (scatter row only); default from config.
+    estimate_label
+        Which model in *estimates* to compare against — the time series row
+        is always just this one model vs. the buoy, not every model.
+    period_label
+        Human-readable period, drawn into the figure title.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
+    site = str(site)
+    if estimate_label not in estimates:
+        raise KeyError(f"{estimate_label!r} not in estimates for site {site}: {sorted(estimates)}")
+    estimate = estimates[estimate_label]
+
+    keys = _metrics_variables(variables)
+    keys = [k for k in keys if k in PARAMETERS and k in reference.data_vars and k in estimate.data_vars]
+    if not keys:
+        raise ValueError(f"{site}: no metrics variable present in both buoy and {estimate_label}")
+
+    ncols = len(keys)
+    if figsize is None:
+        figsize = (4.2 * ncols, 7.4)
+    fig = plt.figure(figsize=figsize)
+    gs = fig.add_gridspec(2, ncols, height_ratios=[1.15, 0.85], hspace=0.35)
+
+    ref_site = reference.sel(sites=site)
+    est_site = estimate.sel(sites=site)
+    colors = _BUOY_SUMMARY_COLORS
+
+    # --- top row: one density scatter per variable, buoy vs estimate_label only ---
+    for col, key in enumerate(keys):
+        ax = fig.add_subplot(gs[0, col])
+        est_aligned, ref_aligned = xr.align(est_site[key], ref_site[key], join="inner")
+        _scatter_panel(
+            ax,
+            est_aligned.values.ravel(),
+            ref_aligned.values.ravel(),
+            key,
+            estimate_label=estimate_label,
+            reference_label=reference_label,
+            cmap=cmap,
+        )
+
+    # --- bottom row: one wide Hs (left axis) / Tp (right axis) time series,
+    # cropped to the span where the buoy actually has data (not the full
+    # nominal period, which for most sites is mostly gaps) ---
+    ax_hs = fig.add_subplot(gs[1, :])
+    window: tuple[np.datetime64, np.datetime64] | None = None
+
+    if "hs" in keys:
+        hs_ref, hs_est = xr.align(ref_site["hs"], est_site["hs"], join="inner")
+        finite = np.isfinite(hs_ref.values)
+        if finite.any():
+            times = hs_ref.time.values[finite]
+            window = (times.min(), times.max())
+            hs_ref = hs_ref.sel(time=slice(*window))
+            hs_est = hs_est.sel(time=slice(*window))
+        hs_ref.plot(ax=ax_hs, color=colors.get(reference_label, "black"), lw=1.1, label=f"{reference_label} Hs")
+        hs_est.plot(ax=ax_hs, color=colors.get(estimate_label, "gray"), lw=1.0, alpha=0.9, label=f"{estimate_label} Hs")
+        ax_hs.set_ylabel(f"Hs [{PARAMETERS['hs']['units']}]")
+        ax_hs.set_title("")
+
+    if "tp" in keys:
+        ax_tp = ax_hs.twinx()
+        tp_ref, tp_est = xr.align(ref_site["tp"], est_site["tp"], join="inner")
+        if window is None:
+            finite = np.isfinite(tp_ref.values)
+            if finite.any():
+                times = tp_ref.time.values[finite]
+                window = (times.min(), times.max())
+        if window is not None:
+            tp_ref = tp_ref.sel(time=slice(*window))
+            tp_est = tp_est.sel(time=slice(*window))
+        tp_ref.plot(ax=ax_tp, color=colors.get(reference_label, "black"), lw=1.0, linestyle="--", alpha=0.8, label=f"{reference_label} Tp")
+        tp_est.plot(ax=ax_tp, color=colors.get(estimate_label, "gray"), lw=0.9, linestyle="--", alpha=0.8, label=f"{estimate_label} Tp")
+        ax_tp.set_ylabel(f"Tp [{PARAMETERS['tp']['units']}]")
+        ax_tp.set_title("")
+
+    if window is not None:
+        ax_hs.set_xlim(*window)
+    ax_hs.set_xlabel("Time")
+    ax_hs.grid(True, alpha=0.3)
+    handles, labels = ax_hs.get_legend_handles_labels()
+    if "tp" in keys:
+        h2, l2 = ax_tp.get_legend_handles_labels()
+        handles, labels = handles + h2, labels + l2
+    ax_hs.legend(handles, labels, loc="upper right", fontsize=8, ncol=2)
+
+    title = site if not period_label else f"{site}  —  {period_label}"
+    fig.suptitle(title, fontsize=13, fontweight="bold")
+    fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.96))
     return fig
 
 
