@@ -5,17 +5,32 @@ from __future__ import annotations
 import pandas as pd
 import plotly.graph_objects as go
 
-MAP_STYLE = "open-street-map"
+from .colors import (
+    AOI_FILL,
+    AOI_LINE,
+    BASEMAP_BUTTON_STYLE,
+    BUOY_COLOR,
+    CONTOUR_COLORS,
+    CONTOUR_DEFAULT,
+    GOAL_COLOR,
+    MESH_SITE_COLOR,
+)
 
-GOAL_COLOR = "#22d3ee"
-GOAL_SELECTED = "#fbbf24"
-BUOY_COLOR = "#f87171"
-AOI_LINE = "#7dd3fc"
-AOI_FILL = "rgba(125, 211, 252, 0.22)"
-SITE_SOURCE_COLORS = {"isobath": "#38bdf8", "mesh": "#a78bfa"}
-# Same hex values as utils.viz.case_plots.ISOBATH_COLORS in the science codebase.
-ISOBATH_LINE_COLORS = {"5m": "#8dd3c7", "10m": "#1f78b4", "20m": "#33a02c", "50m": "#e31a1c"}
-ISOBATH_LINE_DEFAULT = "#94a3b8"
+MAP_STYLE = "open-street-map"
+# No Mapbox token available, so Plotly's token-free named styles (used for
+# MAP_STYLE above) top out at street/terrain maps — none of them is actual
+# satellite imagery. This raster overlay is the same Esri World Imagery
+# source already used for the case-plot notebooks (see
+# ``utils.viz.case_plots.SATELLITE_SOURCE = "arcgis"``), free and tokenless.
+SATELLITE_TILE_URL = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+SATELLITE_LAYER = {
+    "sourcetype": "raster",
+    "source": [SATELLITE_TILE_URL],
+    "sourceattribution": "Tiles © Esri",
+    "below": "traces",
+}
+
+# Fallback only — build_map is always called with case_id in practice.
 MAP_UIREVISION = "hywaves-map-v1"
 
 
@@ -43,7 +58,7 @@ def build_map(
     observations: pd.DataFrame,
     bounds: dict[str, list[float]],
     *,
-    selected_goal: str | None = None,
+    case_id: str | None = None,
     aoi: list[list[tuple[float, float]]] | None = None,
     isobaths: list[dict] | None = None,
     output_sites: pd.DataFrame | None = None,
@@ -59,13 +74,13 @@ def build_map(
         if not lon:
             continue
         fig.add_trace(
-            go.Scattermapbox(
+            go.Scattermap(
                 lon=lon,
                 lat=lat,
                 mode="lines",
                 name=f"Isobath {iso['name']}",
                 line={
-                    "color": ISOBATH_LINE_COLORS.get(iso["name"], ISOBATH_LINE_DEFAULT),
+                    "color": CONTOUR_COLORS.get(iso["name"], CONTOUR_DEFAULT),
                     "width": 1.5,
                 },
                 hoverinfo="skip",
@@ -79,7 +94,7 @@ def build_map(
             lon += [p[0] for p in ring] + [ring[0][0], None]
             lat += [p[1] for p in ring] + [ring[0][1], None]
         fig.add_trace(
-            go.Scattermapbox(
+            go.Scattermap(
                 lon=lon,
                 lat=lat,
                 mode="lines",
@@ -92,79 +107,100 @@ def build_map(
         )
 
     if output_sites is not None and not output_sites.empty:
-        for source, group in output_sites.groupby("source"):
-            fig.add_trace(
-                go.Scattermapbox(
-                    lon=group["lon"],
-                    lat=group["lat"],
-                    mode="markers",
-                    name=f"Sites: {source}",
-                    marker={
-                        "size": 4 if source == "mesh" else 6,
-                        "color": SITE_SOURCE_COLORS.get(str(source), "#94a3b8"),
-                        "opacity": 0.55,
-                    },
-                    text=group["label"],
-                    hovertemplate=(
-                        f"<b>{source} site</b> %{{text}}<br>"
-                        "lon %{lon:.3f}, lat %{lat:.3f}<extra></extra>"
-                    ),
+        # Isobath sites split further by depth band ("5m", "10m", ...) so
+        # each dot matches the color of its own contour line above — mesh
+        # sites (no such sub-grouping) stay one flat color.
+        for source in output_sites["source"].unique():
+            by_source = output_sites[output_sites["source"] == source]
+            if source == "isobath":
+                for depth, group in by_source.groupby("label"):
+                    fig.add_trace(
+                        go.Scattermap(
+                            lon=group["lon"],
+                            lat=group["lat"],
+                            mode="markers",
+                            name=f"Sites: {depth}",
+                            marker={
+                                "size": 6,
+                                "color": CONTOUR_COLORS.get(str(depth), CONTOUR_DEFAULT),
+                                "opacity": 0.55,
+                            },
+                            text=group["label"],
+                            hovertemplate=(
+                                f"<b>isobath site</b> {depth}<br>"
+                                "lon %{lon:.3f}, lat %{lat:.3f}<extra></extra>"
+                            ),
+                        )
+                    )
+            else:
+                fig.add_trace(
+                    go.Scattermap(
+                        lon=by_source["lon"],
+                        lat=by_source["lat"],
+                        mode="markers",
+                        name=f"Sites: {source}",
+                        marker={"size": 4, "color": MESH_SITE_COLOR, "opacity": 0.55},
+                        text=by_source["label"],
+                        hovertemplate=(
+                            f"<b>{source} site</b> %{{text}}<br>"
+                            "lon %{lon:.3f}, lat %{lat:.3f}<extra></extra>"
+                        ),
+                    )
                 )
-            )
 
-    selected = str(selected_goal) if selected_goal is not None else None
-    other = goals[goals["goal"] != selected] if selected else goals
-    sel = goals[goals["goal"] == selected] if selected else goals.iloc[0:0]
-
-    if not other.empty:
+    if not goals.empty:
         fig.add_trace(
-            go.Scattermapbox(
-                lon=other["lon"],
-                lat=other["lat"],
+            go.Scattermap(
+                lon=goals["lon"],
+                lat=goals["lat"],
                 mode="markers",
                 name="Goals",
-                customdata=other["goal"],
                 marker={"size": 13, "color": GOAL_COLOR, "opacity": 0.85},
+                text=goals["goal"],
                 hovertemplate=(
-                    "<b>Goal %{customdata}</b><br>"
-                    "lon %{lon:.3f}, lat %{lat:.3f}<br>"
-                    "<extra>Click to inspect</extra>"
-                ),
-            )
-        )
-
-    if not sel.empty:
-        fig.add_trace(
-            go.Scattermapbox(
-                lon=sel["lon"],
-                lat=sel["lat"],
-                mode="markers",
-                name=f"Goal {selected}",
-                customdata=sel["goal"],
-                marker={"size": 20, "color": GOAL_SELECTED, "opacity": 1.0},
-                hovertemplate=(
-                    "<b>Goal %{customdata}</b> (selected)<br>"
-                    "lon %{lon:.3f}, lat %{lat:.3f}<extra></extra>"
+                    "<b>Goal %{text}</b><br>lon %{lon:.3f}, lat %{lat:.3f}<extra></extra>"
                 ),
             )
         )
 
     if not observations.empty:
+        site_ids = [
+            iid if str(iid).startswith("buoy_") else f"buoy_{iid}"
+            for iid in observations["instrument_id"]
+        ]
+        customdata = list(zip(site_ids, observations["name"], strict=True))
+        # A soft color halo behind the star: Scattermap's built-in "star"
+        # icon is a monochrome (black) sprite — `marker.color` has no effect
+        # on named icon symbols, only on the plain circle default — so the
+        # halo is what actually carries BUOY_COLOR through to the map.
         fig.add_trace(
-            go.Scattermapbox(
+            go.Scattermap(
+                lon=observations["lon"],
+                lat=observations["lat"],
+                mode="markers",
+                name="Observations halo",
+                marker={"size": 26, "color": BUOY_COLOR, "opacity": 0.45},
+                hoverinfo="skip",
+            )
+        )
+        fig.add_trace(
+            go.Scattermap(
                 lon=observations["lon"],
                 lat=observations["lat"],
                 mode="markers",
                 name="Observations",
-                marker={"size": 16, "color": BUOY_COLOR},
-                text=observations["name"],
-                hovertemplate="<b>%{text}</b><br>lon %{lon:.3f}, lat %{lat:.3f}<extra></extra>",
+                marker={"size": 20, "symbol": "star"},
+                customdata=customdata,
+                hovertemplate=(
+                    "<b>%{customdata[1]}</b><br>lon %{lon:.3f}, lat %{lat:.3f}"
+                    "<br><i>click for validation summary</i><extra></extra>"
+                ),
             )
         )
 
     center = _center(bounds)
     fig.update_layout(
-        mapbox={
+        map={
             "style": MAP_STYLE,
             "center": center,
             "zoom": _zoom(bounds),
@@ -173,7 +209,39 @@ def build_map(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         showlegend=False,
-        uirevision=MAP_UIREVISION,
+        # Keyed on case_id (not a constant) so switching cases always
+        # re-centers on the new case's bounds. A constant uirevision here
+        # previously told Plotly "this is the same view as before" across
+        # case switches, so it kept whatever pan/zoom was left over from
+        # the last case instead of applying the new center/zoom at all —
+        # e.g. switching to NewSouthWales while still looking at wherever
+        # you'd panned to in Samoa kept showing Samoa's location.
+        uirevision=case_id or MAP_UIREVISION,
         dragmode="zoom",
+        updatemenus=[
+            {
+                "type": "buttons",
+                "direction": "left",
+                "x": 0.5,
+                "xanchor": "center",
+                "y": 0.99,
+                "yanchor": "top",
+                "showactive": True,
+                "pad": {"t": 4, "b": 4, "l": 8, "r": 8},
+                **BASEMAP_BUTTON_STYLE,
+                "buttons": [
+                    {
+                        "label": "Map",
+                        "method": "relayout",
+                        "args": [{"map.style": MAP_STYLE, "map.layers": []}],
+                    },
+                    {
+                        "label": "Satellite",
+                        "method": "relayout",
+                        "args": [{"map.style": "white-bg", "map.layers": [SATELLITE_LAYER]}],
+                    },
+                ],
+            }
+        ],
     )
     return fig

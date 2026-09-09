@@ -7,7 +7,6 @@
     --text: #e2e8f0;
     --muted: #94a3b8;
     --accent: #22d3ee;
-    --accent-warm: #fbbf24;
     --danger: #f87171;
     --header-h: 64px;
 }
@@ -143,14 +142,26 @@ body {
 }
 
 .controls-panel {
-    top: 1rem;
+    /* Not 1rem like the other panels — Plotly's built-in modebar (zoom/pan/
+       reset/download) sits in the map's own top-right corner and was
+       getting hidden behind this panel's top edge at that offset. */
+    top: 2.75rem;
     right: 1rem;
     width: min(260px, calc(100vw - 2rem));
     padding: 0.9rem 1rem;
 }
 
 .legend-panel {
-    bottom: 220px;
+    /* Stacked under .controls-panel (top:2.75rem + its ~110px height, now
+       just the use-case picker + a 1rem gap) rather than anchored to the
+       bottom — anchoring it near the bottom put it directly behind the
+       results drawer, which is taller and painted later in the DOM, so the
+       legend was invisible whenever the drawer was open. Re-tune this if
+       the controls panel grows or moves. Lower z-index than the other
+       glass panels so it never sits on top of the case-select dropdown's
+       open menu, which overlaps it at this position while open. */
+    top: 172px;
+    z-index: 5;
     right: 1rem;
     padding: 0.65rem 0.85rem;
     font-size: 0.8rem;
@@ -266,13 +277,6 @@ body {
     text-transform: uppercase;
 }
 
-.map-hint {
-    margin: 0.75rem 0 0;
-    font-size: 0.75rem;
-    color: var(--muted);
-    font-style: italic;
-}
-
 .legend-row {
     display: flex;
     align-items: center;
@@ -292,10 +296,6 @@ body {
     background: var(--accent);
 }
 
-.dot.selected {
-    background: var(--accent-warm);
-}
-
 .dot.buoy {
     background: var(--danger);
     clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
@@ -306,21 +306,6 @@ body {
     background: rgba(125, 211, 252, 0.15);
     border: 2px solid #7dd3fc;
     border-radius: 3px;
-}
-
-.dot.isobath-line {
-    background: transparent;
-    border: 2px solid #1f78b4;
-    border-radius: 0;
-    width: 12px;
-    height: 0;
-}
-
-.dot.site-isobath {
-    background: #38bdf8;
-    opacity: 0.55;
-    width: 7px;
-    height: 7px;
 }
 
 .dot.site-mesh {
@@ -361,71 +346,18 @@ body {
     min-height: 260px;
 }
 
+.chart-caption {
+    font-size: 0.78rem;
+    color: var(--muted);
+    margin-bottom: 0.6rem;
+    font-family: "DM Sans", system-ui, sans-serif;
+}
+
 .drawer-alert {
     margin: 0;
 }
 
-.gallery-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 1rem;
-}
-
-.gallery-item {
-    background: rgba(30, 41, 59, 0.6);
-    border: 1px solid var(--glass-border);
-    border-radius: 10px;
-    overflow: hidden;
-}
-
-.gallery-caption {
-    padding: 0.5rem 0.75rem;
-    font-size: 0.78rem;
-    color: var(--muted);
-    text-transform: capitalize;
-}
-
-.gallery-img-wrap {
-    position: relative;
-    cursor: zoom-in;
-    line-height: 0;
-}
-
-.gallery-img {
-    width: 100%;
-    display: block;
-    transition: filter 0.15s ease;
-}
-
-.gallery-expand-icon {
-    position: absolute;
-    top: 0.5rem;
-    right: 0.5rem;
-    width: 1.9rem;
-    height: 1.9rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 8px;
-    background: rgba(2, 6, 23, 0.65);
-    border: 1px solid var(--glass-border);
-    color: var(--text);
-    font-size: 1.05rem;
-    line-height: 1;
-    opacity: 0;
-    transition: opacity 0.15s ease;
-    pointer-events: none;
-}
-
-.gallery-img-wrap:hover .gallery-img {
-    filter: brightness(1.08);
-}
-
-.gallery-img-wrap:hover .gallery-expand-icon {
-    opacity: 1;
-}
-
-.gallery-modal .modal-content {
+.buoy-modal .modal-content {
     background: var(--glass);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
@@ -433,19 +365,20 @@ body {
     color: var(--text);
 }
 
-.gallery-modal .modal-header {
+.buoy-modal .modal-header {
     border-bottom: 1px solid var(--glass-border);
 }
 
-.gallery-modal .btn-close {
+.buoy-modal .btn-close {
     filter: invert(1) grayscale(1) brightness(1.6);
 }
 
-.gallery-modal-img {
+.buoy-modal-img {
     display: block;
     width: 100%;
     height: auto;
     border-radius: 6px;
+    background: #fff;
 }
 
 /* Dash dropdown dark theme */

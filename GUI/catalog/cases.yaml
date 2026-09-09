@@ -32,8 +32,10 @@ cases:
       aoi: done
       mesh: done
       goals: done
-      lhs: in_progress
-      fit: todo
+      lhs: done
+      fit: done
       whacs: done
-      hindcast: todo
-      buoy_validation: todo
+      hindcast: done
+      buoy_validation: done
+    metamodel:
+      mda_candidate: 450

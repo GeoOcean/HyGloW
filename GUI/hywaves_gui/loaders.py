@@ -255,11 +255,53 @@ def load_all_metrics(case: dict) -> pd.DataFrame:
     return out
 
 
-def list_figures(case: dict) -> list[Path]:
-    fig_dir = case_root(case) / "outputs" / "gui_figures"
+def load_metamodel_validation(case: dict) -> pd.DataFrame:
+    """Linear-summation-vs-dynamic metrics (``outputs/metamodel_validation/*.csv``).
+
+    Written by ``09_Validate_Linear_Summation.ipynb`` — one row per site
+    group and variable, domain-wide (no per-goal breakdown).
+    """
+    outputs = case_root(case) / "outputs" / "metamodel_validation"
+    frames = [pd.read_csv(path) for path in sorted(outputs.glob("*.csv"))]
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+
+def load_buoy_validation(case: dict) -> pd.DataFrame:
+    """Buoy validation summaries (``outputs/buoy_validation/*_summary_*.csv``).
+
+    Written by ``10a_Validate_Offshore_Buoys.ipynb`` / ``10b_Validate_Onshore_Buoys.ipynb``.
+    Adds a ``buoy_type`` column ("offshore"/"onshore") from each file's name
+    so both subsets can be shown together in one table.
+    """
+    outputs = case_root(case) / "outputs" / "buoy_validation"
+    frames = []
+    for path in sorted(outputs.glob("*_summary_*.csv")):
+        df = pd.read_csv(path)
+        df["buoy_type"] = path.name.split("_summary_")[0]
+        frames.append(df)
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+
+def available_buoy_figures(case: dict) -> set[str]:
+    """Site ids with a saved summary PNG (``outputs/buoy_validation/figures/<site>.png``).
+
+    Written by the ``val.plot_buoy_summary`` save cell in ``10a``/``10b``.
+    """
+    fig_dir = case_root(case) / "outputs" / "buoy_validation" / "figures"
     if not fig_dir.is_dir():
-        return []
-    return sorted(fig_dir.glob("fig*.png"))
+        return set()
+    return {p.stem for p in fig_dir.glob("*.png")}
+
+
+def case_mda_candidate(case: dict) -> int | None:
+    """Fixed MDA train size for the validation tabs, from the catalog's ``metamodel.mda_candidate``.
+
+    Falls back to ``None`` for cases that haven't pinned one yet (e.g. still
+    exploring several candidates) — callers should fall back to
+    :func:`production_mda` in that case.
+    """
+    value = case.get("metamodel", {}).get("mda_candidate")
+    return int(value) if value is not None else None
 
 
 def book_available(case: dict) -> bool:

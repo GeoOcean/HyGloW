@@ -2,16 +2,12 @@ import dash_bootstrap_components as dbc
 from dash import dcc, html
 
 from .loaders import (
-    list_figures,
-    load_aoi,
     load_case,
     load_case_config,
     load_catalog,
-    load_goals,
-    load_observations,
     offshore_names,
-    region_bounds,
 )
+from .colors import CONTOUR_COLORS, CONTOUR_DEFAULT
 
 
 def _author_links(authors: list[dict]) -> list:
@@ -89,34 +85,42 @@ def controls_panel(catalog: list[dict]) -> html.Div:
             html.Label("Use case", className="control-label"),
             dcc.Dropdown(
                 id="case-select",
-                options=[{"label": c["id"].title(), "value": c["id"]} for c in catalog],
+                options=[{"label": c.get("case_dir", c["id"]), "value": c["id"]} for c in catalog],
                 value=catalog[0]["id"],
                 clearable=False,
                 className="hywaves-dropdown",
             ),
-            html.Label("Goal", className="control-label"),
-            dcc.Dropdown(id="goal-select", clearable=False, className="hywaves-dropdown"),
-            html.Label("MDA train size", className="control-label"),
-            dcc.Dropdown(id="mda-select", clearable=False, className="hywaves-dropdown"),
-            html.P("Click a goal on the map to inspect it.", className="map-hint"),
         ],
         className="glass-panel controls-panel",
     )
 
 
-def legend_panel() -> html.Div:
-    return html.Div(
-        [
-            html.Div([html.Span(className="dot aoi"), " Area of interest"], className="legend-row"),
-            html.Div([html.Span(className="dot goal"), " Downscaling goals"], className="legend-row"),
-            html.Div([html.Span(className="dot selected"), " Selected goal"], className="legend-row"),
-            html.Div([html.Span(className="dot buoy"), " Wave observations"], className="legend-row"),
-            html.Div([html.Span(className="dot isobath-line"), " Isobath contours"], className="legend-row"),
-            html.Div([html.Span(className="dot site-isobath"), " Isobath output sites"], className="legend-row"),
-            html.Div([html.Span(className="dot site-mesh"), " Mesh output sites"], className="legend-row"),
-        ],
-        className="glass-panel legend-panel",
-    )
+def legend_rows(config: dict) -> list[html.Div]:
+    """Legend rows for the current case — isobath rows are colored to match their map dots/lines."""
+    rows = [
+        html.Div([html.Span(className="dot aoi"), " Area of interest"], className="legend-row"),
+        html.Div([html.Span(className="dot goal"), " Downscaling goals"], className="legend-row"),
+        html.Div([html.Span(className="dot buoy"), " Wave observations"], className="legend-row"),
+    ]
+    isobaths = config.get("simulations", {}).get("output_sites_config", {}).get("isobaths") or []
+    for spec in isobaths:
+        name = spec.get("name")
+        if not name:
+            continue
+        color = CONTOUR_COLORS.get(name, CONTOUR_DEFAULT)
+        rows.append(
+            html.Div(
+                [html.Span(className="dot", style={"background": color}), f" {name} isobath (contour & sites)"],
+                className="legend-row",
+            )
+        )
+    if config.get("simulations", {}).get("output_sites_config", {}).get("polygons"):
+        rows.append(html.Div([html.Span(className="dot site-mesh"), " Mesh output sites"], className="legend-row"))
+    return rows
+
+
+def legend_panel(config: dict) -> html.Div:
+    return html.Div(html.Div(legend_rows(config), id="legend-body"), className="glass-panel legend-panel")
 
 
 def results_drawer() -> html.Div:
@@ -125,12 +129,12 @@ def results_drawer() -> html.Div:
             html.Div(
                 dbc.Tabs(
                     [
-                        dbc.Tab(label="Validation", tab_id="tab-metrics"),
-                        dbc.Tab(label="MDA sweep", tab_id="tab-sweep"),
-                        dbc.Tab(label="Gallery", tab_id="tab-gallery"),
+                        dbc.Tab(label="Goals Validation", tab_id="tab-goals"),
+                        dbc.Tab(label="Metamodel Validation", tab_id="tab-metamodel"),
+                        dbc.Tab(label="Buoy Validation", tab_id="tab-buoys"),
                     ],
                     id="main-tabs",
-                    active_tab="tab-metrics",
+                    active_tab="tab-goals",
                     className="drawer-tabs",
                 ),
                 className="drawer-header",
@@ -141,17 +145,17 @@ def results_drawer() -> html.Div:
     )
 
 
-def gallery_modal() -> dbc.Modal:
+def buoy_modal() -> dbc.Modal:
     return dbc.Modal(
         [
-            dbc.ModalHeader(dbc.ModalTitle(id="gallery-modal-title"), close_button=True),
-            dbc.ModalBody(html.Img(id="gallery-modal-img", className="gallery-modal-img")),
+            dbc.ModalHeader(dbc.ModalTitle(id="buoy-modal-title"), close_button=True),
+            dbc.ModalBody(id="buoy-modal-body"),
         ],
-        id="gallery-modal",
+        id="buoy-modal",
         is_open=False,
         size="xl",
         centered=True,
-        className="gallery-modal",
+        className="buoy-modal",
     )
 
 
@@ -195,11 +199,6 @@ def build_layout() -> html.Div:
     catalog = load_catalog()
     case = load_case(catalog[0]["id"])
     config = load_case_config(case)
-    goals = load_goals(case, config)
-    observations = load_observations(case, config)
-    aoi = load_aoi(case, config)
-    bounds = region_bounds(case, config, goals, observations, aoi)
-    figures = list_figures(case)
 
     map_config = {
         "scrollZoom": True,
@@ -216,14 +215,12 @@ def build_layout() -> html.Div:
                     dcc.Graph(id="domain-map", className="basemap", config=map_config),
                     html.Div(case_panel(case, config), id="case-sidebar"),
                     controls_panel(catalog),
-                    legend_panel(),
+                    legend_panel(config),
                     results_drawer(),
                 ],
                 className="map-stage",
             ),
-            dcc.Store(id="figures-store", data=[p.name for p in figures]),
-            dcc.Store(id="region-store", data=bounds),
-            gallery_modal(),
+            buoy_modal(),
         ],
         className="app-shell",
     )

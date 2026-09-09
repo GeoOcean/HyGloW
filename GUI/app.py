@@ -18,10 +18,10 @@ register_callbacks(app)
 server = app.server
 
 
-@app.server.route("/case-figures/<case_id>/<path:filename>")
-def serve_figure(case_id: str, filename: str):
+@app.server.route("/buoy-figures/<case_id>/<path:filename>")
+def serve_buoy_figure(case_id: str, filename: str):
     case = load_case(case_id)
-    directory = case_root(case) / "outputs" / "gui_figures"
+    directory = case_root(case) / "outputs" / "buoy_validation" / "figures"
     return send_from_directory(directory, filename)
 
 
