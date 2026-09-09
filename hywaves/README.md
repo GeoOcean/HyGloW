@@ -56,8 +56,8 @@ No data is downloaded.
   only contract files (case JSON, goals, observations, metrics CSVs,
   figures). What a case does internally is its author's business.
 - **Community cases live in their authors' repos.** This repo hosts the
-  engine, the contract, the GUI, and two worked examples: Samoa (full
-  pipeline through validation) and NewSouthWales (mid-pipeline).
+  engine, the contract, the GUI, and two worked examples: Samoa and
+  NewSouthWales, both carried through goals/metamodel/buoy validation.
 
 ## For tooling authors
 

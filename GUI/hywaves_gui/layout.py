@@ -1,13 +1,13 @@
 import dash_bootstrap_components as dbc
 from dash import dcc, html
 
+from .colors import CONTOUR_COLORS, CONTOUR_DEFAULT
 from .loaders import (
     load_case,
     load_case_config,
     load_catalog,
     offshore_names,
 )
-from .colors import CONTOUR_COLORS, CONTOUR_DEFAULT
 
 
 def _author_links(authors: list[dict]) -> list:
@@ -64,7 +64,11 @@ def case_panel(case: dict, config: dict) -> html.Div:
                     html.Dt("Offshore forcing"),
                     html.Dd(", ".join(offshore_names(config)) or "—"),
                     html.Dt("Repository"),
-                    html.Dd(html.A("HyGloW on GitHub", href=case["repository"], target="_blank")),
+                    html.Dd(
+                        html.A(
+                            "HyGloW on GitHub", href=case["repository"], target="_blank"
+                        )
+                    ),
                     html.Dt("Last update"),
                     html.Dd(case.get("updated", "—")),
                 ],
@@ -85,7 +89,10 @@ def controls_panel(catalog: list[dict]) -> html.Div:
             html.Label("Use case", className="control-label"),
             dcc.Dropdown(
                 id="case-select",
-                options=[{"label": c.get("case_dir", c["id"]), "value": c["id"]} for c in catalog],
+                options=[
+                    {"label": c.get("case_dir", c["id"]), "value": c["id"]}
+                    for c in catalog
+                ],
                 value=catalog[0]["id"],
                 clearable=False,
                 className="hywaves-dropdown",
@@ -98,11 +105,23 @@ def controls_panel(catalog: list[dict]) -> html.Div:
 def legend_rows(config: dict) -> list[html.Div]:
     """Legend rows for the current case — isobath rows are colored to match their map dots/lines."""
     rows = [
-        html.Div([html.Span(className="dot aoi"), " Area of interest"], className="legend-row"),
-        html.Div([html.Span(className="dot goal"), " Downscaling goals"], className="legend-row"),
-        html.Div([html.Span(className="dot buoy"), " Wave observations"], className="legend-row"),
+        html.Div(
+            [html.Span(className="dot aoi"), " Area of interest"],
+            className="legend-row",
+        ),
+        html.Div(
+            [html.Span(className="dot goal"), " Downscaling goals"],
+            className="legend-row",
+        ),
+        html.Div(
+            [html.Span(className="dot buoy"), " Wave observations"],
+            className="legend-row",
+        ),
     ]
-    isobaths = config.get("simulations", {}).get("output_sites_config", {}).get("isobaths") or []
+    isobaths = (
+        config.get("simulations", {}).get("output_sites_config", {}).get("isobaths")
+        or []
+    )
     for spec in isobaths:
         name = spec.get("name")
         if not name:
@@ -110,17 +129,28 @@ def legend_rows(config: dict) -> list[html.Div]:
         color = CONTOUR_COLORS.get(name, CONTOUR_DEFAULT)
         rows.append(
             html.Div(
-                [html.Span(className="dot", style={"background": color}), f" {name} isobath (contour & sites)"],
+                [
+                    html.Span(className="dot", style={"background": color}),
+                    f" {name} isobath (contour & sites)",
+                ],
                 className="legend-row",
             )
         )
     if config.get("simulations", {}).get("output_sites_config", {}).get("polygons"):
-        rows.append(html.Div([html.Span(className="dot site-mesh"), " Mesh output sites"], className="legend-row"))
+        rows.append(
+            html.Div(
+                [html.Span(className="dot site-mesh"), " Mesh output sites"],
+                className="legend-row",
+            )
+        )
     return rows
 
 
 def legend_panel(config: dict) -> html.Div:
-    return html.Div(html.Div(legend_rows(config), id="legend-body"), className="glass-panel legend-panel")
+    return html.Div(
+        html.Div(legend_rows(config), id="legend-body"),
+        className="glass-panel legend-panel",
+    )
 
 
 def results_drawer() -> html.Div:
@@ -129,12 +159,12 @@ def results_drawer() -> html.Div:
             html.Div(
                 dbc.Tabs(
                     [
-                        dbc.Tab(label="Goals Validation", tab_id="tab-goals"),
                         dbc.Tab(label="Metamodel Validation", tab_id="tab-metamodel"),
                         dbc.Tab(label="Buoy Validation", tab_id="tab-buoys"),
+                        dbc.Tab(label="Goals Validation", tab_id="tab-goals"),
                     ],
                     id="main-tabs",
-                    active_tab="tab-goals",
+                    active_tab="tab-metamodel",
                     className="drawer-tabs",
                 ),
                 className="drawer-header",
@@ -183,7 +213,12 @@ def header() -> html.Div:
                             rel="noopener",
                             className="header-link header-link-book",
                         ),
-                        html.A("GitHub", href="https://github.com/tausiaj/HyGloW", target="_blank", className="header-link"),
+                        html.A(
+                            "GitHub",
+                            href="https://github.com/tausiaj/HyGloW",
+                            target="_blank",
+                            className="header-link",
+                        ),
                         html.Span("GeoOcean", className="header-tag"),
                     ],
                     className="header-actions",

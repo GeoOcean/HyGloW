@@ -79,9 +79,25 @@ goal, mda_candidate, group, variable, n, bias, rmse, r2
 
 At publish, at least one metrics file must exist.
 
-### 5. Portal figures (optional)
+### 5. Further validation outputs (optional)
 
-`outputs/gui_figures/fig*.png` — showcase figures for the portal gallery.
+Beyond the per-goal holdout metrics in §4, the reference GUI reads two more
+optional, similarly-shaped outputs — a case without them still validates and
+publishes, that tab in the portal just shows a "run this notebook" message:
+
+- `outputs/metamodel_validation/*.csv` — domain-wide linear-summation-vs-dynamic
+  comparison (no `goal` column; one reconstructed period per file). Same
+  required columns as §4 minus `goal`, plus `period`.
+- `outputs/buoy_validation/*_summary_*.csv` — buoy-vs-model comparison, one
+  row per `(buoy, model, variable)`; same columns as §4 plus `model` and
+  `period`, with `group` naming the buoy. A matching
+  `outputs/buoy_validation/figures/<site>.png` (one combined scatter +
+  time-series image per buoy) is shown when a viewer clicks that buoy's
+  marker on the map.
+
+`outputs/gui_figures/fig*.png` — case showcase figures. Not currently
+rendered by the reference GUI (its Gallery tab was retired); still valid to
+produce for a case's own Jupyter Book report or other consumers.
 
 ---
 
@@ -110,4 +126,9 @@ not importable — the validator itself never requires third-party packages.
 
 Every change to this document is recorded here.
 
+- **2026-09**: documented `outputs/metamodel_validation/` and
+  `outputs/buoy_validation/` (§5, optional) — feed the reference GUI's
+  Metamodel/Buoy Validation tabs and per-buoy map popups. Noted
+  `outputs/gui_figures/` is no longer rendered there (its Gallery tab was
+  retired in favor of these three validation tabs).
 - **2026-07**: initial contract, extracted from the Samoa reference case.

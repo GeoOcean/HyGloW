@@ -46,6 +46,34 @@ Checked with `python -m hywaves validate NewSouthWales/` (run from the repo root
 | Nearshore buoy validation (10b) | ✅ done — 18 of the 28 nearshore buoys with usable coverage, 2013 & 2017–2023, bulk + spectral |
 | Spectral shape validation (11) | ✅ done — buoy vs bulk-reconstruction vs spectral-reconstruction, same 3 offshore buoys, 2001–2011 |
 
+Notebooks 06, 09, and 10a/10b end with a save cell (`outputs/goal_*/validation_metrics.csv`,
+`outputs/metamodel_validation/*.csv`, `outputs/buoy_validation/*_summary_*.csv` +
+`.../figures/<site>.png`) — the contract files the [GUI](../GUI/README.md)'s
+Goals/Metamodel/Buoy Validation tabs and per-buoy map popups read directly.
+`catalog/cases.yaml` pins this case's production MDA size at 450
+(`metamodel.mda_candidate`) so all three tabs read a consistent train size.
+
+There's also `09_extra_Reconstruction_Timing.ipynb` — not part of the
+numbered pipeline, just a quick wall-clock benchmark for demoing how fast
+inference is once a case is fitted: bulk vs. spectral metamodel, one buoy's
+output site, **all 26 active goals** (the real production path — restricting
+to just the buoy's closest goal, as a first pass at this notebook did, is an
+easier but different computation, not this one). Fresh compute
+(`use_cache=False`), one representative year measured directly and
+extrapolated to the full ~45-year WHACS record (fair — cost scales with
+timesteps processed, not which ones):
+
+| Model | 1-year sample | Extrapolated (~45 years) | Per timestep |
+| --- | --- | --- | --- |
+| Bulk metamodel | 5.8 min | 262.2 min (~4.4 h) | 39.89 ms |
+| Spectral metamodel | 15.1 min | 680.5 min (~11.3 h) | 103.50 ms |
+| **Total** | **20.9 min** | **943 min (~15.7 h)** | — |
+
+That's the real production cost — reconstructing the entire WHACS record for
+one site, but every one of the 26 goals along the way, not just the one that
+happens to cover that site (see "Reconstructing at scale" below for why that
+distinction is roughly a 20x difference, not a rounding error).
+
 Full pipeline has been run end-to-end. Built SnapWave case folders
 (`SnapWave_CASES_Metamodel`, `SnapWave_CASES_Dynamic`) live outside the repo
 at the path set in `NewSouthWales.json` → `simulations.metamodel_cases` /
@@ -68,6 +96,39 @@ across a process pool, each worker capped to a fair share of both memory
 and CPU threads so N workers don't oversubscribe the host. Pick `N` with
 some cores left over for everything else running on the machine — e.g.
 `workers=os.cpu_count() // 2`.
+
+**GP inference itself is capped by GPU memory, not compute.** `reconstruct()`
+batches consecutive months into as few GP prediction calls as possible — one
+call is much cheaper than several, since each call pays a large fixed
+overhead regardless of how many months it covers. The cap
+(`RECONSTRUCT_GPU_BATCH_MONTHS_CAP` in `metamodel.py`) is a hard VRAM ceiling
+on this machine's 6 GiB GPU, not a compute-speed one — it doesn't shrink just
+because the GPU is fast, only with more VRAM. Re-measured directly on GPU
+with **all 26 active goals** (the case that actually matters — an earlier
+pass here only tested 1-2 goals, which turned out to have much more VRAM
+headroom than the real workload): bulk tolerates at least 8 months/call
+(18.9 s/month), but spectral (4x bulk's partition data per call) is the
+binding constraint — clean at 4 months/call (73.3 s/month), thrashing near
+the OOM edge at 6 (>300s for what should be a ~2 min call), outright CUDA OOM
+at 8. **4 is now the default** — the largest value safe for both modes in one
+call, and a real ~1.2-1.5x speedup over the old default of 3 for both. A GPU
+with meaningfully more VRAM would let this rise further — spectral-at-26-goals
+is specifically what to re-test on better hardware, not bulk (which already
+has headroom to spare).
+
+**Goal count is close to a direct multiplier, too — restrict `goals=` to
+what you actually need.** `reconstruct()` loops goals one at a time (loads
+that goal's GP, predicts, moves on) — no sharing of work across goals, so
+cost scales with how many are requested, not flat. Measured on a single
+month: 1 goal 6.4s, 2 goals 9.8s, 4 goals 20.4s — roughly linear (not exactly,
+there's a small fixed cost per call on top, so 4 goals is ~3.2x 1 goal's
+time, not 4x). A validation reconstruction that only needs one buoy's answer
+is genuinely cheaper restricted to that buoy's closest goal (see
+`val.closest_goals_table`) than reconstructed across all 26 — that's not an
+approximation of cost, it's a smaller real computation. `09_extra` (see
+"Status" above) intentionally uses all 26 anyway, because it's benchmarking
+the production path (notebook 09's domain-wide reconstruction), not one
+buoy's own validation.
 
 **Only pass `save_spectra=True` when you actually need the full spectra.**
 The case JSON defaults it to `true` (for notebook 11), but a full `(time,

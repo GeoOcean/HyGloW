@@ -43,6 +43,13 @@ Run notebooks with `__CASE_NAME__/` as the working directory.
    | 11    | `11_Validate_Spectra.ipynb`                    | Buoy vs reconstructed spectra  |
    | 12    | `12_Final_Plots.ipynb`                         | Showcase figures for the GUI   |
 
+   Notebooks 06, 09, and 10a/10b each end with a save cell that writes to
+   `outputs/` in the shape the GUI's Goals/Metamodel/Buoy Validation tabs
+   expect (see `GUI/README.md`) — run them (in order) before checking a case
+   in the portal. 10a/10b also save one combined scatter+time-series PNG per
+   buoy (`outputs/buoy_validation/figures/<site>.png`), shown in the GUI when
+   you click that buoy's star on the map.
+
 4. **Check your progress against the case contract** (this is also the
    publish gate — the portal only ever reads contract files):
 

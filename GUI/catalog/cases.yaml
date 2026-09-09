@@ -27,7 +27,7 @@ cases:
         github: https://github.com/tausiaj
         role: downscaling & metamodel
     repository: https://github.com/tausiaj/HyGloW
-    updated: "2026-08-04"
+    updated: "2026-09-09"
     pipeline:
       aoi: done
       mesh: done
