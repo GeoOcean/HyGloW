@@ -15,6 +15,7 @@ from .colors import (
     GOAL_COLOR,
     MESH_SITE_COLOR,
 )
+from .world_regions import WORLD_REGIONS
 
 MAP_STYLE = "open-street-map"
 # No Mapbox token available, so Plotly's token-free named styles (used for
@@ -32,6 +33,39 @@ SATELLITE_LAYER = {
 
 # Fallback only — build_map is always called with case_id in practice.
 MAP_UIREVISION = "hywaves-map-v1"
+
+COASTLINE_COLOR = "#334155"
+DEPTH200_COLOR = "#facc15"
+BUFFER_COLOR = "#fb923c"
+SANDBOX_UIREVISION = "hywaves-sandbox-v1"
+
+# Sandbox reference layers on by default — the rest (dense depth/buffer
+# datasets) are opt-in via the sandbox panel's checklist. WHACS hindcast
+# coverage isn't offered at all for now — see catalog/build_sandbox_layers.py.
+DEFAULT_SANDBOX_LAYERS = {"continents", "coastline"}
+
+SANDBOX_LAYER_LABELS = {
+    "continents": "Continents",
+    "coastline": "Coastline",
+    "depth200": "200m isobath (global)",
+    "buffer_fill": "50km coastal buffer (fill)",
+    "buffer_line": "50km / 200m boundary (line)",
+}
+
+CASE_MAP_CONFIG = {
+    "scrollZoom": True,
+    "displayModeBar": True,
+    "modeBarButtonsToRemove": ["toImage", "lasso2d", "select2d"],
+    "displaylogo": False,
+}
+
+SANDBOX_MAP_CONFIG = {
+    "scrollZoom": True,
+    "displayModeBar": True,
+    "modeBarButtonsToRemove": ["toImage", "lasso2d", "select2d"],
+    "modeBarButtonsToAdd": ["drawrect", "drawclosedpath", "eraseshape"],
+    "displaylogo": False,
+}
 
 
 def _center(bounds: dict[str, list[float]]) -> dict[str, float]:
@@ -51,6 +85,32 @@ def _zoom(bounds: dict[str, list[float]]) -> float:
     if span > 5:
         return 6
     return 7.5
+
+
+def _basemap_toggle_menu() -> dict:
+    return {
+        "type": "buttons",
+        "direction": "left",
+        "x": 0.5,
+        "xanchor": "center",
+        "y": 0.99,
+        "yanchor": "top",
+        "showactive": True,
+        "pad": {"t": 4, "b": 4, "l": 8, "r": 8},
+        **BASEMAP_BUTTON_STYLE,
+        "buttons": [
+            {
+                "label": "Map",
+                "method": "relayout",
+                "args": [{"map.style": MAP_STYLE, "map.layers": []}],
+            },
+            {
+                "label": "Satellite",
+                "method": "relayout",
+                "args": [{"map.style": "white-bg", "map.layers": [SATELLITE_LAYER]}],
+            },
+        ],
+    }
 
 
 def build_map(
@@ -217,31 +277,160 @@ def build_map(
         # e.g. switching to NewSouthWales while still looking at wherever
         # you'd panned to in Samoa kept showing Samoa's location.
         uirevision=case_id or MAP_UIREVISION,
-        dragmode="zoom",
-        updatemenus=[
-            {
-                "type": "buttons",
-                "direction": "left",
-                "x": 0.5,
-                "xanchor": "center",
-                "y": 0.99,
-                "yanchor": "top",
-                "showactive": True,
-                "pad": {"t": 4, "b": 4, "l": 8, "r": 8},
-                **BASEMAP_BUTTON_STYLE,
-                "buttons": [
-                    {
-                        "label": "Map",
-                        "method": "relayout",
-                        "args": [{"map.style": MAP_STYLE, "map.layers": []}],
-                    },
-                    {
-                        "label": "Satellite",
-                        "method": "relayout",
-                        "args": [{"map.style": "white-bg", "map.layers": [SATELLITE_LAYER]}],
-                    },
-                ],
-            }
-        ],
+        dragmode="pan",
+        updatemenus=[_basemap_toggle_menu()],
     )
     return fig
+
+
+HOME_UIREVISION = "hywaves-home-v1"
+
+
+def build_home_map(coastline: list[list[tuple[float, float]]]) -> go.Figure:
+    """Neutral (0,0) world view shown before any case has actually been
+    chosen — see callbacks.update_map. Kept separate from build_sandbox_map:
+    no draw tools, no reference-layer checklist, just a quiet backdrop.
+    """
+    fig = go.Figure()
+    if coastline:
+        fig.add_trace(_multiline_trace("Coastline", coastline, COASTLINE_COLOR))
+
+    fig.update_layout(
+        map={"style": MAP_STYLE, "center": {"lat": 0, "lon": 0}, "zoom": 0.7},
+        margin={"l": 0, "r": 0, "t": 0, "b": 0},
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
+        uirevision=HOME_UIREVISION,
+        dragmode="pan",
+        updatemenus=[_basemap_toggle_menu()],
+    )
+    return fig
+
+
+def _hex_to_rgba(hex_color: str, alpha: float) -> str:
+    r, g, b = (int(hex_color[i : i + 2], 16) for i in (1, 3, 5))
+    return f"rgba({r},{g},{b},{alpha})"
+
+
+def _multiline_trace(name: str, segments, color: str, width: float = 1) -> go.Scattermap:
+    lon: list[float | None] = []
+    lat: list[float | None] = []
+    for seg in segments:
+        lon += [p[0] for p in seg] + [None]
+        lat += [p[1] for p in seg] + [None]
+    return go.Scattermap(
+        lon=lon,
+        lat=lat,
+        mode="lines",
+        name=name,
+        line={"color": color, "width": width},
+        hoverinfo="skip",
+    )
+
+
+def _ring_fill_trace(name: str, rings, color: str, *, fill_alpha: float, line_width: float) -> go.Scattermap:
+    lon: list[float | None] = []
+    lat: list[float | None] = []
+    for ring in rings:
+        lon += [p[0] for p in ring] + [ring[0][0], None]
+        lat += [p[1] for p in ring] + [ring[0][1], None]
+    return go.Scattermap(
+        lon=lon,
+        lat=lat,
+        mode="lines",
+        name=name,
+        fill="toself",
+        fillcolor=_hex_to_rgba(color, fill_alpha),
+        line={"color": color, "width": line_width},
+        hoverinfo="skip",
+    )
+
+
+def build_sandbox_map(
+    coastline: list[list[tuple[float, float]]],
+    *,
+    depth200: list[list[tuple[float, float]]] | None = None,
+    buffer_fill: list[list[tuple[float, float]]] | None = None,
+    buffer_line: list[list[tuple[float, float]]] | None = None,
+    visible_layers: set[str] | None = None,
+) -> tuple[go.Figure, dict[str, list[int]]]:
+    """World view for sandbox mode — hand-drawn continent blocks plus a set of
+    opt-in reference layers (global 200m isobath, 50km coastal buffer), each
+    independently toggleable without disturbing any AoI already drawn on the
+    map (see callbacks.toggle_sandbox_layers).
+
+    Returns the figure AND a ``{layer_key: [trace_index, ...]}`` map — the
+    single source of truth both this function and that callback use to agree
+    on which traces belong to which toggle, since a reference layer with no
+    data (its ``catalog/build_sandbox_layers.py`` step never run) is simply
+    omitted rather than added empty, which would otherwise shift indices.
+
+    The AoI shape itself is drawn client-side (Plotly's ``drawrect``/
+    ``drawclosedpath`` modebar tools, wired up in callbacks.py) rather than
+    as a trace here.
+    """
+    visible_layers = DEFAULT_SANDBOX_LAYERS if visible_layers is None else visible_layers
+    fig = go.Figure()
+    layer_indices: dict[str, list[int]] = {}
+
+    def _add(key: str, trace: go.Scattermap) -> None:
+        trace.visible = key in visible_layers
+        layer_indices.setdefault(key, []).append(len(fig.data))
+        fig.add_trace(trace)
+
+    for region in WORLD_REGIONS:
+        for ring in region["rings"]:
+            lon = [p[0] for p in ring] + [ring[0][0]]
+            lat = [p[1] for p in ring] + [ring[0][1]]
+            _add(
+                "continents",
+                go.Scattermap(
+                    lon=lon,
+                    lat=lat,
+                    mode="lines",
+                    name=region["name"],
+                    fill="toself",
+                    fillcolor=_hex_to_rgba(region["color"], 0.28),
+                    line={"color": region["color"], "width": 1},
+                    hoverinfo="skip",
+                ),
+            )
+
+    if coastline:
+        _add("coastline", _multiline_trace("Coastline", coastline, COASTLINE_COLOR))
+
+    if depth200:
+        _add(
+            "depth200",
+            _multiline_trace(SANDBOX_LAYER_LABELS["depth200"], depth200, DEPTH200_COLOR),
+        )
+
+    if buffer_fill:
+        _add(
+            "buffer_fill",
+            _ring_fill_trace(
+                SANDBOX_LAYER_LABELS["buffer_fill"], buffer_fill, BUFFER_COLOR, fill_alpha=0.22, line_width=0.5
+            ),
+        )
+
+    if buffer_line:
+        _add(
+            "buffer_line",
+            _multiline_trace(SANDBOX_LAYER_LABELS["buffer_line"], buffer_line, BUFFER_COLOR, width=1.5),
+        )
+
+    fig.update_layout(
+        map={"style": MAP_STYLE, "center": {"lat": 0, "lon": 0}, "zoom": 0.7},
+        margin={"l": 0, "r": 0, "t": 0, "b": 0},
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
+        uirevision=SANDBOX_UIREVISION,
+        # Pan by default — drawing is opt-in via the rectangle/freeform
+        # modebar buttons (added in SANDBOX_MAP_CONFIG below), so exploring
+        # the map doesn't accidentally drop a shape on every drag.
+        dragmode="pan",
+        newshape={"line": {"color": GOAL_COLOR, "width": 2.5}, "fillcolor": AOI_FILL},
+    )
+    return fig, layer_indices

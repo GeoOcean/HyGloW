@@ -21,6 +21,48 @@ def load_case(case_id: str) -> dict:
     raise KeyError(f"Unknown case: {case_id}")
 
 
+def catalog_by_continent(catalog: list[dict]) -> dict[str, list[dict]]:
+    """Catalog cases grouped by ``continent`` (catalog order preserved within each group)."""
+    groups: dict[str, list[dict]] = {}
+    for case in catalog:
+        groups.setdefault(case.get("continent", "Other"), []).append(case)
+    return groups
+
+
+def _load_sandbox_layer(filename: str) -> list:
+    """A pre-simplified static sandbox-mode reference layer from ``catalog/``.
+
+    Every one of these is derived offline from the full QGIS/HyWorld source
+    data (too heavy to ship as-is) by ``catalog/build_sandbox_layers.py``.
+    Returns ``[]`` if that step was never run for this file — the sandbox
+    map still works, just without that particular reference layer.
+    """
+    path = CATALOG_PATH.parent / filename
+    if not path.is_file():
+        return []
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_world_coastline() -> list[list[tuple[float, float]]]:
+    """Coarse world coastline rings for the sandbox-mode world view."""
+    return _load_sandbox_layer("world_coastline.json")
+
+
+def load_depth200_world() -> list[list[tuple[float, float]]]:
+    """Simplified global 200m isobath line segments."""
+    return _load_sandbox_layer("depth200_world.json")
+
+
+def load_coastal_buffer_fill() -> list[list[tuple[float, float]]]:
+    """Simplified 50km-from-coast buffer polygon rings."""
+    return _load_sandbox_layer("coastal_buffer_fill.json")
+
+
+def load_coastal_buffer_line() -> list[list[tuple[float, float]]]:
+    """Simplified 50km-or-200m boundary line segments."""
+    return _load_sandbox_layer("coastal_buffer_line.json")
+
+
 def find_case_config(case: dict) -> Path:
     """Locate ``{Case}/{Case}.json`` (case-insensitive fallback)."""
     root = case_root(case)

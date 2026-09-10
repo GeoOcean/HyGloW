@@ -1,9 +1,14 @@
+import io
+import json
+import zipfile
+
 import plotly.express as px
-from dash import Input, Output, State, dcc, html, no_update
+import shapefile
+from dash import ALL, ClientsideFunction, Input, Output, Patch, State, ctx, dcc, html, no_update
 import dash_bootstrap_components as dbc
 
 from .colors import CHART_LAYOUT, CHART_TEMPLATE, CONTOUR_COLORS, MODEL_COLORS
-from .layout import case_panel, legend_rows
+from .layout import _case_grid, _continent_grid, case_panel, legend_rows
 from .loaders import (
     available_buoy_figures,
     book_available,
@@ -13,16 +18,34 @@ from .loaders import (
     load_buoy_validation,
     load_case,
     load_case_config,
+    load_catalog,
+    load_coastal_buffer_fill,
+    load_coastal_buffer_line,
+    load_depth200_world,
     load_goals,
     load_isobaths,
     load_metamodel_validation,
     load_observations,
     load_output_sites,
+    load_world_coastline,
     mda_candidates,
     production_mda,
     region_bounds,
 )
-from .map_figure import build_map
+from .map_figure import (
+    CASE_MAP_CONFIG,
+    SANDBOX_MAP_CONFIG,
+    build_home_map,
+    build_map,
+    build_sandbox_map,
+)
+
+# WGS84 .prj sidecar for exported AoI shapefiles — same CRS every case's own
+# AoI_Polygons shapefiles already use.
+WGS84_PRJ = (
+    'GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137,298.257223563]],'
+    'PRIMEM["Greenwich",0],UNIT["Degree",0.017453292519943295]]'
+)
 
 VARIABLE_ORDER = ["Hs", "Tp", "Dir", "Spr"]
 MODEL_ORDER = ["Bulk metamodel", "Spectral metamodel", "WHACS (closest goal)"]
@@ -210,6 +233,34 @@ def _render_buoy_validation(case: dict):
     return html.Div(sections, className="drawer-charts")
 
 
+def _ensure_clockwise(ring: list[list[float]]) -> list[list[float]]:
+    """Shapefile polygon exterior rings must wind clockwise; a hand-drawn ring may not."""
+    signed_area2 = sum(
+        ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1] for i in range(len(ring) - 1)
+    )
+    return ring if signed_area2 < 0 else list(reversed(ring))
+
+
+def _build_aoi_shapefile_zip(ring: list[list[float]], name: str) -> bytes:
+    """A sandbox-drawn AoI ring as a zipped shapefile, matching the aoi_file
+    format every HyGloW case already uses (see loaders.load_aoi)."""
+    ring = _ensure_clockwise(ring)
+    shp_io, shx_io, dbf_io = io.BytesIO(), io.BytesIO(), io.BytesIO()
+    writer = shapefile.Writer(shp=shp_io, shx=shx_io, dbf=dbf_io, shapeType=shapefile.POLYGON)
+    writer.field("name", "C")
+    writer.poly([ring])
+    writer.record(name)
+    writer.close()
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(f"{name}_AoI.shp", shp_io.getvalue())
+        zf.writestr(f"{name}_AoI.shx", shx_io.getvalue())
+        zf.writestr(f"{name}_AoI.dbf", dbf_io.getvalue())
+        zf.writestr(f"{name}_AoI.prj", WGS84_PRJ)
+    return buf.getvalue()
+
+
 def register_callbacks(app):
     @app.callback(
         Output("book-link", "href"),
@@ -234,10 +285,34 @@ def register_callbacks(app):
         return case_panel(case, config), legend_rows(config)
 
     @app.callback(
-        Output("domain-map", "figure"),
+        Output("domain-map", "figure", allow_duplicate=True),
+        Output("domain-map", "config"),
+        Output("sandbox-layer-index-map", "data"),
         Input("case-select", "value"),
+        Input("app-mode", "data"),
+        State("sandbox-layers", "value"),
+        prevent_initial_call="initial_duplicate",
     )
-    def update_map(case_id):
+    def update_map(case_id, mode, sandbox_layers):
+        # The automatic page-load firing of this callback (before any real
+        # case-select/app-mode interaction) has ctx.triggered_id None — show
+        # a neutral (0,0) world view then, rather than jumping straight to
+        # whichever case happens to be catalog[0]. Explicitly picking that
+        # same case afterward (e.g. from the landing modal) is a real
+        # trigger and properly re-centers on it as usual.
+        if ctx.triggered_id is None and mode == "case":
+            return build_home_map(load_world_coastline()), CASE_MAP_CONFIG, no_update
+
+        if mode == "sandbox":
+            fig, layer_indices = build_sandbox_map(
+                load_world_coastline(),
+                depth200=load_depth200_world(),
+                buffer_fill=load_coastal_buffer_fill(),
+                buffer_line=load_coastal_buffer_line(),
+                visible_layers=set(sandbox_layers or []),
+            )
+            return fig, SANDBOX_MAP_CONFIG, layer_indices
+
         case = load_case(case_id)
         config = load_case_config(case)
         goals = load_goals(case, config)
@@ -246,7 +321,7 @@ def register_callbacks(app):
         isobaths = load_isobaths(case, config)
         output_sites = load_output_sites(case, config)
         bounds = region_bounds(case, config, goals, buoys, aoi)
-        return build_map(
+        fig = build_map(
             goals,
             buoys,
             bounds,
@@ -255,6 +330,23 @@ def register_callbacks(app):
             isobaths=isobaths,
             output_sites=output_sites,
         )
+        return fig, CASE_MAP_CONFIG, no_update
+
+    @app.callback(
+        Output("domain-map", "figure", allow_duplicate=True),
+        Input("sandbox-layers", "value"),
+        State("sandbox-layer-index-map", "data"),
+        prevent_initial_call=True,
+    )
+    def toggle_sandbox_layers(active_keys, layer_indices):
+        if not layer_indices:
+            return no_update
+        active = set(active_keys or [])
+        patch = Patch()
+        for key, indices in layer_indices.items():
+            for i in indices:
+                patch["data"][i]["visible"] = key in active
+        return patch
 
     @app.callback(
         Output("tab-content", "children"),
@@ -300,3 +392,143 @@ def register_callbacks(app):
         else:
             body = html.Img(src=f"/buoy-figures/{case_id}/{site_id}.png", className="buoy-modal-img")
         return True, name, body
+
+    @app.callback(
+        Output("landing-modal-body", "children"),
+        Input({"type": "landing-continent-btn", "continent": ALL}, "n_clicks"),
+        Input({"type": "landing-back-btn", "index": ALL}, "n_clicks"),
+        Input("browse-cases-btn", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def switch_landing_view(_continent_clicks, _back_clicks, _browse_clicks):
+        # Pattern-matching ALL inputs also fire when a matching component is
+        # freshly mounted (n_clicks=0) rather than actually clicked — e.g. the
+        # case grid's back-button appearing when this callback renders it. Act
+        # only on a real click (nonzero value); ignore mount-only triggers.
+        fired = [t for t in ctx.triggered if t["value"]]
+        if not fired:
+            return no_update
+        catalog = load_catalog()
+        prop_id = fired[0]["prop_id"].rsplit(".", 1)[0]
+        parsed = json.loads(prop_id) if prop_id.startswith("{") else prop_id
+        if isinstance(parsed, dict) and parsed.get("type") == "landing-continent-btn":
+            return _case_grid(catalog, parsed["continent"])
+        # "Back" or reopening via the header button both reset to the top-level view.
+        return _continent_grid(catalog)
+
+    @app.callback(
+        Output("landing-modal", "is_open"),
+        Output("case-select", "value"),
+        Output("case-confirmed", "data"),
+        Input("browse-cases-btn", "n_clicks"),
+        Input({"type": "start-sandbox-btn", "index": ALL}, "n_clicks"),
+        Input({"type": "landing-case-btn", "case": ALL}, "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def toggle_landing_modal(_browse_clicks, _start_clicks, _case_clicks):
+        # Same mount-vs-click caveat as switch_landing_view above: only react
+        # to a genuine click, or every case card populated into the grid
+        # would auto-"select" itself (n_clicks=0) the instant it is rendered.
+        fired = [t for t in ctx.triggered if t["value"]]
+        if not fired:
+            return no_update, no_update, no_update
+        prop_id = fired[0]["prop_id"].rsplit(".", 1)[0]
+        if prop_id == "browse-cases-btn":
+            return True, no_update, no_update
+        parsed = json.loads(prop_id) if prop_id.startswith("{") else prop_id
+        if isinstance(parsed, dict) and parsed.get("type") == "start-sandbox-btn":
+            return False, no_update, no_update
+        if isinstance(parsed, dict) and parsed.get("type") == "landing-case-btn":
+            # Picking a case here is what un-hides the case-specific panels
+            # (see toggle_mode_panels) — set directly rather than relying on
+            # case-select's value actually changing, which won't fire if the
+            # chosen case happens to match the dropdown's current default.
+            return False, parsed["case"], True
+        return no_update, no_update, no_update
+
+    @app.callback(
+        Output("case-confirmed", "data", allow_duplicate=True),
+        Input("case-select", "value"),
+        prevent_initial_call=True,
+    )
+    def confirm_case_from_dropdown(_value):
+        # Covers picking a case directly from the controls-panel dropdown
+        # (once it's visible) rather than the landing modal.
+        return True
+
+    @app.callback(
+        Output("app-mode", "data"),
+        Input({"type": "start-sandbox-btn", "index": ALL}, "n_clicks"),
+        Input("exit-sandbox-btn", "n_clicks"),
+        Input({"type": "landing-case-btn", "case": ALL}, "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def set_app_mode(_start_clicks, _exit_clicks, _case_clicks):
+        fired = [t for t in ctx.triggered if t["value"]]
+        if not fired:
+            return no_update
+        prop_id = fired[0]["prop_id"].rsplit(".", 1)[0]
+        if prop_id == "exit-sandbox-btn":
+            return "case"
+        parsed = json.loads(prop_id) if prop_id.startswith("{") else prop_id
+        if isinstance(parsed, dict) and parsed.get("type") == "start-sandbox-btn":
+            return "sandbox"
+        if isinstance(parsed, dict) and parsed.get("type") == "landing-case-btn":
+            return "case"
+        return no_update
+
+    @app.callback(
+        Output("case-sidebar", "style"),
+        Output("controls-panel", "style"),
+        Output("legend-panel", "style"),
+        Output("results-drawer", "style"),
+        Output("sandbox-panel", "style"),
+        Output("browse-cases-btn", "disabled"),
+        Output("browse-cases-btn", "title"),
+        Input("app-mode", "data"),
+        Input("case-confirmed", "data"),
+    )
+    def toggle_mode_panels(mode, confirmed):
+        hidden = {"display": "none"}
+        if mode == "sandbox":
+            # Reopening the landing modal over the sandbox map doesn't work
+            # cleanly today, so block it here rather than leave a broken
+            # entry point — exiting sandbox first is the reliable path.
+            return hidden, hidden, hidden, hidden, {}, True, "Exit sandbox first to browse other cases"
+        # "case" mode: the case-specific panels stay hidden — no spoilers —
+        # until a case has actually been picked (landing modal or dropdown).
+        reveal = {} if confirmed else hidden
+        return reveal, reveal, reveal, reveal, hidden, False, "Browse available cases"
+
+    app.clientside_callback(
+        ClientsideFunction("sandbox", "extract_aoi"),
+        Output("sandbox-aoi-store", "data"),
+        Input("domain-map", "relayoutData"),
+        prevent_initial_call=True,
+    )
+
+    @app.callback(
+        Output("aoi-download", "data"),
+        Output("aoi-export-status", "children"),
+        Input("export-aoi-btn", "n_clicks"),
+        State("sandbox-aoi-store", "data"),
+        State("aoi-name-input", "value"),
+        prevent_initial_call=True,
+    )
+    def export_aoi(_n_clicks, ring, name):
+        if not ring:
+            return no_update, dbc.Alert(
+                "Draw a rectangle or shape on the map first, then export it.",
+                color="warning",
+                className="drawer-alert",
+            )
+
+        safe_name = "".join(c if c.isalnum() else "_" for c in (name or "AoI")).strip("_") or "AoI"
+        zip_bytes = _build_aoi_shapefile_zip(ring, safe_name)
+        status = dbc.Alert(
+            f"Exported {safe_name}_AoI.zip — unzip it into <YourCase>/inputs/AoI_Polygons/ "
+            "to use it as that case's aoi_file.",
+            color="success",
+            className="drawer-alert",
+        )
+        return dcc.send_bytes(zip_bytes, filename=f"{safe_name}_AoI.zip"), status

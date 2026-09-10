@@ -2,6 +2,7 @@
 cases:
   - id: samoa
     case_dir: Samoa
+    continent: Oceania
     institution: GeoOcean
     authors:
       - name: tausiaj
@@ -21,6 +22,7 @@ cases:
 
   - id: newsouthwales
     case_dir: NewSouthWales
+    continent: Oceania
     institution: GeoOcean
     authors:
       - name: tausiaj

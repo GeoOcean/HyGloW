@@ -3,11 +3,13 @@ from dash import dcc, html
 
 from .colors import CONTOUR_COLORS, CONTOUR_DEFAULT
 from .loaders import (
+    catalog_by_continent,
     load_case,
     load_case_config,
     load_catalog,
     offshore_names,
 )
+from .map_figure import CASE_MAP_CONFIG, DEFAULT_SANDBOX_LAYERS, SANDBOX_LAYER_LABELS
 
 
 def _author_links(authors: list[dict]) -> list:
@@ -98,6 +100,7 @@ def controls_panel(catalog: list[dict]) -> html.Div:
                 className="hywaves-dropdown",
             ),
         ],
+        id="controls-panel",
         className="glass-panel controls-panel",
     )
 
@@ -149,6 +152,7 @@ def legend_rows(config: dict) -> list[html.Div]:
 def legend_panel(config: dict) -> html.Div:
     return html.Div(
         html.Div(legend_rows(config), id="legend-body"),
+        id="legend-panel",
         className="glass-panel legend-panel",
     )
 
@@ -171,7 +175,60 @@ def results_drawer() -> html.Div:
             ),
             html.Div(id="tab-content", className="drawer-body"),
         ],
+        id="results-drawer",
         className="glass-panel results-drawer",
+    )
+
+
+def sandbox_panel() -> html.Div:
+    return html.Div(
+        [
+            html.Span("SANDBOX", className="panel-kicker"),
+            html.H2("Draw your own area", className="panel-title"),
+            html.P(
+                "Use the rectangle or freeform-path tool in the map's toolbar "
+                "(top right) to sketch an area of interest anywhere in the "
+                "world. Name it, export it, and use the shapefile to "
+                "bootstrap a new case in the notebooks.",
+                className="panel-desc",
+            ),
+            html.Label("AoI name", className="control-label"),
+            dcc.Input(
+                id="aoi-name-input",
+                type="text",
+                value="MyArea",
+                className="hywaves-input",
+            ),
+            html.Button(
+                "⬇ Export as shapefile",
+                id="export-aoi-btn",
+                n_clicks=0,
+                className="sandbox-export-btn",
+            ),
+            html.Div(id="aoi-export-status"),
+            html.Hr(className="panel-divider"),
+            html.Label("Reference layers", className="control-label"),
+            dcc.Checklist(
+                id="sandbox-layers",
+                options=[
+                    {"label": f" {label}", "value": key}
+                    for key, label in SANDBOX_LAYER_LABELS.items()
+                ],
+                value=list(DEFAULT_SANDBOX_LAYERS),
+                className="sandbox-layer-checklist",
+                labelClassName="sandbox-layer-label",
+            ),
+            html.Hr(className="panel-divider"),
+            html.Button(
+                "‹ Exit sandbox",
+                id="exit-sandbox-btn",
+                n_clicks=0,
+                className="landing-back-btn",
+            ),
+        ],
+        id="sandbox-panel",
+        className="glass-panel case-panel",
+        style={"display": "none"},
     )
 
 
@@ -186,6 +243,101 @@ def buoy_modal() -> dbc.Modal:
         size="xl",
         centered=True,
         className="buoy-modal",
+    )
+
+
+def _continent_grid(catalog: list[dict]) -> html.Div:
+    groups = catalog_by_continent(catalog)
+    cards = []
+    for continent, cases in groups.items():
+        cards.append(
+            html.Button(
+                [
+                    html.Span(continent, className="landing-card-title"),
+                    html.Span(
+                        f"{len(cases)} use case{'s' if len(cases) != 1 else ''}",
+                        className="landing-card-sub",
+                    ),
+                ],
+                id={"type": "landing-continent-btn", "continent": continent},
+                n_clicks=0,
+                className="landing-card landing-continent-card",
+            )
+        )
+    return html.Div(
+        [
+            html.P(
+                "Pick a region to explore its downscaling use case.",
+                className="landing-intro",
+            ),
+            html.Div(cards, className="landing-grid"),
+            html.Div("or", className="landing-divider"),
+            html.Button(
+                [
+                    html.Span("🧭 Start playing", className="landing-card-title"),
+                    html.Span(
+                        "Skip the case list — draw your own area of interest "
+                        "from scratch on a blank world map.",
+                        className="landing-card-sub landing-card-desc",
+                    ),
+                ],
+                id={"type": "start-sandbox-btn", "index": 0},
+                n_clicks=0,
+                className="landing-card landing-sandbox-card",
+            ),
+        ]
+    )
+
+
+def _case_grid(catalog: list[dict], continent: str) -> html.Div:
+    cases = catalog_by_continent(catalog).get(continent, [])
+    cards = []
+    for case in cases:
+        config = load_case_config(case)
+        cards.append(
+            html.Button(
+                [
+                    html.Span(
+                        config.get("name", case["id"]), className="landing-card-title"
+                    ),
+                    html.Span(
+                        config.get("description", "") or case["institution"],
+                        className="landing-card-sub landing-card-desc",
+                    ),
+                    _pipeline_badges(case),
+                ],
+                id={"type": "landing-case-btn", "case": case["id"]},
+                n_clicks=0,
+                className="landing-card landing-case-card",
+            )
+        )
+    return html.Div(
+        [
+            html.Button(
+                "‹ Back to regions",
+                id={"type": "landing-back-btn", "index": 0},
+                n_clicks=0,
+                className="landing-back-btn",
+            ),
+            html.P(continent, className="landing-intro landing-continent-heading"),
+            html.Div(cards, className="landing-grid"),
+        ]
+    )
+
+
+def landing_modal(catalog: list[dict]) -> dbc.Modal:
+    return dbc.Modal(
+        [
+            dbc.ModalHeader(
+                dbc.ModalTitle("Welcome to HyGloW"), close_button=True
+            ),
+            dbc.ModalBody(_continent_grid(catalog), id="landing-modal-body"),
+        ],
+        id="landing-modal",
+        is_open=True,
+        size="lg",
+        centered=True,
+        className="landing-modal",
     )
 
 
@@ -205,6 +357,12 @@ def header() -> html.Div:
                 ),
                 html.Div(
                     [
+                        html.Button(
+                            "🗺️ Browse cases",
+                            id="browse-cases-btn",
+                            n_clicks=0,
+                            className="header-link header-link-browse",
+                        ),
                         html.A(
                             "📖 Report",
                             id="book-link",
@@ -235,27 +393,42 @@ def build_layout() -> html.Div:
     case = load_case(catalog[0]["id"])
     config = load_case_config(case)
 
-    map_config = {
-        "scrollZoom": True,
-        "displayModeBar": True,
-        "modeBarButtonsToRemove": ["toImage", "lasso2d", "select2d"],
-        "displaylogo": False,
-    }
+    # Case-specific panels start hidden — until the user actually picks a
+    # case (landing modal or dropdown), only the bare map should show; the
+    # dropdown still technically defaults to catalog[0] under the hood, but
+    # nothing should visibly reveal that before it's a real choice.
+    hidden = {"display": "none"}
+    sidebar = html.Div(case_panel(case, config), id="case-sidebar", style=hidden)
+    controls = controls_panel(catalog)
+    controls.style = hidden
+    legend = legend_panel(config)
+    legend.style = hidden
+    drawer = results_drawer()
+    drawer.style = hidden
 
     return html.Div(
         [
+            dcc.Store(id="app-mode", data="case"),
+            dcc.Store(id="case-confirmed", data=False),
+            dcc.Store(id="sandbox-aoi-store"),
+            dcc.Store(id="sandbox-layer-index-map"),
+            dcc.Download(id="aoi-download"),
             header(),
             html.Div(
                 [
-                    dcc.Graph(id="domain-map", className="basemap", config=map_config),
-                    html.Div(case_panel(case, config), id="case-sidebar"),
-                    controls_panel(catalog),
-                    legend_panel(config),
-                    results_drawer(),
+                    dcc.Graph(
+                        id="domain-map", className="basemap", config=CASE_MAP_CONFIG
+                    ),
+                    sidebar,
+                    controls,
+                    legend,
+                    drawer,
+                    sandbox_panel(),
                 ],
                 className="map-stage",
             ),
             buoy_modal(),
+            landing_modal(catalog),
         ],
         className="app-shell",
     )
