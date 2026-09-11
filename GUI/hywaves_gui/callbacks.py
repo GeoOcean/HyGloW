@@ -82,7 +82,7 @@ def _facet_by_variable(fig):
     smaller ones look like zero error instead of just a different unit.
     """
     fig.update_yaxes(matches=None, showticklabels=True)
-    fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
+    fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1], font={"size": 18}))
     fig.update_xaxes(showticklabels=False, title=None)
     return fig
 
@@ -300,8 +300,23 @@ def register_callbacks(app):
         # whichever case happens to be catalog[0]. Explicitly picking that
         # same case afterward (e.g. from the landing modal) is a real
         # trigger and properly re-centers on it as usual.
+        #
+        # `config` is only re-emitted when app-mode is what actually
+        # triggered this call (case<->sandbox really does need a different
+        # modebar). Re-sending the *same* config object on every case
+        # switch — as this used to do unconditionally — makes dcc.Graph
+        # treat it as a changed prop and fully remount the Plotly figure
+        # (Plotly.newPlot, not the cheap Plotly.react), which restarts the
+        # underlying MapLibre GL instance. On a cold cache that remount
+        # loses the race with the previous instance's tile loading badly
+        # enough that the very first case picked after a hard refresh could
+        # render with no basemap and stuck at the home view's center —
+        # subsequent switches "worked" only because a warm cache made the
+        # remount fast enough not to notice.
         if ctx.triggered_id is None and mode == "case":
-            return build_home_map(load_world_coastline()), CASE_MAP_CONFIG, no_update
+            return build_home_map(load_world_coastline()), no_update, no_update
+
+        mode_changed = ctx.triggered_id == "app-mode"
 
         if mode == "sandbox":
             fig, layer_indices = build_sandbox_map(
@@ -311,7 +326,7 @@ def register_callbacks(app):
                 buffer_line=load_coastal_buffer_line(),
                 visible_layers=set(sandbox_layers or []),
             )
-            return fig, SANDBOX_MAP_CONFIG, layer_indices
+            return fig, (SANDBOX_MAP_CONFIG if mode_changed else no_update), layer_indices
 
         case = load_case(case_id)
         config = load_case_config(case)
@@ -330,7 +345,7 @@ def register_callbacks(app):
             isobaths=isobaths,
             output_sites=output_sites,
         )
-        return fig, CASE_MAP_CONFIG, no_update
+        return fig, (CASE_MAP_CONFIG if mode_changed else no_update), no_update
 
     @app.callback(
         Output("domain-map", "figure", allow_duplicate=True),
@@ -483,6 +498,7 @@ def register_callbacks(app):
         Output("legend-panel", "style"),
         Output("results-drawer", "style"),
         Output("sandbox-panel", "style"),
+        Output("continent-legend", "style"),
         Output("browse-cases-btn", "disabled"),
         Output("browse-cases-btn", "title"),
         Input("app-mode", "data"),
@@ -494,11 +510,18 @@ def register_callbacks(app):
             # Reopening the landing modal over the sandbox map doesn't work
             # cleanly today, so block it here rather than leave a broken
             # entry point — exiting sandbox first is the reliable path.
-            return hidden, hidden, hidden, hidden, {}, True, "Exit sandbox first to browse other cases"
+            return hidden, hidden, hidden, hidden, {}, {}, True, "Exit sandbox first to browse other cases"
         # "case" mode: the case-specific panels stay hidden — no spoilers —
         # until a case has actually been picked (landing modal or dropdown).
         reveal = {} if confirmed else hidden
-        return reveal, reveal, reveal, reveal, hidden, False, "Browse available cases"
+        return reveal, reveal, reveal, reveal, hidden, hidden, False, "Browse available cases"
+
+    app.clientside_callback(
+        ClientsideFunction("map_fixes", "force_repaint"),
+        Output("map-repaint-tick", "data"),
+        Input("domain-map", "figure"),
+        prevent_initial_call=True,
+    )
 
     app.clientside_callback(
         ClientsideFunction("sandbox", "extract_aoi"),

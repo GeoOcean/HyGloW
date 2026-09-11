@@ -39,6 +39,13 @@ DEPTH200_COLOR = "#facc15"
 BUFFER_COLOR = "#fb923c"
 SANDBOX_UIREVISION = "hywaves-sandbox-v1"
 
+# Zoom for the world views (home + sandbox), centered at (0, 0). There's no
+# way to know a given viewer's actual container size from here, so this is a
+# fixed compromise tuned for typical desktop widths (~1200-1600px) — wide
+# enough to show the whole world in one wrap without much repeat, without
+# cropping the poles too aggressively on narrower/mobile viewports either.
+WORLD_VIEW_ZOOM = 1.1
+
 # Sandbox reference layers on by default — the rest (dense depth/buffer
 # datasets) are opt-in via the sandbox panel's checklist. WHACS hindcast
 # coverage isn't offered at all for now — see catalog/build_sandbox_layers.py.
@@ -296,7 +303,7 @@ def build_home_map(coastline: list[list[tuple[float, float]]]) -> go.Figure:
         fig.add_trace(_multiline_trace("Coastline", coastline, COASTLINE_COLOR))
 
     fig.update_layout(
-        map={"style": MAP_STYLE, "center": {"lat": 0, "lon": 0}, "zoom": 0.7},
+        map={"style": MAP_STYLE, "center": {"lat": 0, "lon": 0}, "zoom": WORLD_VIEW_ZOOM},
         margin={"l": 0, "r": 0, "t": 0, "b": 0},
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
@@ -421,7 +428,7 @@ def build_sandbox_map(
         )
 
     fig.update_layout(
-        map={"style": MAP_STYLE, "center": {"lat": 0, "lon": 0}, "zoom": 0.7},
+        map={"style": MAP_STYLE, "center": {"lat": 0, "lon": 0}, "zoom": WORLD_VIEW_ZOOM},
         margin={"l": 0, "r": 0, "t": 0, "b": 0},
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
@@ -432,5 +439,6 @@ def build_sandbox_map(
         # the map doesn't accidentally drop a shape on every drag.
         dragmode="pan",
         newshape={"line": {"color": GOAL_COLOR, "width": 2.5}, "fillcolor": AOI_FILL},
+        updatemenus=[_basemap_toggle_menu()],
     )
     return fig, layer_indices

@@ -10,6 +10,7 @@ from .loaders import (
     offshore_names,
 )
 from .map_figure import CASE_MAP_CONFIG, DEFAULT_SANDBOX_LAYERS, SANDBOX_LAYER_LABELS
+from .world_regions import WORLD_REGIONS
 
 
 def _author_links(authors: list[dict]) -> list:
@@ -232,6 +233,25 @@ def sandbox_panel() -> html.Div:
     )
 
 
+def continent_legend_panel() -> html.Div:
+    rows = [
+        html.Div(
+            [
+                html.Span(className="dot", style={"background": region["color"]}),
+                f" {region['name']}",
+            ],
+            className="legend-row",
+        )
+        for region in WORLD_REGIONS
+    ]
+    return html.Div(
+        rows,
+        id="continent-legend",
+        className="glass-panel continent-legend",
+        style={"display": "none"},
+    )
+
+
 def buoy_modal() -> dbc.Modal:
     return dbc.Modal(
         [
@@ -412,18 +432,25 @@ def build_layout() -> html.Div:
             dcc.Store(id="case-confirmed", data=False),
             dcc.Store(id="sandbox-aoi-store"),
             dcc.Store(id="sandbox-layer-index-map"),
+            dcc.Store(id="map-repaint-tick"),
             dcc.Download(id="aoi-download"),
             header(),
             html.Div(
                 [
-                    dcc.Graph(
-                        id="domain-map", className="basemap", config=CASE_MAP_CONFIG
+                    dcc.Loading(
+                        dcc.Graph(
+                            id="domain-map", className="basemap", config=CASE_MAP_CONFIG
+                        ),
+                        type="circle",
+                        color="#22d3ee",
+                        parent_className="basemap-loading",
                     ),
                     sidebar,
                     controls,
                     legend,
                     drawer,
                     sandbox_panel(),
+                    continent_legend_panel(),
                 ],
                 className="map-stage",
             ),

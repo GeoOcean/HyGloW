@@ -118,6 +118,18 @@ body {
     height: 100% !important;
 }
 
+.basemap-loading,
+.basemap-loading > div {
+    /* dcc.Loading wraps .basemap in its own extra div(s) — .basemap is
+       position:absolute and sizes against its nearest *positioned*
+       ancestor, which is now one of these, not .map-stage directly. Without
+       an explicit height they collapse to 0 (an absolutely positioned child
+       doesn't itself establish a height for its parent), which took
+       .basemap down to 0 height with it — the map rendered into a
+       zero-height box and everything past a scrap at the very top clipped. */
+    height: 100%;
+}
+
 .basemap .js-plotly-plot,
 .basemap .plot-container,
 .basemap .svg-container,
@@ -561,6 +573,15 @@ body {
 
 .sandbox-layer-label input {
     margin-right: 0.4rem;
+}
+
+.continent-legend {
+    /* Same top-right slot .controls-panel uses in case mode — free real
+       estate in sandbox mode, and sits right below the map's own modebar. */
+    top: 2.75rem;
+    right: 1rem;
+    padding: 0.65rem 0.85rem;
+    font-size: 0.8rem;
 }
 
 /* Dash dropdown dark theme */
