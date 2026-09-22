@@ -11,7 +11,7 @@ Lightweight Dash portal for HyGloW use cases. Reads each case's standard files:
 - `{Case}/book/_build/html/` — rendered Jupyter Book report (optional; see below)
 
 Portal metadata (authors, institution, pipeline status, **continent** for the
-landing picker below) lives in `catalog/cases.yaml`. A case can also pin
+"Browse cases" picker below) lives in `catalog/cases.yaml`. A case can also pin
 `metamodel.mda_candidate` there (an int) — the fixed MDA train size all three
 validation tabs read; without it, the GUI falls back to the largest MDA
 candidate the case has actually fitted.
@@ -35,27 +35,33 @@ World Imagery — the same tokenless raster source the case-plot notebooks use.
 Buoys render as star markers; click one to see its validation summary PNG
 (density scatter + time series), if the case has generated one.
 
-## Landing: pick a case, or play in the sandbox
+## Landing: a world map, not a case
 
-The app opens on a modal over a neutral (0°N, 0°E) map — no case is shown
-until you actually choose one, so the map behind the modal never spoils
-which case happens to be first in the catalog. From there:
+The app opens on a one-time **welcome modal** — a short intro plus a note
+that HyGloW's metamodel is built on
+[BlueMath](https://github.com/GeoOcean/BlueMath_tk), the GeoOcean group's
+core toolkit. Closing it (either "🧭 Start discovering" or the X) reveals
+the actual landing page underneath: a world map, centered and zoomed to
+show it whole, with every catalog case's **real AoI** drawn and labeled —
+this is the default state, not something you opt into. From there:
 
-- **Browse by region** — continents are grouped from each case's `continent`
-  field in `catalog/cases.yaml`; pick one, then pick a case card (name,
-  description, pipeline-status pills) to load it. The header's
-  **🗺️ Browse cases** button reopens this modal at any time — except while
-  the sandbox is active, where it's disabled with a tooltip pointing at
-  "Exit sandbox" instead.
-- **🧭 Start playing** — skip the case list entirely and go straight to a
-  blank-world sandbox (see below).
+- **Click a case's area on the map** to open it directly — the click target
+  is a labeled marker at that AoI's centroid, styled the same
+  sky-blue as the AoI shown once a case is loaded, so "this is an AoI" reads
+  consistently everywhere in the app.
+- **🗺️ Browse cases** (header button) opens a separate modal to pick by
+  continent (from each case's `continent` field in `catalog/cases.yaml`)
+  then by name — useful once the catalog outgrows "just click the map".
+- **‹ Back to explore** (top of a loaded case's sidebar) returns to the
+  landing view.
 
 Case-specific panels (sidebar, dropdown, legend, results drawer) stay hidden
-until a case is actually picked, whether via the modal or the dropdown.
+until a case is actually picked, whichever way you picked it.
 
-## Sandbox mode
+## The landing map is also the sandbox
 
-A world view for sketching a new area of interest before it's a real case:
+Alongside the case AoIs, the same world view is where you sketch a new area
+of interest before it's a real case:
 
 - **Draw** — the map's toolbar (top right) adds a rectangle and a freeform-
   path tool; pan is the default drag mode so panning around doesn't
@@ -66,11 +72,13 @@ A world view for sketching a new area of interest before it's a real case:
   `<name>_AoI.zip` containing `.shp/.shx/.dbf/.prj` in WGS84 — the same
   format and CRS every case's own `aoi_file` already uses. Unzip it into a
   new case's `inputs/AoI_Polygons/` to bootstrap that case's config.
-- **Reference layers** — a checklist toggles continent blocks, coastline,
-  the global 200m isobath, and the 50km coastal buffer (fill and line) on
-  and off without disturbing a shape already drawn. All are pre-simplified,
-  static files — see "Sandbox reference-layer data" below for where they
-  come from and how to regenerate them.
+- **Reference layers** — a checklist toggles use-case AoIs, continent
+  blocks, coastline, the global 200m isobath, and the 50km coastal buffer
+  (fill and line) on and off without disturbing a shape already drawn. The
+  continent/coastline/isobath/buffer layers are pre-simplified static files
+  — see "Sandbox reference-layer data" below for where they come from and
+  how to regenerate them; the case AoIs are read live from each case's own
+  `aoi_file` (`loaders.all_case_aois`).
 
 The drawn shape lives in *paper* (screen-fraction) coordinates from Plotly's
 draw tools, not lon/lat, since a screen rectangle isn't a rectangle in a map
@@ -108,10 +116,12 @@ Deploy the full HyGloW repo so case paths resolve, or copy lightweight exports l
 ## Add a case
 
 1. Add an entry to `catalog/cases.yaml` with `case_dir`, `continent` (groups
-   it in the landing picker — reuses an existing continent's group if one
-   matches, otherwise starts a new one) and provenance fields, plus
+   it in the "Browse cases" picker — reuses an existing continent's group if
+   one matches, otherwise starts a new one) and provenance fields, plus
    `metamodel.mda_candidate` once you've settled on a production MDA size.
-2. Ensure the case follows the standard JSON / goals / observations layout.
+2. Ensure the case follows the standard JSON / goals / observations layout
+   (including `paths.aoi_file` — that's what draws its AoI on the landing
+   map).
 3. Run notebook 06 (`val.sweep()`) for every goal, then 09 and 10a/10b with
    their save cells, so the three tabs above have data.
 4. Restart the app.

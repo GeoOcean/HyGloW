@@ -158,6 +158,44 @@ def load_aoi(case: dict, config: dict | None = None) -> list[list[tuple[float, f
     return rings
 
 
+def all_case_aois(catalog: list[dict]) -> list[dict]:
+    """Every catalog case's real AoI, for the landing/sandbox world view.
+
+    Cases with no ``aoi_file`` (``load_aoi`` returns ``[]``) are skipped —
+    they're still reachable via the "Browse cases" modal, just not drawn on
+    the map. Cases whose files aren't reachable on this machine (e.g. a
+    catalog entry pointing outside this checkout) are skipped the same way,
+    rather than taking down the whole landing map. ``center`` is a plain
+    arithmetic-mean centroid of the ring points (not area-weighted) — good
+    enough for placing a click marker, and avoids pulling in shapely as a
+    GUI runtime dependency just for this.
+    """
+    results = []
+    for case in catalog:
+        try:
+            config = load_case_config(case)
+            rings = load_aoi(case, config)
+        except (FileNotFoundError, OSError):
+            continue
+        if not rings:
+            continue
+        points = [p for ring in rings for p in ring]
+        center = (
+            sum(p[0] for p in points) / len(points),
+            sum(p[1] for p in points) / len(points),
+        )
+        results.append(
+            {
+                "case_id": case["id"],
+                "name": config.get("name", case["id"]),
+                "continent": case.get("continent"),
+                "rings": rings,
+                "center": center,
+            }
+        )
+    return results
+
+
 _RASTER_X_NAMES = ("x", "lon", "longitude")
 _RASTER_Y_NAMES = ("y", "lat", "latitude")
 
