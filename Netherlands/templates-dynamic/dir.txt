@@ -1,0 +1,2 @@
+   0 {% for dir in dir_goals %} {{ dir }}{% endfor %}
+3600 {% for dir in dir_goals %} {{ dir }}{% endfor %}
