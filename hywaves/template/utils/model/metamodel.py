@@ -102,19 +102,29 @@ MIN_DIRECTIONAL_SPREAD_DEG = 1.0
 # `reconstruct()` batches every *uncached* month into as few GP prediction
 # calls as possible (see `_reconstruct_periods_batch`) since each call's cost
 # is dominated by a large fixed per-call overhead, not by row count — one
-# call covering 3 months costs far less than 3 separate one-month calls. But
+# call covering N months costs far less than N separate one-month calls. But
 # batching *too much* at once grows GPyTorch's per-call kernel evaluation past
 # available GPU memory: on a 5.61 GiB GPU, a full 11-year (132-month) batch
-# and a 12-month batch both hit CUDA OOM partway through the 26-goal loop,
-# while a 3-month batch measured fine. This is a GPU-VRAM constraint that
-# scales with row count (time span) per call, independent of how many sites
-# are requested — confirmed by direct instrumentation (see
-# `_reconstruct_batch_months`'s docstring): the goal loop's own host RSS
-# stayed flat (~1.5-1.7 GiB) across both a 3-site and an 18-site request, in
-# both bulk and spectral mode, so this cap does not need a site-count term.
-# Raise it only after confirming headroom on the target GPU (or pass
-# device="cpu" to reconstruct() for unbounded-but-slower CPU inference).
-RECONSTRUCT_GPU_BATCH_MONTHS_CAP = 3
+# and a 12-month batch both hit CUDA OOM partway through the 26-goal loop.
+# This is a GPU-VRAM constraint that scales with row count (time span) per
+# call, independent of how many sites are requested — confirmed by direct
+# instrumentation (see `_reconstruct_batch_months`'s docstring): the goal
+# loop's own host RSS stayed flat (~1.5-1.7 GiB) across both a 3-site and an
+# 18-site request, so this cap does not need a site-count term.
+#
+# Re-measured with all 26 goals active (the original 3-month figure above was
+# only ever exercised with 1-2 goals) — spectral mode (4x the partition data
+# of bulk per call) is the binding constraint, not bulk:
+#   - bulk:     clean through at least 8 months/call (18.9 s/month at 8)
+#   - spectral: clean at 4 (73.3 s/month), thrashes near the OOM edge at 6
+#     (>300s for what should be a ~2 min call — GPU memory pressure, not a
+#     clean failure), hits CUDA OOM outright at 8
+# 4 is the largest value safe for both modes in one reconstruct() call, and a
+# real ~1.2-1.5x speedup over the old default of 3 for both. Raise it only
+# after confirming headroom on the target GPU for *spectral* mode specifically
+# at the full 26-goal count (or pass device="cpu" to reconstruct() for
+# unbounded-but-slower CPU inference).
+RECONSTRUCT_GPU_BATCH_MONTHS_CAP = 4
 
 
 def _reconstruct_batch_months(n_sites: int) -> int:
@@ -2579,34 +2589,6 @@ def _month_periods(time: str | slice, offshore: xr.Dataset) -> list[str | slice]
     if len(months) <= 1:
         return [time]
     return [str(period) for period in months]
-
-
-def _load_models_by_goal(
-    active: list[str],
-    n: int,
-    *,
-    pca_variance: PcaVariance = None,
-) -> dict[str, dict[str, Any]]:
-    """Load fitted models once per goal for hindcast reconstruction.
-
-    Parameters
-    ----------
-    active
-        Goal ids to load.
-    n
-        MDA train size.
-    pca_variance
-        PCA variance override; must match fitted models.
-
-    Returns
-    -------
-    dict[str, dict]
-        Mapping ``goal_id → load_models(...)`` dict.
-    """
-    logger.info("Loading metamodels for goals %s", active)
-    return {
-        str(goal): load_models(goal, n, pca_variance=pca_variance) for goal in active
-    }
 
 
 def _reconstruct_period(
