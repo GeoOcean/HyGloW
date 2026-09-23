@@ -38,15 +38,19 @@ Run notebooks with `Netherlands/` as the working directory.
    | 07    | `07_Download_Process_WHACS.ipynb`              | Offshore hindcast zarr         |
    | 08    | `08_Dynamic_Cases_Generation.ipynb`            | Dynamic reference runs         |
    | 09    | `09_Validate_Linear_Summation.ipynb`           | Metamodel vs dynamic SnapWave  |
-   | 10a   | `10a_Validate_Offshore_Buoys.ipynb`            | Offshore buoy validation       |
-   | 10b   | `10b_Validate_Onshore_Buoys.ipynb`             | Onshore buoy validation        |
+   | 10    | `10_Validate_Onshore_Buoys.ipynb`              | Buoy validation (all 9 buoys)  |
    | 11    | `11_Validate_Spectra.ipynb`                    | Buoy vs reconstructed spectra  |
    | 12    | `12_Final_Plots.ipynb`                         | Showcase figures for the GUI   |
 
-   Notebooks 06, 09, and 10a/10b each end with a save cell that writes to
+   This case has a single (nearshore) buoy network, so the template's
+   `10a_Validate_Offshore_Buoys.ipynb`/`10b_Validate_Onshore_Buoys.ipynb` split
+   was collapsed into one `10_Validate_Onshore_Buoys.ipynb` covering all 9
+   configured buoys.
+
+   Notebooks 06, 09, and 10 each end with a save cell that writes to
    `outputs/` in the shape the GUI's Goals/Metamodel/Buoy Validation tabs
    expect (see `GUI/README.md`) — run them (in order) before checking a case
-   in the portal. 10a/10b also save one combined scatter+time-series PNG per
+   in the portal. 10 also saves one combined scatter+time-series PNG per
    buoy (`outputs/buoy_validation/figures/<site>.png`), shown in the GUI when
    you click that buoy's star on the map.
 

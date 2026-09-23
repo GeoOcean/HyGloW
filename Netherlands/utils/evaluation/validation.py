@@ -28,7 +28,7 @@ import pandas as pd
 import xarray as xr
 from bluemath_tk.core.logging import get_file_logger
 from bluemath_tk.core.metrics import bias, r2, rmse
-from bluemath_tk.core.plotting.old_scatter import density_scatter
+from bluemath_tk.core.plotting.scatter import density_scatter
 from matplotlib.figure import Figure
 
 from utils.config import (
@@ -71,6 +71,21 @@ PARAMETERS: dict[str, dict[str, Any]] = {
     "dir": {"label": "Dir", "units": "deg", "circular": True},
     # Directional spread (degrees); linear metrics — not periodic like dir.
     "spr": {"label": "Spr", "units": "deg", "circular": False},
+}
+
+# Generous physical ceilings, not tight QC bounds: they exist only to catch
+# corrupted dynamic-model output that np.isfinite doesn't — e.g. a
+# wetting/drying instability at a handful of SnapWave isobath sites/hours
+# producing finite-but-nonphysical hs (seen up to ~8.8e13 m at one point).
+# A single such value squared and averaged over millions of otherwise-good
+# points is enough to send a whole group's rmse/r2 to nonsense (observed:
+# rmse=3.1e10, r2=-1.8e21 for the isobath "5m" group). Six years of this
+# domain's hs (buoys and isobaths alike) tops out under 5 m, so 15 m leaves
+# comfortable headroom for any real storm while excluding every corrupted
+# value found so far (all >= 3.7e6 m). Variables not listed here keep the
+# isfinite-only filter unchanged.
+PHYSICAL_BOUNDS: dict[str, tuple[float, float]] = {
+    "hs": (0.0, 15.0),
 }
 
 
@@ -178,9 +193,36 @@ def _circular_difference(ref: np.ndarray, est: np.ndarray) -> np.ndarray:
     return (est - ref + 180.0) % 360.0 - 180.0
 
 
-def _coincident_values(x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Return paired finite values from *x* and *y*."""
+def _coincident_values(
+    x: np.ndarray, y: np.ndarray, *, variable: str | None = None
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return paired finite, physically-plausible values from *x* and *y*.
+
+    Parameters
+    ----------
+    x, y
+        Flat arrays of paired values (e.g. estimate, reference).
+    variable
+        Key into :data:`PHYSICAL_BOUNDS`. When given and bounded, pairs where
+        either side falls outside the bound are dropped in addition to the
+        usual ``isfinite`` filter — see :data:`PHYSICAL_BOUNDS` for why.
+    """
     mask = np.isfinite(x) & np.isfinite(y)
+    bounds = PHYSICAL_BOUNDS.get(variable) if variable else None
+    if bounds is not None:
+        lo, hi = bounds
+        physical = mask & (x >= lo) & (x <= hi) & (y >= lo) & (y <= hi)
+        n_dropped = int(mask.sum() - physical.sum())
+        if n_dropped:
+            logger.warning(
+                "%s: dropped %d pair(s) outside physical bound [%s, %s] "
+                "(e.g. corrupted dynamic-model output)",
+                variable,
+                n_dropped,
+                lo,
+                hi,
+            )
+        mask = physical
     return x[mask], y[mask]
 
 
@@ -207,6 +249,7 @@ def compute_metrics(
     reference: np.ndarray,
     *,
     circular: bool = False,
+    variable: str | None = None,
 ) -> dict[str, float]:
     """
     Bias, RMSE, R² and sample count for one variable pair.
@@ -217,6 +260,9 @@ def compute_metrics(
         Flat arrays of paired values.
     circular
         If ``True``, treat values as directions in degrees.
+    variable
+        Key into :data:`PHYSICAL_BOUNDS`, e.g. ``"hs"``; passed through to
+        :func:`_coincident_values` to drop corrupted-but-finite outliers.
 
     Returns
     -------
@@ -235,7 +281,7 @@ def compute_metrics(
             "r2": _circular_r2(ref, est),
         }
 
-    x, y = _coincident_values(estimate, reference)
+    x, y = _coincident_values(estimate, reference, variable=variable)
     if x.size == 0:
         return {"n": 0, "bias": np.nan, "rmse": np.nan, "r2": np.nan}
     return {
@@ -285,6 +331,7 @@ def metrics_table(
                 est_g[param].values.ravel(),
                 ref_g[param].values.ravel(),
                 circular=bool(spec["circular"]),
+                variable=param,
             )
             rows.append(
                 {
@@ -1105,7 +1152,7 @@ def _paired_values(
     """Flat, coincident-finite estimate/reference arrays for one variable and site subset."""
     est = estimate.sel(sites=site_ids)[variable].values.ravel()
     ref = reference.sel(sites=site_ids)[variable].values.ravel()
-    return _coincident_values(est, ref)
+    return _coincident_values(est, ref, variable=variable)
 
 
 MAX_DENSITY_POINTS = 5000
@@ -1155,7 +1202,7 @@ def _scatter_panel(
         Colormap for the density-colored scatter.
     """
     spec = PARAMETERS[variable]
-    est, ref = _coincident_values(estimate, reference)
+    est, ref = _coincident_values(estimate, reference, variable=variable)
     if spec["circular"]:
         est = _theta_to_360(est)
         ref = _theta_to_360(ref)
@@ -1190,7 +1237,7 @@ def _scatter_panel(
     ax.set_ylabel(f"{reference_label} {spec['label']} [{spec['units']}]")
     ax.set_title(spec["label"])
 
-    m = compute_metrics(est, ref, circular=bool(spec["circular"]))
+    m = compute_metrics(est, ref, circular=bool(spec["circular"]), variable=variable)
     props = dict(
         boxstyle="round", facecolor="w", edgecolor="grey", linewidth=0.8, alpha=0.6
     )

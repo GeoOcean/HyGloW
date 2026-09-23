@@ -114,7 +114,7 @@ MIN_DIRECTIONAL_SPREAD_DEG = 1.0
 # both bulk and spectral mode, so this cap does not need a site-count term.
 # Raise it only after confirming headroom on the target GPU (or pass
 # device="cpu" to reconstruct() for unbounded-but-slower CPU inference).
-RECONSTRUCT_GPU_BATCH_MONTHS_CAP = 3
+RECONSTRUCT_GPU_BATCH_MONTHS_CAP = 12
 
 
 def _reconstruct_batch_months(n_sites: int) -> int:
@@ -183,8 +183,8 @@ def _reconstruct_batch_months(n_sites: int) -> int:
 # tmp/mem_probe.py's pattern in the conversation this was diagnosed in) if
 # construct_partition's internals change enough to move the true ratio.
 WAVESPECTRA_MEMORY_BUDGET_BYTES = (
-    12 * 1024**3
-)  # 12 GiB; leaves headroom on a 62 GiB host
+    64 * 1024**3
+)  # 64 GiB; leaves headroom on a 62 GiB host
 WAVESPECTRA_PEAK_MULTIPLIER = 8
 
 
