@@ -20,10 +20,12 @@ from bluemath_tk.core.plotting.satellite import get_satellite_image
 from bluemath_tk.core.plotting.utils import join_colormaps
 from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.axes import Axes
+from matplotlib.collections import LineCollection
 from matplotlib.figure import Figure
 from matplotlib.gridspec import GridSpec
 from matplotlib.patches import Wedge
 from shapely.geometry import MultiPolygon, Polygon
+
 from utils.config import PATHS, display_title, resolve
 from utils.directions import (
     in_nautical_sector,
@@ -235,6 +237,64 @@ def plot_ring(
     ring_gdf.boundary.plot(
         ax=ax, color=RING_COLOR, linewidth=RING_LINEWIDTH, linestyle="--", label=label
     )
+
+
+def plot_mesh(
+    mesh_file: str | Path,
+    ax: Axes,
+    *,
+    color: str = "#fbbf24",
+    linewidth: float = 0.3,
+    alpha: float = 0.55,
+) -> None:
+    """
+    Draw a UGRID mesh's edges as a thin line collection.
+
+    A case mesh runs into the hundreds of thousands of edges — cheap enough
+    for matplotlib to draw once as a static figure (unlike an interactive
+    web map, which is where that edge count actually becomes a problem).
+    At a whole-domain zoom, individual triangles are far below one pixel —
+    every pixel in the mesh's footprint gets touched by some edge, so the
+    whole footprint reads as a solid tint rather than a visible texture
+    regardless of styling. A bold, saturated tint embraces that rather than
+    fighting it: it needs to read clearly as "the mesh covers this area"
+    even scaled down to GUI-thumbnail size, which a fainter/thinner style
+    (tried first) didn't — it all but disappeared against a busy satellite
+    photo at typical viewing size, correct up close but useless at a glance.
+
+    Parameters
+    ----------
+    mesh_file
+        Path to the mesh netCDF (UGRID conventions: ``mesh2d_node_x/y`` in
+        degrees, already WGS84 lon/lat — no reprojection needed here; and
+        ``mesh2d_edge_nodes`` with a ``start_index`` attribute, typically 1).
+    ax
+        Target matplotlib axes.
+    color, linewidth, alpha
+        Line style — bold/saturated so the coverage footprint reads clearly
+        at a glance (see above).
+    """
+    with xr.open_dataset(resolve(mesh_file)) as ds:
+        node_x = ds["mesh2d_node_x"].values
+        node_y = ds["mesh2d_node_y"].values
+        edge_var = ds["mesh2d_edge_nodes"]
+        edge_nodes = edge_var.values - int(edge_var.attrs.get("start_index", 0))
+
+    segments = np.stack(
+        [
+            np.column_stack([node_x[edge_nodes[:, 0]], node_y[edge_nodes[:, 0]]]),
+            np.column_stack([node_x[edge_nodes[:, 1]], node_y[edge_nodes[:, 1]]]),
+        ],
+        axis=1,
+    )
+    collection = LineCollection(segments, colors=color, linewidths=linewidth, alpha=alpha, zorder=2)
+    if isinstance(ax, GeoAxes):
+        # add_collection() isn't one of the plotting methods cartopy wraps to
+        # auto-default transform=self.projection (unlike ax.plot/scatter/...)
+        # — without this, the segments render in the wrong coordinate space
+        # and the mesh is silently invisible rather than erroring.
+        collection.set_transform(ccrs.PlateCarree())
+    ax.add_collection(collection)
 
 
 def plot_base_map(

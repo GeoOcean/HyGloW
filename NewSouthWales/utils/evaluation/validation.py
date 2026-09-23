@@ -28,7 +28,7 @@ import pandas as pd
 import xarray as xr
 from bluemath_tk.core.logging import get_file_logger
 from bluemath_tk.core.metrics import bias, r2, rmse
-from bluemath_tk.core.plotting.old_scatter import density_scatter
+from bluemath_tk.core.plotting.scatter import density_scatter
 from matplotlib.figure import Figure
 
 from utils.config import (

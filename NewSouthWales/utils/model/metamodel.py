@@ -2591,34 +2591,6 @@ def _month_periods(time: str | slice, offshore: xr.Dataset) -> list[str | slice]
     return [str(period) for period in months]
 
 
-def _load_models_by_goal(
-    active: list[str],
-    n: int,
-    *,
-    pca_variance: PcaVariance = None,
-) -> dict[str, dict[str, Any]]:
-    """Load fitted models once per goal for hindcast reconstruction.
-
-    Parameters
-    ----------
-    active
-        Goal ids to load.
-    n
-        MDA train size.
-    pca_variance
-        PCA variance override; must match fitted models.
-
-    Returns
-    -------
-    dict[str, dict]
-        Mapping ``goal_id → load_models(...)`` dict.
-    """
-    logger.info("Loading metamodels for goals %s", active)
-    return {
-        str(goal): load_models(goal, n, pca_variance=pca_variance) for goal in active
-    }
-
-
 def _reconstruct_period(
     offshore: xr.Dataset,
     n: int,
