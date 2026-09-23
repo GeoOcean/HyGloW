@@ -14,6 +14,7 @@ from .colors import (
     CONTOUR_DEFAULT,
     GOAL_COLOR,
     MESH_SITE_COLOR,
+    TEXT,
 )
 from .world_regions import WORLD_REGIONS
 
@@ -39,19 +40,34 @@ DEPTH200_COLOR = "#facc15"
 BUFFER_COLOR = "#fb923c"
 SANDBOX_UIREVISION = "hywaves-sandbox-v1"
 
-# Zoom for the world views (home + sandbox), centered at (0, 0). There's no
-# way to know a given viewer's actual container size from here, so this is a
-# fixed compromise tuned for typical desktop widths (~1200-1600px) — wide
-# enough to show the whole world in one wrap without much repeat, without
-# cropping the poles too aggressively on narrower/mobile viewports either.
+# Zoom for the world view (the landing page, and sandbox drawing on it),
+# centered at (0, 0). There's no way to know a given viewer's actual
+# container size from here, so this is a fixed compromise tuned for typical
+# desktop widths (~1200-1600px) — wide enough to show the whole world in one
+# wrap without much repeat, without cropping the poles too aggressively on
+# narrower/mobile viewports either.
 WORLD_VIEW_ZOOM = 1.1
 
-# Sandbox reference layers on by default — the rest (dense depth/buffer
-# datasets) are opt-in via the sandbox panel's checklist. WHACS hindcast
-# coverage isn't offered at all for now — see catalog/build_sandbox_layers.py.
-DEFAULT_SANDBOX_LAYERS = {"continents", "coastline"}
+CASE_AOI_COLOR = AOI_LINE
+
+# A case's AoI on the landing map is colored like its own continent block
+# (WORLD_REGIONS), so "this case lives in that colored region" reads at a
+# glance — falls back to CASE_AOI_COLOR for a continent with no matching
+# region (shouldn't happen with the current catalog, but cheap to guard).
+CONTINENT_COLORS = {region["name"]: region["color"] for region in WORLD_REGIONS}
+
+
+def _case_aoi_color(continent: str | None) -> str:
+    return CONTINENT_COLORS.get(continent, CASE_AOI_COLOR)
+
+# Reference layers on by default on the landing/sandbox world view — the
+# rest (dense depth/buffer datasets) are opt-in via the panel's checklist.
+# WHACS hindcast coverage isn't offered at all for now — see
+# catalog/build_sandbox_layers.py.
+DEFAULT_SANDBOX_LAYERS = {"cases", "continents", "coastline"}
 
 SANDBOX_LAYER_LABELS = {
+    "cases": "Use cases",
     "continents": "Continents",
     "coastline": "Coastline",
     "depth200": "200m isobath (global)",
@@ -290,31 +306,6 @@ def build_map(
     return fig
 
 
-HOME_UIREVISION = "hywaves-home-v1"
-
-
-def build_home_map(coastline: list[list[tuple[float, float]]]) -> go.Figure:
-    """Neutral (0,0) world view shown before any case has actually been
-    chosen — see callbacks.update_map. Kept separate from build_sandbox_map:
-    no draw tools, no reference-layer checklist, just a quiet backdrop.
-    """
-    fig = go.Figure()
-    if coastline:
-        fig.add_trace(_multiline_trace("Coastline", coastline, COASTLINE_COLOR))
-
-    fig.update_layout(
-        map={"style": MAP_STYLE, "center": {"lat": 0, "lon": 0}, "zoom": WORLD_VIEW_ZOOM},
-        margin={"l": 0, "r": 0, "t": 0, "b": 0},
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        showlegend=False,
-        uirevision=HOME_UIREVISION,
-        dragmode="pan",
-        updatemenus=[_basemap_toggle_menu()],
-    )
-    return fig
-
-
 def _hex_to_rgba(hex_color: str, alpha: float) -> str:
     r, g, b = (int(hex_color[i : i + 2], 16) for i in (1, 3, 5))
     return f"rgba({r},{g},{b},{alpha})"
@@ -360,12 +351,15 @@ def build_sandbox_map(
     depth200: list[list[tuple[float, float]]] | None = None,
     buffer_fill: list[list[tuple[float, float]]] | None = None,
     buffer_line: list[list[tuple[float, float]]] | None = None,
+    case_aois: list[dict] | None = None,
     visible_layers: set[str] | None = None,
 ) -> tuple[go.Figure, dict[str, list[int]]]:
-    """World view for sandbox mode — hand-drawn continent blocks plus a set of
-    opt-in reference layers (global 200m isobath, 50km coastal buffer), each
-    independently toggleable without disturbing any AoI already drawn on the
-    map (see callbacks.toggle_sandbox_layers).
+    """World view for the landing page (also sandbox mode for drawing a new
+    AoI) — hand-drawn continent blocks, every catalog case's real AoI
+    (clickable, see callbacks.handle_domain_map_click), plus a set
+    of opt-in reference layers (global 200m isobath, 50km coastal buffer),
+    each independently toggleable without disturbing any AoI already drawn
+    on the map (see callbacks.toggle_sandbox_layers).
 
     Returns the figure AND a ``{layer_key: [trace_index, ...]}`` map — the
     single source of truth both this function and that callback use to agree
@@ -425,6 +419,37 @@ def build_sandbox_map(
         _add(
             "buffer_line",
             _multiline_trace(SANDBOX_LAYER_LABELS["buffer_line"], buffer_line, BUFFER_COLOR, width=1.5),
+        )
+
+    if case_aois:
+        # Added last so cases render on top of every other layer — they're
+        # the primary click target on this view. Each case's AoI is colored
+        # like its own continent block (see _case_aoi_color) so it reads as
+        # "this case lives in that region" at a glance.
+        for case in case_aois:
+            color = _case_aoi_color(case.get("continent"))
+            _add(
+                "cases",
+                _ring_fill_trace(f"AoI: {case['name']}", case["rings"], color, fill_alpha=0.28, line_width=2),
+            )
+        _add(
+            "cases",
+            go.Scattermap(
+                lon=[c["center"][0] for c in case_aois],
+                lat=[c["center"][1] for c in case_aois],
+                mode="markers+text",
+                name=SANDBOX_LAYER_LABELS["cases"],
+                marker={
+                    "size": 14,
+                    "color": [_case_aoi_color(c.get("continent")) for c in case_aois],
+                    "opacity": 0.95,
+                },
+                text=[c["name"] for c in case_aois],
+                textposition="top center",
+                textfont={"color": TEXT, "size": 11},
+                customdata=[(f"case_{c['case_id']}", c["name"]) for c in case_aois],
+                hovertemplate="<b>%{text}</b><br><i>click to open</i><extra></extra>",
+            ),
         )
 
     fig.update_layout(

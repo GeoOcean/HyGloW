@@ -9,7 +9,7 @@ from .loaders import (
     load_catalog,
     offshore_names,
 )
-from .map_figure import CASE_MAP_CONFIG, DEFAULT_SANDBOX_LAYERS, SANDBOX_LAYER_LABELS
+from .map_figure import DEFAULT_SANDBOX_LAYERS, SANDBOX_LAYER_LABELS, SANDBOX_MAP_CONFIG
 from .world_regions import WORLD_REGIONS
 
 
@@ -50,6 +50,12 @@ def _pipeline_badges(case: dict) -> html.Div:
 def case_panel(case: dict, config: dict) -> html.Div:
     return html.Div(
         [
+            html.Button(
+                "‹ Back to explore",
+                id="back-to-landing-btn",
+                n_clicks=0,
+                className="landing-back-btn",
+            ),
             html.Div(
                 [
                     html.Span("USE CASE", className="panel-kicker"),
@@ -86,6 +92,14 @@ def case_panel(case: dict, config: dict) -> html.Div:
 
 
 def controls_panel(catalog: list[dict]) -> html.Div:
+    # Only cases in the same continent as the current one are selectable
+    # here — see callbacks.filter_case_options, which keeps this in sync
+    # whenever case-select's value changes (map click, browse modal, or the
+    # dropdown itself). This initial render mirrors that filtering so the
+    # very first paint (before the callback's own response lands) already
+    # matches, same convention as the rest of this layout module.
+    continent = catalog[0].get("continent")
+    same_continent = [c for c in catalog if c.get("continent") == continent]
     return html.Div(
         [
             html.Span("INSPECT", className="panel-kicker"),
@@ -94,7 +108,7 @@ def controls_panel(catalog: list[dict]) -> html.Div:
                 id="case-select",
                 options=[
                     {"label": c.get("case_dir", c["id"]), "value": c["id"]}
-                    for c in catalog
+                    for c in same_continent
                 ],
                 value=catalog[0]["id"],
                 clearable=False,
@@ -184,13 +198,14 @@ def results_drawer() -> html.Div:
 def sandbox_panel() -> html.Div:
     return html.Div(
         [
-            html.Span("SANDBOX", className="panel-kicker"),
-            html.H2("Draw your own area", className="panel-title"),
+            html.Span("EXPLORE", className="panel-kicker"),
+            html.H2("Discover or draw an area", className="panel-title"),
             html.P(
-                "Use the rectangle or freeform-path tool in the map's toolbar "
-                "(top right) to sketch an area of interest anywhere in the "
-                "world. Name it, export it, and use the shapefile to "
-                "bootstrap a new case in the notebooks.",
+                "Click a highlighted area on the map to open that use case. "
+                "Or use the rectangle / freeform-path tool in the map's "
+                "toolbar (top right) to sketch a new area of interest "
+                "anywhere in the world — name it, export it, and use the "
+                "shapefile to bootstrap a new case in the notebooks.",
                 className="panel-desc",
             ),
             html.Label("AoI name", className="control-label"),
@@ -204,7 +219,7 @@ def sandbox_panel() -> html.Div:
                 "⬇ Export as shapefile",
                 id="export-aoi-btn",
                 n_clicks=0,
-                className="sandbox-export-btn",
+                className="btn-cta",
             ),
             html.Div(id="aoi-export-status"),
             html.Hr(className="panel-divider"),
@@ -218,13 +233,6 @@ def sandbox_panel() -> html.Div:
                 value=list(DEFAULT_SANDBOX_LAYERS),
                 className="sandbox-layer-checklist",
                 labelClassName="sandbox-layer-label",
-            ),
-            html.Hr(className="panel-divider"),
-            html.Button(
-                "‹ Exit sandbox",
-                id="exit-sandbox-btn",
-                n_clicks=0,
-                className="landing-back-btn",
             ),
         ],
         id="sandbox-panel",
@@ -291,20 +299,6 @@ def _continent_grid(catalog: list[dict]) -> html.Div:
                 className="landing-intro",
             ),
             html.Div(cards, className="landing-grid"),
-            html.Div("or", className="landing-divider"),
-            html.Button(
-                [
-                    html.Span("🧭 Start playing", className="landing-card-title"),
-                    html.Span(
-                        "Skip the case list — draw your own area of interest "
-                        "from scratch on a blank world map.",
-                        className="landing-card-sub landing-card-desc",
-                    ),
-                ],
-                id={"type": "start-sandbox-btn", "index": 0},
-                n_clicks=0,
-                className="landing-card landing-sandbox-card",
-            ),
         ]
     )
 
@@ -348,16 +342,67 @@ def _case_grid(catalog: list[dict], continent: str) -> html.Div:
 def landing_modal(catalog: list[dict]) -> dbc.Modal:
     return dbc.Modal(
         [
-            dbc.ModalHeader(
-                dbc.ModalTitle("Welcome to HyGloW"), close_button=True
-            ),
+            dbc.ModalHeader(dbc.ModalTitle("Browse cases"), close_button=True),
             dbc.ModalBody(_continent_grid(catalog), id="landing-modal-body"),
         ],
         id="landing-modal",
-        is_open=True,
+        is_open=False,
         size="lg",
         centered=True,
         className="landing-modal",
+    )
+
+
+def welcome_modal() -> dbc.Modal:
+    return dbc.Modal(
+        [
+            dbc.ModalHeader(dbc.ModalTitle("Welcome to HyGloW"), close_button=True),
+            dbc.ModalBody(
+                [
+                    html.P(
+                        "HyGloW (using HyWaves) turns an offshore wave hindcast into nearshore "
+                        "wave conditions — buoys, tide gauges, any point you "
+                        "care about — using a fast statistical metamodel "
+                        "trained on a handful of physics-based SnapWave runs.",
+                        className="landing-intro",
+                    ),
+                    html.Div(
+                        [
+                            html.Span("BUILT ON BLUEMATH", className="panel-kicker"),
+                            html.P(
+                                [
+                                    "HyGloW's metamodel and statistical tooling "
+                                    "are built on ",
+                                    html.A(
+                                        "BlueMath",
+                                        href="https://github.com/GeoOcean/BlueMath",
+                                        target="_blank",
+                                        className="author-link",
+                                    ),
+                                    " — the GeoOcean group's core tool for "
+                                    "data-driven ocean and climate modelling, "
+                                    "and the base every project in the group "
+                                    "builds on.",
+                                ],
+                                className="landing-card-sub landing-card-desc",
+                            ),
+                        ],
+                        className="welcome-bluemath-card",
+                    ),
+                    html.Button(
+                        "🧭 Start discovering",
+                        id="start-discovering-btn",
+                        n_clicks=0,
+                        className="btn-cta",
+                    ),
+                ]
+            ),
+        ],
+        id="welcome-modal",
+        is_open=True,
+        size="lg",
+        centered=True,
+        className="landing-modal welcome-modal",
     )
 
 
@@ -428,7 +473,7 @@ def build_layout() -> html.Div:
 
     return html.Div(
         [
-            dcc.Store(id="app-mode", data="case"),
+            dcc.Store(id="app-mode", data="sandbox"),
             dcc.Store(id="case-confirmed", data=False),
             dcc.Store(id="sandbox-aoi-store"),
             dcc.Store(id="sandbox-layer-index-map"),
@@ -439,7 +484,9 @@ def build_layout() -> html.Div:
                 [
                     dcc.Loading(
                         dcc.Graph(
-                            id="domain-map", className="basemap", config=CASE_MAP_CONFIG
+                            id="domain-map",
+                            className="basemap",
+                            config=SANDBOX_MAP_CONFIG,
                         ),
                         type="circle",
                         color="#22d3ee",
@@ -456,6 +503,7 @@ def build_layout() -> html.Div:
             ),
             buoy_modal(),
             landing_modal(catalog),
+            welcome_modal(),
         ],
         className="app-shell",
     )

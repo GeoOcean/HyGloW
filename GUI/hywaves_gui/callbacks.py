@@ -10,9 +10,11 @@ import dash_bootstrap_components as dbc
 from .colors import CHART_LAYOUT, CHART_TEMPLATE, CONTOUR_COLORS, MODEL_COLORS
 from .layout import _case_grid, _continent_grid, case_panel, legend_rows
 from .loaders import (
+    all_case_aois,
     available_buoy_figures,
     book_available,
     case_mda_candidate,
+    catalog_by_continent,
     load_all_metrics,
     load_aoi,
     load_buoy_validation,
@@ -32,13 +34,7 @@ from .loaders import (
     production_mda,
     region_bounds,
 )
-from .map_figure import (
-    CASE_MAP_CONFIG,
-    SANDBOX_MAP_CONFIG,
-    build_home_map,
-    build_map,
-    build_sandbox_map,
-)
+from .map_figure import CASE_MAP_CONFIG, SANDBOX_MAP_CONFIG, build_map, build_sandbox_map
 
 # WGS84 .prj sidecar for exported AoI shapefiles — same CRS every case's own
 # AoI_Polygons shapefiles already use.
@@ -294,13 +290,6 @@ def register_callbacks(app):
         prevent_initial_call="initial_duplicate",
     )
     def update_map(case_id, mode, sandbox_layers):
-        # The automatic page-load firing of this callback (before any real
-        # case-select/app-mode interaction) has ctx.triggered_id None — show
-        # a neutral (0,0) world view then, rather than jumping straight to
-        # whichever case happens to be catalog[0]. Explicitly picking that
-        # same case afterward (e.g. from the landing modal) is a real
-        # trigger and properly re-centers on it as usual.
-        #
         # `config` is only re-emitted when app-mode is what actually
         # triggered this call (case<->sandbox really does need a different
         # modebar). Re-sending the *same* config object on every case
@@ -310,12 +299,12 @@ def register_callbacks(app):
         # underlying MapLibre GL instance. On a cold cache that remount
         # loses the race with the previous instance's tile loading badly
         # enough that the very first case picked after a hard refresh could
-        # render with no basemap and stuck at the home view's center —
-        # subsequent switches "worked" only because a warm cache made the
-        # remount fast enough not to notice.
-        if ctx.triggered_id is None and mode == "case":
-            return build_home_map(load_world_coastline()), no_update, no_update
-
+        # render with no basemap — subsequent switches "worked" only
+        # because a warm cache made the remount fast enough not to notice.
+        # (The automatic page-load firing of this callback, before any real
+        # interaction, has ctx.triggered_id None and mode "sandbox" — its
+        # own default — so it naturally lands in the branch below with no
+        # special-casing needed.)
         mode_changed = ctx.triggered_id == "app-mode"
 
         if mode == "sandbox":
@@ -324,6 +313,7 @@ def register_callbacks(app):
                 depth200=load_depth200_world(),
                 buffer_fill=load_coastal_buffer_fill(),
                 buffer_line=load_coastal_buffer_line(),
+                case_aois=all_case_aois(load_catalog()),
                 visible_layers=set(sandbox_layers or []),
             )
             return fig, (SANDBOX_MAP_CONFIG if mode_changed else no_update), layer_indices
@@ -383,30 +373,54 @@ def register_callbacks(app):
         Output("buoy-modal", "is_open"),
         Output("buoy-modal-title", "children"),
         Output("buoy-modal-body", "children"),
+        Output("landing-modal", "is_open", allow_duplicate=True),
+        Output("case-select", "value", allow_duplicate=True),
+        Output("case-confirmed", "data", allow_duplicate=True),
+        Output("app-mode", "data", allow_duplicate=True),
         Input("domain-map", "clickData"),
         State("case-select", "value"),
         prevent_initial_call=True,
     )
-    def open_buoy_modal(click_data, case_id):
+    def handle_domain_map_click(click_data, case_id):
+        # The single handler for every domain-map.clickData change — buoy
+        # markers (customdata "buoy_...") and case-AoI markers (customdata
+        # "case_...") used to each get their own separate callback, all
+        # three sharing this one Input. Goals, isobath/mesh-site markers and
+        # AoI fills carry no customdata at all, so a click on any of those
+        # (e.g. a Goal) was a guaranteed no-op in all three — but Dash still
+        # dispatched three separate server round-trips for it, each showing
+        # the header's "Updating..." indicator, for a click that visibly did
+        # nothing. One combined handler means one no-op round-trip instead
+        # of three for that case, and one genuine round-trip instead of two
+        # redundant ones for an actual buoy/case click.
+        none = (no_update,) * 7
         if not click_data or not click_data.get("points"):
-            return no_update, no_update, no_update
+            return none
         custom = click_data["points"][0].get("customdata")
         if not custom:
-            return no_update, no_update, no_update
+            return none
+        key = str(custom[0])
 
-        site_id, name = custom[0], custom[1]
-        case = load_case(case_id)
-        if site_id not in available_buoy_figures(case):
-            body = dbc.Alert(
-                "No validation summary generated yet for this buoy. Run "
-                "10a_Validate_Offshore_Buoys.ipynb / 10b_Validate_Onshore_Buoys.ipynb "
-                "(with their save-summary-PNG cell) first.",
-                color="secondary",
-                className="drawer-alert",
-            )
-        else:
-            body = html.Img(src=f"/buoy-figures/{case_id}/{site_id}.png", className="buoy-modal-img")
-        return True, name, body
+        if key.startswith("buoy_"):
+            name = custom[1]
+            case = load_case(case_id)
+            if key not in available_buoy_figures(case):
+                body = dbc.Alert(
+                    "No validation summary generated yet for this buoy. Run "
+                    "10a_Validate_Offshore_Buoys.ipynb / 10b_Validate_Onshore_Buoys.ipynb "
+                    "(with their save-summary-PNG cell) first.",
+                    color="secondary",
+                    className="drawer-alert",
+                )
+            else:
+                body = html.Img(src=f"/buoy-figures/{case_id}/{key}.png", className="buoy-modal-img")
+            return True, name, body, no_update, no_update, no_update, no_update
+
+        if key.startswith("case_"):
+            clicked_case_id = key[len("case_") :]
+            return no_update, no_update, no_update, False, clicked_case_id, True, "case"
+
+        return none
 
     @app.callback(
         Output("landing-modal-body", "children"),
@@ -433,14 +447,39 @@ def register_callbacks(app):
 
     @app.callback(
         Output("landing-modal", "is_open"),
+        Input("browse-cases-btn", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def open_landing_modal(_n_clicks):
+        # A dedicated callback/output-group just for this one literal-id
+        # button, deliberately kept separate from select_case_from_grid
+        # below. Both used to live in one callback sharing a single output
+        # group — but select_case_from_grid's own Input (landing-case-btn,
+        # pattern-matching ALL) also spuriously re-fires whenever the set of
+        # matching elements changes structurally (e.g. switch_landing_view
+        # replacing the modal body on this very click, which destroys the
+        # previous grid's landing-case-btn cards). That gave two dispatches
+        # of the *same* callback/output-group per click — dash-renderer
+        # discards the older response once a newer request for the same
+        # output group is in flight, so the genuine "open" response
+        # regularly lost the race to the spurious no-op one, and the modal
+        # only opened on the click *after* that (once the stale grid was
+        # already gone and nothing spurious fired anymore). Splitting the
+        # output groups means the spurious re-fire below can never race
+        # this one.
+        return True
+
+    @app.callback(
+        Output("landing-modal", "is_open", allow_duplicate=True),
         Output("case-select", "value"),
         Output("case-confirmed", "data"),
-        Input("browse-cases-btn", "n_clicks"),
-        Input({"type": "start-sandbox-btn", "index": ALL}, "n_clicks"),
         Input({"type": "landing-case-btn", "case": ALL}, "n_clicks"),
         prevent_initial_call=True,
     )
-    def toggle_landing_modal(_browse_clicks, _start_clicks, _case_clicks):
+    def select_case_from_grid(_case_clicks):
+        # Map clicks (case-AoI markers) are handled by handle_domain_map_click
+        # instead — see its own docstring for why domain-map.clickData isn't
+        # an Input here too.
         # Same mount-vs-click caveat as switch_landing_view above: only react
         # to a genuine click, or every case card populated into the grid
         # would auto-"select" itself (n_clicks=0) the instant it is rendered.
@@ -448,11 +487,7 @@ def register_callbacks(app):
         if not fired:
             return no_update, no_update, no_update
         prop_id = fired[0]["prop_id"].rsplit(".", 1)[0]
-        if prop_id == "browse-cases-btn":
-            return True, no_update, no_update
         parsed = json.loads(prop_id) if prop_id.startswith("{") else prop_id
-        if isinstance(parsed, dict) and parsed.get("type") == "start-sandbox-btn":
-            return False, no_update, no_update
         if isinstance(parsed, dict) and parsed.get("type") == "landing-case-btn":
             # Picking a case here is what un-hides the case-specific panels
             # (see toggle_mode_panels) — set directly rather than relying on
@@ -472,22 +507,46 @@ def register_callbacks(app):
         return True
 
     @app.callback(
+        Output("case-select", "options"),
+        Input("case-select", "value"),
+    )
+    def filter_case_options(case_id):
+        # Keeps the dropdown scoped to "other cases in this same continent"
+        # — picking a case from a different continent (map click or Browse
+        # cases) re-narrows it, since this fires on every case-select value
+        # change regardless of how it changed.
+        catalog = load_catalog()
+        continent = load_case(case_id).get("continent")
+        cases = catalog_by_continent(catalog).get(continent, catalog)
+        return [{"label": c.get("case_dir", c["id"]), "value": c["id"]} for c in cases]
+
+    @app.callback(
+        Output("welcome-modal", "is_open"),
+        Input("start-discovering-btn", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def close_welcome_modal(_n_clicks):
+        # The header's own X close (dbc's close_button=True) already
+        # handles that path — this just covers the primary CTA button.
+        return False
+
+    @app.callback(
         Output("app-mode", "data"),
-        Input({"type": "start-sandbox-btn", "index": ALL}, "n_clicks"),
-        Input("exit-sandbox-btn", "n_clicks"),
+        Input("back-to-landing-btn", "n_clicks"),
         Input({"type": "landing-case-btn", "case": ALL}, "n_clicks"),
         prevent_initial_call=True,
     )
-    def set_app_mode(_start_clicks, _exit_clicks, _case_clicks):
+    def set_app_mode(_back_clicks, _case_clicks):
+        # Map clicks (case-AoI markers) are handled by handle_domain_map_click
+        # instead — see its own docstring for why domain-map.clickData isn't
+        # an Input here too.
         fired = [t for t in ctx.triggered if t["value"]]
         if not fired:
             return no_update
         prop_id = fired[0]["prop_id"].rsplit(".", 1)[0]
-        if prop_id == "exit-sandbox-btn":
-            return "case"
-        parsed = json.loads(prop_id) if prop_id.startswith("{") else prop_id
-        if isinstance(parsed, dict) and parsed.get("type") == "start-sandbox-btn":
+        if prop_id == "back-to-landing-btn":
             return "sandbox"
+        parsed = json.loads(prop_id) if prop_id.startswith("{") else prop_id
         if isinstance(parsed, dict) and parsed.get("type") == "landing-case-btn":
             return "case"
         return no_update
@@ -499,22 +558,18 @@ def register_callbacks(app):
         Output("results-drawer", "style"),
         Output("sandbox-panel", "style"),
         Output("continent-legend", "style"),
-        Output("browse-cases-btn", "disabled"),
-        Output("browse-cases-btn", "title"),
         Input("app-mode", "data"),
         Input("case-confirmed", "data"),
     )
     def toggle_mode_panels(mode, confirmed):
         hidden = {"display": "none"}
         if mode == "sandbox":
-            # Reopening the landing modal over the sandbox map doesn't work
-            # cleanly today, so block it here rather than leave a broken
-            # entry point — exiting sandbox first is the reliable path.
-            return hidden, hidden, hidden, hidden, {}, {}, True, "Exit sandbox first to browse other cases"
+            return hidden, hidden, hidden, hidden, {}, {}
         # "case" mode: the case-specific panels stay hidden — no spoilers —
-        # until a case has actually been picked (landing modal or dropdown).
+        # until a case has actually been picked (landing modal, dropdown,
+        # or clicking a case's AoI on the landing map).
         reveal = {} if confirmed else hidden
-        return reveal, reveal, reveal, reveal, hidden, hidden, False, "Browse available cases"
+        return reveal, reveal, reveal, reveal, hidden, hidden
 
     app.clientside_callback(
         ClientsideFunction("map_fixes", "force_repaint"),

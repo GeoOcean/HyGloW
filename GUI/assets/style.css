@@ -502,24 +502,13 @@ body {
     margin-top: 0.15rem;
 }
 
-.landing-divider {
-    text-align: center;
-    color: var(--muted);
-    font-size: 0.78rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    margin: 1rem 0;
-}
-
-.landing-sandbox-card {
-    width: 100%;
-    border-style: dashed;
-    border-color: rgba(34, 211, 238, 0.4);
-}
-
-.landing-sandbox-card:hover {
-    border-color: var(--accent);
+/* Welcome modal — intro + BlueMath reference, shown once on load */
+.welcome-bluemath-card {
     background: rgba(34, 211, 238, 0.08);
+    border: 1px solid rgba(34, 211, 238, 0.3);
+    border-radius: 12px;
+    padding: 0.9rem 1.1rem;
+    margin: 0.5rem 0 1.25rem;
 }
 
 /* Sandbox panel — reuses .case-panel's position/sizing, own controls */
@@ -540,7 +529,9 @@ body {
     border-color: var(--accent);
 }
 
-.sandbox-export-btn {
+/* Solid accent button — the sandbox's "Export as shapefile" and the welcome
+   modal's "Start discovering" CTA both use this. */
+.btn-cta {
     width: 100%;
     background: var(--accent);
     border: none;
@@ -553,7 +544,7 @@ body {
     margin-bottom: 0.6rem;
 }
 
-.sandbox-export-btn:hover {
+.btn-cta:hover {
     background: #67e8f9;
 }
 

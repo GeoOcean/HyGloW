@@ -41,25 +41,3 @@ cases:
       buoy_validation: done
     metamodel:
       mda_candidate: 450
-
-  - id: paradip
-    case_dir: /home/tausiaj/GitHub-GeoOcean/DEME/HyWaves
-    continent: Asia
-    institution: GeoOcean
-    authors:
-      - name: tausiaj
-        github: https://github.com/tausiaj
-        role: downscaling & metamodel
-    repository: https://github.com/tausiaj/HyGloW
-    updated: "2026-09-11"
-    pipeline:
-      aoi: done
-      mesh: done
-      goals: done
-      lhs: done
-      fit: done
-      whacs: done
-      hindcast: done
-      buoy_validation: done
-    metamodel:
-      mda_candidate: 450
