@@ -12,6 +12,7 @@ from .layout import _case_grid, _continent_grid, case_panel, legend_rows
 from .loaders import (
     all_case_aois,
     available_buoy_figures,
+    available_gui_figures,
     book_available,
     case_mda_candidate,
     catalog_by_continent,
@@ -173,7 +174,9 @@ def _render_metamodel_validation(case: dict):
 def _buoy_section(subset, *, title: str):
     """One boxplot panel (RMSE across every buoy, faceted by variable) for one buoy subset."""
     n_buoys = subset["group"].nunique()
-    period = ", ".join(sorted(subset["period"].unique()))
+    # str() each value — a numeric-looking period (e.g. "2020", unlike
+    # "2001-2011") round-trips through the CSV as an int64, not a str.
+    period = ", ".join(sorted(str(p) for p in subset["period"].unique()))
     fig = px.box(
         subset,
         x="model",
@@ -227,6 +230,74 @@ def _render_buoy_validation(case: dict):
     if not sections:
         return dbc.Alert("No buoy validation rows to plot.", color="secondary", className="drawer-alert")
     return html.Div(sections, className="drawer-charts")
+
+
+# (filename stem, title, caption) — filenames match what 12_Final_Plots.ipynb
+# saves (NewSouthWales and Samoa both run it); available_gui_figures() below
+# filters this down to whichever of these a given case actually has.
+_FINAL_PLOTS = [
+    (
+        "fig01_domain",
+        "Domain",
+        "Satellite imagery, bathymetry, isobaths, the AoI, the full mesh, and goals with their propagation sectors.",
+    ),
+    (
+        "fig02_map_comparison",
+        "Reconstruction comparison",
+        "Dynamic SnapWave vs. the metamodel at every isobath + buoy site, for a stormy and a calm moment.",
+    ),
+    (
+        "fig03_metamodel",
+        "Metamodel training (LHS cases)",
+        "Sampled wave directions per goal from the LHS SnapWave cases.",
+    ),
+    (
+        "fig04_spectra_reconstruction",
+        "Reconstruction spectra network",
+        "Reconstructed spectra along the 5 m isobath, with WHACS partition forcing arrows at the goals.",
+    ),
+]
+
+
+def _render_final_plots(case: dict, case_id: str):
+    """The case's own 12_Final_Plots.ipynb figures, as clickable thumbnails —
+    degrades per-figure via available_gui_figures() rather than failing whole
+    for a case that hasn't run that notebook (or ran an older version
+    producing fewer figures). Each thumbnail's full-size view is a separate
+    callback (open_final_plot_modal) triggered by its pattern-matching id,
+    reusing the buoy-modal's enlarge-on-click convention."""
+    available = available_gui_figures(case)
+    if not available:
+        return dbc.Alert(
+            "No figures found under outputs/gui_figures/. Run 12_Final_Plots.ipynb "
+            "for this case first.",
+            color="warning",
+            className="drawer-alert",
+        )
+    cards = [
+        html.Div(
+            [
+                html.Button(
+                    html.Img(
+                        src=f"/gui-figures/{case_id}/{name}.png",
+                        className="final-plot-thumb-img",
+                    ),
+                    id={"type": "final-plot-thumb", "name": name},
+                    n_clicks=0,
+                    className="final-plot-thumb-btn",
+                    title="Click to enlarge",
+                ),
+                html.H3(title, className="final-plot-title"),
+                html.P(caption, className="chart-caption"),
+            ],
+            className="final-plot-card",
+        )
+        for name, title, caption in _FINAL_PLOTS
+        if name in available
+    ]
+    if not cards:
+        return dbc.Alert("No matching figures found yet.", color="secondary", className="drawer-alert")
+    return html.Div(cards, className="final-plot-grid")
 
 
 def _ensure_clockwise(ring: list[list[float]]) -> list[list[float]]:
@@ -367,7 +438,32 @@ def register_callbacks(app):
         if tab == "tab-metamodel":
             return _render_metamodel_validation(case)
 
+        if tab == "tab-final":
+            return _render_final_plots(case, case_id)
+
         return _render_buoy_validation(case)
+
+    @app.callback(
+        Output("final-plot-modal", "is_open"),
+        Output("final-plot-modal-title", "children"),
+        Output("final-plot-modal-body", "children"),
+        Input({"type": "final-plot-thumb", "name": ALL}, "n_clicks"),
+        State("case-select", "value"),
+        prevent_initial_call=True,
+    )
+    def open_final_plot_modal(_clicks, case_id):
+        # Same mount-vs-click caveat as switch_landing_view/select_case_from_grid:
+        # a pattern-matching ALL input also fires when the set of matching
+        # thumbnails changes (e.g. switching tabs/cases re-renders them), not
+        # just on a real click — only react to a genuine nonzero click.
+        fired = [t for t in ctx.triggered if t["value"]]
+        if not fired:
+            return no_update, no_update, no_update
+        prop_id = fired[0]["prop_id"].rsplit(".", 1)[0]
+        name = json.loads(prop_id)["name"]
+        title = next((t for n, t, _c in _FINAL_PLOTS if n == name), name)
+        img = html.Img(src=f"/gui-figures/{case_id}/{name}.png", className="buoy-modal-img")
+        return True, title, img
 
     @app.callback(
         Output("buoy-modal", "is_open"),
@@ -570,6 +666,23 @@ def register_callbacks(app):
         # or clicking a case's AoI on the landing map).
         reveal = {} if confirmed else hidden
         return reveal, reveal, reveal, reveal, hidden, hidden
+
+    @app.callback(
+        Output("results-drawer", "className"),
+        Output("drawer-collapse-btn", "children"),
+        Output("drawer-collapse-btn", "title"),
+        Input("drawer-collapse-btn", "n_clicks"),
+        State("results-drawer", "className"),
+        prevent_initial_call=True,
+    )
+    def toggle_drawer_collapsed(_n_clicks, current_class):
+        # Collapsing just hides the tab content (CSS: .collapsed .drawer-body)
+        # and shrinks the drawer down to its tab bar — the drawer's ~42vh
+        # footprint otherwise sits right over the map, making it awkward to
+        # pan/zoom around a case while the stats tabs are open.
+        if "collapsed" in (current_class or "").split():
+            return "glass-panel results-drawer", "⌄", "Collapse — frees up the map underneath"
+        return "glass-panel results-drawer collapsed", "⌃", "Expand"
 
     app.clientside_callback(
         ClientsideFunction("map_fixes", "force_repaint"),

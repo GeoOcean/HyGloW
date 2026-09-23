@@ -176,16 +176,26 @@ def results_drawer() -> html.Div:
     return html.Div(
         [
             html.Div(
-                dbc.Tabs(
-                    [
-                        dbc.Tab(label="Metamodel Validation", tab_id="tab-metamodel"),
-                        dbc.Tab(label="Buoy Validation", tab_id="tab-buoys"),
-                        dbc.Tab(label="Goals Validation", tab_id="tab-goals"),
-                    ],
-                    id="main-tabs",
-                    active_tab="tab-metamodel",
-                    className="drawer-tabs",
-                ),
+                [
+                    dbc.Tabs(
+                        [
+                            dbc.Tab(label="Metamodel Validation", tab_id="tab-metamodel"),
+                            dbc.Tab(label="Buoy Validation", tab_id="tab-buoys"),
+                            dbc.Tab(label="Goals Validation", tab_id="tab-goals"),
+                            dbc.Tab(label="Final Plots", tab_id="tab-final"),
+                        ],
+                        id="main-tabs",
+                        active_tab="tab-metamodel",
+                        className="drawer-tabs",
+                    ),
+                    html.Button(
+                        "⌄",
+                        id="drawer-collapse-btn",
+                        n_clicks=0,
+                        className="drawer-collapse-btn",
+                        title="Collapse — frees up the map underneath",
+                    ),
+                ],
                 className="drawer-header",
             ),
             html.Div(id="tab-content", className="drawer-body"),
@@ -267,6 +277,21 @@ def buoy_modal() -> dbc.Modal:
             dbc.ModalBody(id="buoy-modal-body"),
         ],
         id="buoy-modal",
+        is_open=False,
+        size="xl",
+        centered=True,
+        className="buoy-modal",
+    )
+
+
+def final_plot_modal() -> dbc.Modal:
+    """Enlarged view for a Final Plots thumbnail — mirrors buoy_modal()."""
+    return dbc.Modal(
+        [
+            dbc.ModalHeader(dbc.ModalTitle(id="final-plot-modal-title"), close_button=True),
+            dbc.ModalBody(id="final-plot-modal-body"),
+        ],
+        id="final-plot-modal",
         is_open=False,
         size="xl",
         centered=True,
@@ -502,6 +527,7 @@ def build_layout() -> html.Div:
                 className="map-stage",
             ),
             buoy_modal(),
+            final_plot_modal(),
             landing_modal(catalog),
             welcome_modal(),
         ],

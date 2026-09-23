@@ -373,6 +373,20 @@ def available_buoy_figures(case: dict) -> set[str]:
     return {p.stem for p in fig_dir.glob("*.png")}
 
 
+def available_gui_figures(case: dict) -> set[str]:
+    """Figure names with a saved PNG (``outputs/gui_figures/<name>.png``).
+
+    Written by a case's own ``12_Final_Plots.ipynb`` (currently only
+    NewSouthWales) — a case that hasn't run it yet just has none, so the
+    "Final Plots" tab can degrade to a "not generated yet" message per
+    figure instead of a broken ``<img>``.
+    """
+    fig_dir = case_root(case) / "outputs" / "gui_figures"
+    if not fig_dir.is_dir():
+        return set()
+    return {p.stem for p in fig_dir.glob("*.png")}
+
+
 def case_mda_candidate(case: dict) -> int | None:
     """Fixed MDA train size for the validation tabs, from the catalog's ``metamodel.mda_candidate``.
 
