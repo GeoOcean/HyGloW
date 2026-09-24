@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import sys
 from dataclasses import dataclass
@@ -295,6 +296,64 @@ def _check_outputs(case_dir: Path, report: _Report) -> None:
         report.warn("outputs.figures", "no portal figures in outputs/gui_figures/")
 
 
+def _sha256(path: Path) -> str:
+    """Hex SHA-256 of *path*, streamed."""
+    digest = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _check_portal(case_dir: Path, report: _Report) -> None:
+    """Warn when ``portal/`` (written by ``hywaves publish``) is older than its sources.
+
+    Compares each recorded source's size and mtime first, hashing only when
+    the mtime moved (a fresh git clone resets mtimes without changing
+    content), and re-runs the recorded globs to catch added/removed files.
+    """
+    manifest_path = case_dir / "portal" / "manifest.json"
+    if not manifest_path.is_file():
+        report.info(
+            "portal.missing", "no portal/ bundle yet — run `python -m hywaves publish`"
+        )
+        return
+    manifest = _load_json(manifest_path, report, "portal.manifest")
+    if not isinstance(manifest, dict):
+        return
+
+    sources = manifest.get("sources", {})
+    changed: list[str] = []
+    for rel, meta in sources.items():
+        path = Path(rel) if Path(rel).is_absolute() else case_dir / rel
+        if not path.is_file():
+            changed.append(f"{rel} (removed)")
+            continue
+        stat = path.stat()
+        if stat.st_size != meta.get("size"):
+            changed.append(rel)
+        elif stat.st_mtime_ns != meta.get("mtime_ns") and _sha256(path) != meta.get("sha256"):
+            changed.append(rel)
+
+    known = {rel for rel in sources}
+    for pattern in manifest.get("source_patterns", []):
+        for path in case_dir.glob(pattern):
+            rel = path.relative_to(case_dir).as_posix()
+            if rel not in known:
+                changed.append(f"{rel} (new)")
+
+    if changed:
+        shown = ", ".join(changed[:6]) + (f" … (+{len(changed) - 6} more)" if len(changed) > 6 else "")
+        report.warn(
+            "portal.stale",
+            f"portal/ bundle is out of date — re-run `python -m hywaves publish`. Changed: {shown}",
+        )
+    else:
+        report.info(
+            "portal.ok", f"portal/ bundle up to date (published {manifest.get('published_at', '?')})"
+        )
+
+
 # ----------------------------------------------------------------------
 # Level 2 — engine contract
 # ----------------------------------------------------------------------
@@ -521,6 +580,7 @@ def validate_case(case_dir: str | Path, *, publish: bool = False) -> list[Findin
     _check_offshore(config, report)
     _check_outputs(case_dir, report)
     _check_engine(case_dir, config, report)
+    _check_portal(case_dir, report)
     return report.findings
 
 

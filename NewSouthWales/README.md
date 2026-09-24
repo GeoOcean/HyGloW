@@ -75,10 +75,10 @@ happens to cover that site (see "Reconstructing at scale" below for why that
 distinction is roughly a 20x difference, not a rounding error).
 
 Full pipeline has been run end-to-end. Built SnapWave case folders
-(`SnapWave_CASES_Metamodel`, `SnapWave_CASES_Dynamic`) live outside the repo
-at the path set in `NewSouthWales.json` → `simulations.metamodel_cases` /
-`dynamic_cases` (this machine points them at `/hyglowdata/NewSouthWales/` —
-change that to wherever you want them for your own run). Notebook outputs
+(`SnapWave_CASES_Metamodel`, `SnapWave_CASES_Dynamic`) live inside the case
+folder, at the paths set in `NewSouthWales.json` → `simulations.metamodel_cases` /
+`dynamic_cases` (git-ignored — too large to commit; point those keys
+elsewhere if you keep the runs on another disk). Notebook outputs
 aren't currently committed, so don't expect populated `outputs/` cells if
 you pull this fresh — re-run the notebooks to regenerate.
 

@@ -1,12 +1,11 @@
+# GUI runtime only — it reads each case's published portal/ bundle, so none
+# of the raster/NetCDF stack is needed here (that lives in the case
+# environment, used by `python -m hywaves publish`).
 dash>=2.14
 dash-bootstrap-components>=1.5
 plotly>=5.18
 pandas>=2.0
 pyyaml>=6.0
+# Sandbox "Export as shapefile" (callbacks._build_aoi_shapefile_zip)
 pyshp>=2.3
-xarray>=2023.1
-netCDF4>=1.6
-rioxarray>=0.15
-rasterio>=1.3
-contourpy>=1.2
 gunicorn>=21.2

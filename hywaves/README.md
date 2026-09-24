@@ -15,6 +15,10 @@ python -m hywaves start --name MyCase
 python -m hywaves validate MyCase/             # development mode: gaps are warnings
 python -m hywaves validate MyCase/ --publish   # strict: portal-ready check
 
+# Export the portal bundle the GUI reads (validates first) → MyCase/portal/
+python -m hywaves publish MyCase/              # commit MyCase/portal/ (its book/ is git-ignored)
+python -m hywaves publish MyCase/ --no-book --max-image-px 1600
+
 # Re-sync a case's vendored engine from the template
 python -m hywaves update MyCase/ --dry-run     # report only
 python -m hywaves update MyCase/               # sync untouched files, keep local edits
@@ -34,6 +38,7 @@ No data is downloaded.
 | ---------------------- | ----------------------------------------------------------- |
 | `contract/CONTRACT.md` | The case contract (Level 1 portal + Level 2 engine)         |
 | `contract/validate.py` | Stdlib-only validator — copyable standalone into any repo   |
+| `publish.py`           | `publish` implementation — builds `{Case}/portal/` (CONTRACT.md §6) |
 | `config.py`            | `CaseConfig` class — load any case folder programmatically  |
 | `scaffold.py`          | `start` implementation (vendoring + manifest)               |
 | `template/`            | The canonical case reference (see below)                    |
@@ -52,9 +57,11 @@ No data is downloaded.
   are snapshots that `hywaves update` re-syncs: untouched engine files are
   updated, locally modified ones are kept (overridden by `--force`), and
   notebooks/SnapWave templates are never touched.
-- **The contract is the interface.** The GUI and any global aggregation read
-  only contract files (case JSON, goals, observations, metrics CSVs,
-  figures). What a case does internally is its author's business.
+- **The contract is the interface.** `publish` turns a case's contract files
+  (case JSON, goals, observations, metrics CSVs, figures) plus pre-computed
+  map layers into a small `{Case}/portal/` bundle, and the GUI reads only
+  that. What a case does internally is its author's business. `validate`
+  warns when a bundle has fallen behind its sources.
 - **Community cases live in their authors' repos.** This repo hosts the
   engine, the contract, the GUI, and two worked examples: Samoa and
   NewSouthWales, both carried through goals/metamodel/buoy validation.
@@ -68,4 +75,7 @@ from hywaves.contract import validate_case
 case = CaseConfig("Samoa")
 goals = case.load_goals()
 findings = validate_case("Samoa", publish=True)
+
+from hywaves.publish import publish_case
+result = publish_case("Samoa")        # → Samoa/portal/; result.skipped lists any skipped layers
 ```

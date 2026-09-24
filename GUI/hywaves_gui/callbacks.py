@@ -4,7 +4,7 @@ import zipfile
 
 import plotly.express as px
 import shapefile
-from dash import ALL, ClientsideFunction, Input, Output, Patch, State, ctx, dcc, html, no_update
+from dash import ALL, ClientsideFunction, Input, Output, Patch, State, ctx, dcc, get_relative_path, html, no_update
 import dash_bootstrap_components as dbc
 
 from .colors import CHART_LAYOUT, CHART_TEMPLATE, CONTOUR_COLORS, MODEL_COLORS
@@ -90,7 +90,8 @@ def _render_goals_validation(case: dict):
     metrics = load_all_metrics(case)
     if metrics.empty:
         return dbc.Alert(
-            "No validation_metrics.csv found under outputs/goal_*/. Run val.sweep() for every goal first.",
+            "No holdout metrics published for this case yet. Run val.sweep() for every goal, "
+            "then `python -m hywaves publish`.",
             color="warning",
             className="drawer-alert",
         )
@@ -127,8 +128,8 @@ def _render_metamodel_validation(case: dict):
     dyn = load_metamodel_validation(case)
     if dyn.empty:
         return dbc.Alert(
-            "No metamodel_validation CSV found under outputs/metamodel_validation/. "
-            "Run 09_Validate_Linear_Summation.ipynb (with its save-metrics cell) first.",
+            "No metamodel validation published for this case yet. Run "
+            "09_Validate_Linear_Summation.ipynb (with its save-metrics cell), then `python -m hywaves publish`.",
             color="warning",
             className="drawer-alert",
         )
@@ -209,9 +210,9 @@ def _render_buoy_validation(case: dict):
     buoys = load_buoy_validation(case)
     if buoys.empty:
         return dbc.Alert(
-            "No buoy_validation CSV found under outputs/buoy_validation/. "
-            "Run 10a_Validate_Offshore_Buoys.ipynb / 10b_Validate_Onshore_Buoys.ipynb "
-            "(with their save-summary cells) first.",
+            "No buoy validation published for this case yet. Run "
+            "10a_Validate_Offshore_Buoys.ipynb / 10b_Validate_Onshore_Buoys.ipynb "
+            "(with their save-summary cells), then `python -m hywaves publish`.",
             color="warning",
             className="drawer-alert",
         )
@@ -269,8 +270,8 @@ def _render_final_plots(case: dict, case_id: str):
     available = available_gui_figures(case)
     if not available:
         return dbc.Alert(
-            "No figures found under outputs/gui_figures/. Run 12_Final_Plots.ipynb "
-            "for this case first.",
+            "No figures published for this case yet. Run 12_Final_Plots.ipynb, "
+            "then `python -m hywaves publish`.",
             color="warning",
             className="drawer-alert",
         )
@@ -279,7 +280,7 @@ def _render_final_plots(case: dict, case_id: str):
             [
                 html.Button(
                     html.Img(
-                        src=f"/gui-figures/{case_id}/{name}.png",
+                        src=get_relative_path(f"/gui-figures/{case_id}/{name}.png"),
                         className="final-plot-thumb-img",
                     ),
                     id={"type": "final-plot-thumb", "name": name},
@@ -310,7 +311,7 @@ def _ensure_clockwise(ring: list[list[float]]) -> list[list[float]]:
 
 def _build_aoi_shapefile_zip(ring: list[list[float]], name: str) -> bytes:
     """A sandbox-drawn AoI ring as a zipped shapefile, matching the aoi_file
-    format every HyGloW case already uses (see loaders.load_aoi)."""
+    format every HyGloW case already uses for its paths.aoi_file."""
     ring = _ensure_clockwise(ring)
     shp_io, shx_io, dbf_io = io.BytesIO(), io.BytesIO(), io.BytesIO()
     writer = shapefile.Writer(shp=shp_io, shx=shx_io, dbf=dbf_io, shapeType=shapefile.POLYGON)
@@ -338,7 +339,11 @@ def register_callbacks(app):
     def on_case_change_book_link(case_id):
         case = load_case(case_id)
         if book_available(case):
-            return f"/case-book/{case_id}/index.html", "header-link header-link-book", "Open the rendered notebook report"
+            return (
+                get_relative_path(f"/case-book/{case_id}/index.html"),
+                "header-link header-link-book",
+                "Open the rendered notebook report",
+            )
         return "#", "header-link header-link-book disabled", "No report built yet for this case"
 
     @app.callback(
@@ -462,7 +467,7 @@ def register_callbacks(app):
         prop_id = fired[0]["prop_id"].rsplit(".", 1)[0]
         name = json.loads(prop_id)["name"]
         title = next((t for n, t, _c in _FINAL_PLOTS if n == name), name)
-        img = html.Img(src=f"/gui-figures/{case_id}/{name}.png", className="buoy-modal-img")
+        img = html.Img(src=get_relative_path(f"/gui-figures/{case_id}/{name}.png"), className="buoy-modal-img")
         return True, title, img
 
     @app.callback(
@@ -504,12 +509,12 @@ def register_callbacks(app):
                 body = dbc.Alert(
                     "No validation summary generated yet for this buoy. Run "
                     "10a_Validate_Offshore_Buoys.ipynb / 10b_Validate_Onshore_Buoys.ipynb "
-                    "(with their save-summary-PNG cell) first.",
+                    "(with their save-summary-PNG cell), then `python -m hywaves publish`.",
                     color="secondary",
                     className="drawer-alert",
                 )
             else:
-                body = html.Img(src=f"/buoy-figures/{case_id}/{key}.png", className="buoy-modal-img")
+                body = html.Img(src=get_relative_path(f"/buoy-figures/{case_id}/{key}.png"), className="buoy-modal-img")
             return True, name, body, no_update, no_update, no_update, no_update
 
         if key.startswith("case_"):

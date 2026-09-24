@@ -1,15 +1,31 @@
 # HyGloW Results Explorer
 
-Lightweight Dash portal for HyGloW use cases. Reads each case's standard files:
+Lightweight Dash portal for HyGloW use cases. It reads **only** each case's
+published bundle, `{Case}/portal/`, written by
 
-- `{Case}/{Case}.json` — config, offshore forcing, metamodel settings
-- `{Case}/inputs/Goals/{Case}_Goals.json` — goal locations (via `simulations.goals_file`)
-- `{Case}/inputs/Observations/{Case}_observations.json` — buoy GeoJSON (via `onshore_waves`)
-- `{Case}/outputs/goal_*/validation_metrics.csv` — **Goals Validation** tab (written by `val.sweep()`, notebook 06)
-- `{Case}/outputs/metamodel_validation/*.csv` — **Metamodel Validation** tab (notebook 09's save-metrics cell)
-- `{Case}/outputs/buoy_validation/*_summary_*.csv` + `.../figures/<site>.png` — **Buoy Validation** tab (notebooks 10a/10b's save cells)
-- `{Case}/outputs/gui_figures/*.png` — **Final Plots** tab (a case's own `12_Final_Plots.ipynb`)
-- `{Case}/book/_build/html/` — rendered Jupyter Book report (optional; see below)
+```bash
+python -m hywaves publish {Case}/
+```
+
+(see `hywaves/contract/CONTRACT.md` §6). Never the raw inputs or `outputs/`,
+so a deployment needs the bundles alone — a few MB per case:
+
+| Bundle file (`{Case}/portal/…`)                   | Used for                                                    | Built from                                                     |
+| ------------------------------------------------- | ----------------------------------------------------------- | -------------------------------------------------------------- |
+| `case.json`                                       | name, description, offshore forcing, legend isobaths        | `{Case}/{Case}.json`                                           |
+| `goals.json`, `observations.json`                 | goal and buoy markers                                       | `simulations.goals_file`, `onshore_waves`                      |
+| `aoi.geojson`                                     | AoI outline (case map + landing map)                        | `paths.aoi_file` shapefile                                     |
+| `isobaths.json`                                   | depth-contour lines                                         | `paths.topobathy_file` raster, contoured at publish            |
+| `output_sites.json`                               | isobath/mesh output-site dots                               | first `output_sites_*.nc` under `simulations.metamodel_cases` (or a same-named folder in the case) |
+| `validation_metrics.csv`                          | **Goals Validation** tab                                    | every `outputs/goal_*/validation_metrics.csv` (notebook 06)    |
+| `metamodel_validation/*.csv`                      | **Metamodel Validation** tab                                | notebook 09's save-metrics cell                                |
+| `buoy_validation/*_summary_*.csv`, `…/figures/*.png` | **Buoy Validation** tab + buoy-click popups              | notebooks 10a/10b's save cells                                 |
+| `gui_figures/*.png`                               | **Final Plots** tab                                         | the case's own `12_Final_Plots.ipynb`                          |
+| `book/`                                           | **📖 Report** link (optional; git-ignored, see below)       | `book/_build/html/`                                            |
+| `manifest.json`                                   | "Published" date in the case panel                          | written by `publish`                                           |
+
+Any missing file just empties that layer/tab (a "not published yet"
+message), and a case with no `portal/` at all still appears in the catalog.
 
 Portal metadata (authors, institution, pipeline status, **continent** for the
 "Browse cases" picker below) lives in `catalog/cases.yaml`. A case can also pin
@@ -78,8 +94,8 @@ of interest before it's a real case:
   (fill and line) on and off without disturbing a shape already drawn. The
   continent/coastline/isobath/buffer layers are pre-simplified static files
   — see "Sandbox reference-layer data" below for where they come from and
-  how to regenerate them; the case AoIs are read live from each case's own
-  `aoi_file` (`loaders.all_case_aois`).
+  how to regenerate them; the case AoIs come from each case's published
+  `portal/aoi.geojson` (`loaders.all_case_aois`).
 
 The drawn shape lives in *paper* (screen-fraction) coordinates from Plotly's
 draw tools, not lon/lat, since a screen rectangle isn't a rectangle in a map
@@ -114,12 +130,42 @@ there to restyle, rather than hunting through `map_figure.py`/`callbacks.py`.
 
 ## Deploy
 
+The repo checkout is enough — `GUI/` plus each case's committed `portal/`
+(no `inputs/`, `outputs/`, or model runs needed; they're git-ignored anyway).
+Install `requirements.txt` (no raster/NetCDF stack) and run:
+
 ```bash
 cd GUI
-gunicorn app:server -b 0.0.0.0:8050
+gunicorn app:server -b 127.0.0.1:8050
 ```
 
-Deploy the full HyGloW repo so case paths resolve, or copy lightweight exports later.
+**Behind a reverse proxy under a sub-path** (e.g. `https://host/hyglow/`),
+set `HYGLOW_URL_BASE` — every page, asset, figure and report route then
+lives under it:
+
+```bash
+HYGLOW_URL_BASE=/hyglow/ gunicorn app:server -b 127.0.0.1:8050
+```
+
+with the proxy forwarding the prefix unchanged, e.g. nginx:
+
+```nginx
+location /hyglow {
+    proxy_pass http://localhost:8050/hyglow;
+}
+```
+
+(In a systemd unit: `Environment=HYGLOW_URL_BASE=/hyglow/`.)
+
+**Reports** (`portal/book/`) are not in git — copy them to the server by
+hand after publishing, e.g.
+`rsync -a NewSouthWales/portal/book/ server:/deploys/HyGloW/NewSouthWales/portal/book/`.
+A book's links are baked in at build time, so build it for the same prefix
+first: `HYGLOW_URL_BASE=/hyglow/ NewSouthWales/book/build.sh`, then re-run
+`python -m hywaves publish NewSouthWales`.
+
+**Updating a case** on the server = re-run `publish` locally, commit
+`{Case}/portal/`, pull on the server, restart the service.
 
 ## Add a case
 
@@ -130,9 +176,13 @@ Deploy the full HyGloW repo so case paths resolve, or copy lightweight exports l
 2. Ensure the case follows the standard JSON / goals / observations layout
    (including `paths.aoi_file` — that's what draws its AoI on the landing
    map).
-3. Run notebook 06 (`val.sweep()`) for every goal, then 09 and 10a/10b with
-   their save cells, so the three tabs above have data.
-4. Restart the app.
+3. Run notebook 06 (`val.sweep()`) for every goal, then 09, 10a/10b and 12
+   with their save cells, so the tabs above have data.
+4. `python -m hywaves publish {Case}/` — validates the case, then writes
+   `{Case}/portal/`. Commit that folder (its `book/` is git-ignored).
+   `python -m hywaves validate {Case}/` warns whenever the bundle has fallen
+   behind its sources.
+5. Restart the app.
 
 A sandbox-drawn AoI shapefile (see above) is a reasonable starting point for
 a brand-new case's `inputs/AoI_Polygons/` before working through the rest of
@@ -171,7 +221,10 @@ as something it isn't).
 The header's **📖 Report** link opens a rendered [Jupyter Book](https://jupyterbook.org)
 built from a case's own numbered notebooks (see `{Case}/book/README.md`, e.g.
 `NewSouthWales/book/`) — a narrated, sequential write-up alongside the tabs
-above. It's a static site the GUI just serves; the link is disabled
-automatically for any case without a `book/_build/html/index.html`. It does
+above. It's a static site the GUI just serves, from the bundle's
+`portal/book/` (copied there by `publish`); the link is disabled
+automatically for any case without a `portal/book/index.html`. It does
 **not** rebuild on its own — rerun the case's `book` build after notebooks
-change (see that case's `book/README.md`).
+change (see that case's `book/README.md`), then `publish` again. The book is
+git-ignored (tens of MB of static site): copy it to a deployment by hand, as
+described under **Deploy**.

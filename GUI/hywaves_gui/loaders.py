@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from .paths import CATALOG_PATH, case_root, resolve_case
+from .paths import CATALOG_PATH, portal_root
 
 
 def load_catalog() -> list[dict]:
@@ -63,21 +63,34 @@ def load_coastal_buffer_line() -> list[list[tuple[float, float]]]:
     return _load_sandbox_layer("coastal_buffer_line.json")
 
 
-def find_case_config(case: dict) -> Path:
-    """Locate ``{Case}/{Case}.json`` (case-insensitive fallback)."""
-    root = case_root(case)
-    name = root.name
-    for candidate in (root / f"{name}.json", root / f"{name.lower()}.json"):
-        if candidate.is_file():
-            return candidate
-    configs = sorted(p for p in root.glob("*.json") if "Goals" not in p.name and "observations" not in p.name.lower())
-    if len(configs) == 1:
-        return configs[0]
-    raise FileNotFoundError(f"No case config JSON found under {root}")
+# ----------------------------------------------------------------------
+# Case data — read only from each case's published bundle, ``{Case}/portal/``
+# (built by ``python -m hywaves publish``; see hywaves/contract/CONTRACT.md §6).
+# Every loader degrades to an empty result when its file is absent — a
+# not-yet-published case, or a layer the publish step skipped — so the GUI
+# shows a "not generated yet" message instead of failing.
+# ----------------------------------------------------------------------
+
+
+def _portal_json(case: dict, name: str, default=None):
+    path = portal_root(case) / name
+    if not path.is_file():
+        return default
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def portal_manifest(case: dict) -> dict | None:
+    """The bundle's ``manifest.json`` (publish date, hywaves version, skipped layers) — ``None`` if unpublished."""
+    return _portal_json(case, "manifest.json")
 
 
 def load_case_config(case: dict) -> dict:
-    return json.loads(find_case_config(case).read_text(encoding="utf-8"))
+    """The case config as published (``portal/case.json``).
+
+    An unpublished case gets a stub with just its catalog id as the name,
+    so the panels still render (with "not published yet" data messages).
+    """
+    return _portal_json(case, "case.json") or {"name": case.get("case_dir", case["id"])}
 
 
 def _goal_lon_lat(goal: dict) -> tuple[float, float]:
@@ -87,31 +100,17 @@ def _goal_lon_lat(goal: dict) -> tuple[float, float]:
 
 
 def load_goals(case: dict, config: dict | None = None) -> pd.DataFrame:
-    config = config or load_case_config(case)
-    sim = config.get("simulations", {})
-    if goals_file := sim.get("goals_file"):
-        data = json.loads(resolve_case(case, goals_file).read_text(encoding="utf-8"))
-        goals = data.get("goals", data)
-    else:
-        goals = config.get("goals", {})
-
+    data = _portal_json(case, "goals.json", {})
+    goals = data.get("goals", data)
     rows = [{"goal": str(gid), "lon": lon, "lat": lat} for gid, g in goals.items() for lon, lat in [_goal_lon_lat(g)]]
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows, columns=["goal", "lon", "lat"])
 
 
 def load_observations(case: dict, config: dict | None = None) -> pd.DataFrame:
-    config = config or load_case_config(case)
-    onshore = config.get("onshore_waves")
-    if not isinstance(onshore, str):
-        return pd.DataFrame(columns=["name", "instrument_id", "lon", "lat", "institution", "recording"])
-
-    path = resolve_case(case, onshore)
-    if not path.is_file():
-        return pd.DataFrame(columns=["name", "instrument_id", "lon", "lat", "institution", "recording"])
-
-    data = json.loads(path.read_text(encoding="utf-8"))
+    columns = ["name", "instrument_id", "lon", "lat", "institution", "recording"]
+    data = _portal_json(case, "observations.json", {})
     if data.get("type") != "FeatureCollection":
-        return pd.DataFrame(columns=["name", "instrument_id", "lon", "lat", "institution", "recording"])
+        return pd.DataFrame(columns=columns)
 
     rows = []
     for feat in data["features"]:
@@ -127,58 +126,43 @@ def load_observations(case: dict, config: dict | None = None) -> pd.DataFrame:
                 "recording": props.get("recording"),
             }
         )
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows, columns=columns)
 
 
 def load_aoi(case: dict, config: dict | None = None) -> list[list[tuple[float, float]]]:
-    """Rings of the case AoI polygon(s) from ``paths.aoi_file`` (EPSG:4326).
+    """Rings of the case AoI polygon(s) from ``portal/aoi.geojson`` (EPSG:4326).
 
-    Returns an empty list when the AoI is not declared, missing, or pyshp
-    is unavailable — the map simply omits the layer.
+    Every ring (exterior or hole) is returned flat — the map just outlines
+    and fills them. ``[]`` when the bundle has no AoI layer.
     """
-    config = config or load_case_config(case)
-    aoi_rel = config.get("paths", {}).get("aoi_file")
-    if not isinstance(aoi_rel, str) or not aoi_rel:
-        return []
-    path = resolve_case(case, aoi_rel)
-    if not path.is_file():
-        return []
-    try:
-        import shapefile
-    except ImportError:
-        return []
-
+    data = _portal_json(case, "aoi.geojson", {})
     rings: list[list[tuple[float, float]]] = []
-    for shape in shapefile.Reader(str(path)).shapes():
-        breaks = list(shape.parts) + [len(shape.points)]
-        for lo, hi in zip(breaks[:-1], breaks[1:]):
-            ring = [(float(x), float(y)) for x, y in shape.points[lo:hi]]
-            if len(ring) >= 3:
-                rings.append(ring)
+    for feat in data.get("features", []):
+        geometry = feat.get("geometry") or {}
+        polygons = [geometry["coordinates"]] if geometry.get("type") == "Polygon" else geometry.get("coordinates", [])
+        for polygon in polygons:
+            for ring in polygon:
+                if len(ring) >= 3:
+                    rings.append([(float(x), float(y)) for x, y, *_ in ring])
     return rings
 
 
 def all_case_aois(catalog: list[dict]) -> list[dict]:
     """Every catalog case's real AoI, for the landing/sandbox world view.
 
-    Cases with no ``aoi_file`` (``load_aoi`` returns ``[]``) are skipped —
-    they're still reachable via the "Browse cases" modal, just not drawn on
-    the map. Cases whose files aren't reachable on this machine (e.g. a
-    catalog entry pointing outside this checkout) are skipped the same way,
-    rather than taking down the whole landing map. ``center`` is a plain
-    arithmetic-mean centroid of the ring points (not area-weighted) — good
-    enough for placing a click marker, and avoids pulling in shapely as a
-    GUI runtime dependency just for this.
+    Cases with no published AoI (``load_aoi`` returns ``[]`` — including a
+    case that hasn't been published at all) are skipped: they're still
+    reachable via the "Browse cases" modal, just not drawn on the map.
+    ``center`` is a plain arithmetic-mean centroid of the ring points (not
+    area-weighted) — good enough for placing a click marker, and avoids
+    pulling in shapely as a GUI runtime dependency just for this.
     """
     results = []
     for case in catalog:
-        try:
-            config = load_case_config(case)
-            rings = load_aoi(case, config)
-        except (FileNotFoundError, OSError):
-            continue
+        rings = load_aoi(case)
         if not rings:
             continue
+        config = load_case_config(case)
         points = [p for ring in rings for p in ring]
         center = (
             sum(p[0] for p in points) / len(points),
@@ -196,158 +180,53 @@ def all_case_aois(catalog: list[dict]) -> list[dict]:
     return results
 
 
-_RASTER_X_NAMES = ("x", "lon", "longitude")
-_RASTER_Y_NAMES = ("y", "lat", "latitude")
-
-# Display-only resampling for isobath lines: independent of the case config's
-# per-isobath `spacing` (that one spaces discrete SnapWave output sites along
-# the contour; this one just keeps the drawn line smooth and light).
-ISOBATH_DISPLAY_SPACING_DEG = 0.02
-
-
-def _resample_polyline(points, spacing: float):
-    """Resample an (N, 2) polyline at approximately uniform arc length."""
-    import numpy as np
-
-    pts = np.asarray(points, dtype=float)
-    seg = np.diff(pts, axis=0)
-    seg_len = np.linalg.norm(seg, axis=1)
-    total = float(seg_len.sum())
-    if total <= 0.0:
-        return pts
-    cum = np.concatenate(([0.0], np.cumsum(seg_len)))
-    ds = np.arange(0.0, total, float(spacing))
-    if ds.size == 0 or (total - ds[-1]) > 0.25 * spacing:
-        ds = np.append(ds, total)
-    out = np.empty((ds.size, 2), dtype=float)
-    for k, d in enumerate(ds):
-        i = int(np.searchsorted(cum, d, side="right") - 1)
-        i = max(0, min(i, len(seg_len) - 1))
-        t = 0.0 if seg_len[i] == 0 else (d - cum[i]) / seg_len[i]
-        out[k] = pts[i] * (1.0 - t) + pts[i + 1] * t
-    return out
-
-
 def load_isobaths(case: dict, config: dict | None = None) -> list[dict]:
-    """Depth-contour lines extracted directly from the topobathy raster.
+    """Depth-contour lines pre-computed from the topobathy raster at publish time.
 
-    One entry per ``simulations.output_sites_config.isobaths`` spec:
-    ``{"name", "level", "segments"}`` where ``segments`` is a list of
-    ``[(lon, lat), ...]`` rings (a level can have several disjoint contours,
-    e.g. one per island). Returns ``[]`` when the raster/config is missing
-    or rioxarray/contourpy are unavailable — the map simply omits the layer.
+    One entry per isobath: ``{"name", "level", "segments"}`` where
+    ``segments`` is a list of ``[(lon, lat), ...]`` lines. ``[]`` when the
+    bundle has no isobaths layer.
     """
-    config = config or load_case_config(case)
-    topobathy_rel = config.get("paths", {}).get("topobathy_file")
-    specs = config.get("simulations", {}).get("output_sites_config", {}).get("isobaths") or []
-    if not isinstance(topobathy_rel, str) or not specs:
-        return []
-    path = resolve_case(case, topobathy_rel)
-    if not path.is_file():
-        return []
-    try:
-        import contourpy
-        import numpy as np
-        import rioxarray
-    except ImportError:
-        return []
-
-    da = rioxarray.open_rasterio(path).squeeze("band", drop=True)
-    xname = next((n for n in _RASTER_X_NAMES if n in da.coords), None)
-    yname = next((n for n in _RASTER_Y_NAMES if n in da.coords), None)
-    if xname is None or yname is None:
-        return []
-
-    cg = contourpy.contour_generator(
-        x=da[xname].values,
-        y=da[yname].values,
-        z=np.asarray(da.values, dtype=float),
-        line_type=contourpy.LineType.Separate,
-    )
-
-    isobaths: list[dict] = []
-    for spec in specs:
-        level = spec.get("level")
-        if level is None:
-            continue
-        name = str(spec.get("name") or f"{abs(level):g}m")
-        segments = [s for s in cg.lines(float(level)) if len(s) >= 2]
-        segments = [_resample_polyline(s, ISOBATH_DISPLAY_SPACING_DEG) for s in segments]
-        isobaths.append(
-            {
-                "name": name,
-                "level": float(level),
-                "segments": [[(float(x), float(y)) for x, y in seg] for seg in segments],
-            }
-        )
-    return isobaths
+    return [
+        {
+            "name": iso["name"],
+            "level": iso["level"],
+            "segments": [[(x, y) for x, y in seg] for seg in iso["segments"]],
+        }
+        for iso in _portal_json(case, "isobaths.json", [])
+    ]
 
 
 def load_output_sites(case: dict, config: dict | None = None) -> pd.DataFrame:
-    """Isobath/mesh output-site coordinates from one metamodel LHS case file.
-
-    Site layout (isobaths, mesh polygons) is shared across every goal, so
-    any single ``output_sites_*.nc`` gives the full case-wide table without
-    opening one per goal. Buoy sites are excluded — already shown via
-    :func:`load_observations`. Returns an empty frame when the metamodel
-    cases folder, xarray, or a matching file is unavailable.
-    """
-    empty = pd.DataFrame(columns=["lon", "lat", "source", "label"])
-    config = config or load_case_config(case)
-    cases_rel = config.get("simulations", {}).get("metamodel_cases")
-    if not isinstance(cases_rel, str) or not cases_rel:
-        return empty
-    cases_dir = resolve_case(case, cases_rel)
-    if not cases_dir.is_dir():
-        return empty
-    nc_files = sorted(cases_dir.glob("output_sites_*.nc"))
-    if not nc_files:
-        return empty
-    try:
-        import xarray as xr
-    except ImportError:
-        return empty
-
-    with xr.open_dataset(nc_files[0]) as ds:
-        required = {"site_longitude", "site_latitude", "site_source"}
-        if not required.issubset(ds.coords.keys() | ds.data_vars.keys()):
-            return empty
-        df = pd.DataFrame(
-            {
-                "lon": ds["site_longitude"].values,
-                "lat": ds["site_latitude"].values,
-                "source": ds["site_source"].values.astype(str),
-                "label": ds["site_label"].values.astype(str)
-                if "site_label" in ds.variables
-                else "",
-            }
-        )
-    return df[df["source"] != "buoy"].reset_index(drop=True)
+    """Isobath/mesh output-site coordinates (buoy sites excluded — see :func:`load_observations`)."""
+    data = _portal_json(case, "output_sites.json")
+    if not data:
+        return pd.DataFrame(columns=["lon", "lat", "source", "label"])
+    return pd.DataFrame(data, columns=["lon", "lat", "source", "label"])
 
 
 def load_all_metrics(case: dict) -> pd.DataFrame:
-    outputs = case_root(case) / "outputs"
-    frames = [pd.read_csv(path) for path in sorted(outputs.glob("goal_*/validation_metrics.csv"))]
-    if not frames:
+    """Holdout metrics for every goal (``portal/validation_metrics.csv``)."""
+    path = portal_root(case) / "validation_metrics.csv"
+    if not path.is_file():
         return pd.DataFrame()
-    out = pd.concat(frames, ignore_index=True)
+    out = pd.read_csv(path)
     out["goal"] = out["goal"].astype(str)
     return out
 
 
 def load_metamodel_validation(case: dict) -> pd.DataFrame:
-    """Linear-summation-vs-dynamic metrics (``outputs/metamodel_validation/*.csv``).
+    """Linear-summation-vs-dynamic metrics (``portal/metamodel_validation/*.csv``).
 
     Written by ``09_Validate_Linear_Summation.ipynb`` — one row per site
     group and variable, domain-wide (no per-goal breakdown).
     """
-    outputs = case_root(case) / "outputs" / "metamodel_validation"
-    frames = [pd.read_csv(path) for path in sorted(outputs.glob("*.csv"))]
+    frames = [pd.read_csv(path) for path in sorted((portal_root(case) / "metamodel_validation").glob("*.csv"))]
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
 def load_buoy_validation(case: dict) -> pd.DataFrame:
-    """Buoy validation summaries (``outputs/buoy_validation/*_summary_*.csv``).
+    """Buoy validation summaries (``portal/buoy_validation/*_summary_*.csv``).
 
     Written by the case's ``10*_Validate_*_Buoys.ipynb`` notebook(s) — a case
     with one buoy network only has one such file (e.g. the template's
@@ -356,38 +235,42 @@ def load_buoy_validation(case: dict) -> pd.DataFrame:
     from each file's name so any subsets present can be shown together in one
     table.
     """
-    outputs = case_root(case) / "outputs" / "buoy_validation"
     frames = []
-    for path in sorted(outputs.glob("*_summary_*.csv")):
+    for path in sorted((portal_root(case) / "buoy_validation").glob("*_summary_*.csv")):
         df = pd.read_csv(path)
         df["buoy_type"] = path.name.split("_summary_")[0]
         frames.append(df)
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
+def buoy_figures_dir(case: dict) -> Path:
+    return portal_root(case) / "buoy_validation" / "figures"
+
+
+def gui_figures_dir(case: dict) -> Path:
+    return portal_root(case) / "gui_figures"
+
+
+def book_dir(case: dict) -> Path:
+    return portal_root(case) / "book"
+
+
 def available_buoy_figures(case: dict) -> set[str]:
-    """Site ids with a saved summary PNG (``outputs/buoy_validation/figures/<site>.png``).
+    """Site ids with a published summary PNG (``portal/buoy_validation/figures/<site>.png``).
 
     Written by the ``val.plot_buoy_summary`` save cell in ``10a``/``10b``.
     """
-    fig_dir = case_root(case) / "outputs" / "buoy_validation" / "figures"
-    if not fig_dir.is_dir():
-        return set()
-    return {p.stem for p in fig_dir.glob("*.png")}
+    return {p.stem for p in buoy_figures_dir(case).glob("*.png")}
 
 
 def available_gui_figures(case: dict) -> set[str]:
-    """Figure names with a saved PNG (``outputs/gui_figures/<name>.png``).
+    """Figure names with a published PNG (``portal/gui_figures/<name>.png``).
 
-    Written by a case's own ``12_Final_Plots.ipynb`` (currently only
-    NewSouthWales) — a case that hasn't run it yet just has none, so the
-    "Final Plots" tab can degrade to a "not generated yet" message per
-    figure instead of a broken ``<img>``.
+    Written by a case's own ``12_Final_Plots.ipynb`` — a case that hasn't run
+    it yet just has none, so the "Final Plots" tab can degrade to a "not
+    generated yet" message per figure instead of a broken ``<img>``.
     """
-    fig_dir = case_root(case) / "outputs" / "gui_figures"
-    if not fig_dir.is_dir():
-        return set()
-    return {p.stem for p in fig_dir.glob("*.png")}
+    return {p.stem for p in gui_figures_dir(case).glob("*.png")}
 
 
 def case_mda_candidate(case: dict) -> int | None:
@@ -402,8 +285,8 @@ def case_mda_candidate(case: dict) -> int | None:
 
 
 def book_available(case: dict) -> bool:
-    """Whether a built Jupyter Book (see ``book/``) exists for this case."""
-    return (case_root(case) / "book" / "_build" / "html" / "index.html").is_file()
+    """Whether the bundle carries a built Jupyter Book (``portal/book/``, deployed by hand — not in git)."""
+    return (book_dir(case) / "index.html").is_file()
 
 
 def region_bounds(

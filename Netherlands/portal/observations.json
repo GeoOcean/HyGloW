@@ -1,0 +1,167 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat",
+        "recording": "2003-12-04 to 2019-05-09",
+        "depth": null,
+        "name": "Amelander Zeegat, 1.1",
+        "instrument_id": "AmelanderZeegat_1_1"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          5.4814,
+          53.5076
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat",
+        "recording": "2004-02-26 to 2019-02-13",
+        "depth": null,
+        "name": "Amelander Zeegat, 1.2",
+        "instrument_id": "AmelanderZeegat_1_2"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          5.48442,
+          53.5076
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat",
+        "recording": "2000-01-01 to 2022-03-01",
+        "depth": null,
+        "name": "Eierlandse Gat",
+        "instrument_id": "EierlandseGat"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          4.66035,
+          53.2762
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat",
+        "recording": "2002-10-30 to 2022-03-01",
+        "depth": null,
+        "name": "Eurogeul, E13",
+        "instrument_id": "EurogeulE13"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          3.7418,
+          52.00918
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat",
+        "recording": "2000-01-01 to 2022-03-01",
+        "depth": null,
+        "name": "IJmuiden, munitiestort, 1",
+        "instrument_id": "IJmuidenMunitiestort_1"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          4.05702,
+          52.54922
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat",
+        "recording": "2000-12-31 to 2013-05-31",
+        "depth": null,
+        "name": "Petten, meetraai 01",
+        "instrument_id": "PettenMeetraai01"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          4.55678,
+          52.80685
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat",
+        "recording": "2007-10-24 to 2022-03-01",
+        "depth": null,
+        "name": "Stortemelk, west",
+        "instrument_id": "StortemelkWest"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          4.996,
+          53.32072
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat",
+        "recording": "2007-05-31 to 2022-03-01",
+        "depth": null,
+        "name": "Westereems, west",
+        "instrument_id": "WestereemsWest"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          6.36667,
+          53.61806
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat",
+        "recording": "2011-11-30 to 2011-12-31",
+        "depth": null,
+        "name": "Zandmoter, boei, noord",
+        "instrument_id": "ZandmoterBoeiNoord"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          4.15827,
+          52.04809
+        ]
+      }
+    }
+  ]
+}

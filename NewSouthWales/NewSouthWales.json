@@ -17,8 +17,8 @@
         "goals_file": "inputs/Goals/NewSouthWales_Goals.json",
         "metamodel_templates": "templates-metamodel",
         "dynamic_templates": "templates-dynamic",
-        "metamodel_cases": "/hyglowdata/NewSouthWales/SnapWave_CASES_Metamodel",
-        "dynamic_cases": "/hyglowdata/NewSouthWales/SnapWave_CASES_Dynamic",
+        "metamodel_cases": "SnapWave_CASES_Metamodel",
+        "dynamic_cases": "SnapWave_CASES_Dynamic",
         "num_samples_per_goal": 500,
         "bounds": {
             "tp": [

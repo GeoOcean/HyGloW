@@ -1,0 +1,17 @@
+period,mda_candidate,offshore_name,pca_variances,group,site_source,site_label,variable,label,n,bias,rmse,r2,estimate_label,reference_label,model,reconstruct_seconds
+2020,450,WHACS,"{'hs': 0.99, 'dir': 0.99, 'spr': 0.99}",buoy_Aunuu_Buoy,buoy,waves,hs,Hs,8784,-0.32655871848779894,0.395359167089796,0.5427659839012355,WHACS (closest goal),Buoy,WHACS (closest goal),
+2020,450,WHACS,"{'hs': 0.99, 'dir': 0.99, 'spr': 0.99}",buoy_Aunuu_Buoy,buoy,waves,tp,Tp,8784,0.6226044277890703,2.431575276895381,0.10193959018394949,WHACS (closest goal),Buoy,WHACS (closest goal),
+2020,450,WHACS,"{'hs': 0.99, 'dir': 0.99, 'spr': 0.99}",buoy_Aunuu_Buoy,buoy,waves,dir,Dir,8784,0.09220260812157823,29.05888277268022,0.6643880219477432,WHACS (closest goal),Buoy,WHACS (closest goal),
+2020,450,WHACS,"{'hs': 0.99, 'dir': 0.99, 'spr': 0.99}",buoy_Aunuu_Buoy,buoy,waves,spr,Spr,8784,1.3028821745817134,4.891864262282228,0.7502857706136176,WHACS (closest goal),Buoy,WHACS (closest goal),
+2020,450,WHACS,"{'hs': 0.99, 'dir': 0.99, 'spr': 0.99}",buoy_Aunuu_Buoy,buoy,waves,hs,Hs,8784,-0.38900511939534527,0.4674804750137162,0.20790535183398873,Bulk metamodel,Buoy,Bulk metamodel,0.7912842970108613
+2020,450,WHACS,"{'hs': 0.99, 'dir': 0.99, 'spr': 0.99}",buoy_Aunuu_Buoy,buoy,waves,tp,Tp,8784,0.5154841315333744,2.404088225867326,0.09034812450408936,Bulk metamodel,Buoy,Bulk metamodel,0.7912842970108613
+2020,450,WHACS,"{'hs': 0.99, 'dir': 0.99, 'spr': 0.99}",buoy_Aunuu_Buoy,buoy,waves,dir,Dir,8784,-1.7905015829014936,26.948428639291024,0.7113666435284363,Bulk metamodel,Buoy,Bulk metamodel,0.7912842970108613
+2020,450,WHACS,"{'hs': 0.99, 'dir': 0.99, 'spr': 0.99}",buoy_Aunuu_Buoy,buoy,waves,spr,Spr,8784,-18.098319889085527,19.454512466249806,-6.396411147861847,Bulk metamodel,Buoy,Bulk metamodel,0.7912842970108613
+2020,450,WHACS,"{'hs': 0.99, 'dir': 0.99, 'spr': 0.99}",buoy_Aunuu_Buoy,buoy,waves,hs,Hs,8784,-0.35695783000760783,0.42180087185856996,0.41483681994451893,Spectral metamodel,Buoy,Spectral metamodel,0.774918433977291
+2020,450,WHACS,"{'hs': 0.99, 'dir': 0.99, 'spr': 0.99}",buoy_Aunuu_Buoy,buoy,waves,tp,Tp,8784,-0.8417776900128154,2.0993476172226058,0.2687199115753174,Spectral metamodel,Buoy,Spectral metamodel,0.774918433977291
+2020,450,WHACS,"{'hs': 0.99, 'dir': 0.99, 'spr': 0.99}",buoy_Aunuu_Buoy,buoy,waves,dir,Dir,8784,2.5475287824541297,31.726890503247507,0.5999312345363501,Spectral metamodel,Buoy,Spectral metamodel,0.774918433977291
+2020,450,WHACS,"{'hs': 0.99, 'dir': 0.99, 'spr': 0.99}",buoy_Aunuu_Buoy,buoy,waves,spr,Spr,8784,-5.743006056474403,8.12495459158852,0.37923538744653773,Spectral metamodel,Buoy,Spectral metamodel,0.774918433977291
+2020,450,WHACS,"{'hs': 0.99, 'dir': 0.99, 'spr': 0.99}",buoy_Aunuu_Buoy,buoy,waves,hs,Hs,8784,-0.42680946431124334,0.4864271143639491,0.28168274243486735,Dynamic SnapWave,Buoy,Dynamic SnapWave,
+2020,450,WHACS,"{'hs': 0.99, 'dir': 0.99, 'spr': 0.99}",buoy_Aunuu_Buoy,buoy,waves,tp,Tp,8784,0.6820181830224661,2.1684460913475165,-0.15360796451568604,Dynamic SnapWave,Buoy,Dynamic SnapWave,
+2020,450,WHACS,"{'hs': 0.99, 'dir': 0.99, 'spr': 0.99}",buoy_Aunuu_Buoy,buoy,waves,dir,Dir,8784,3.5757218281507503,29.253021070582097,0.6598886896897962,Dynamic SnapWave,Buoy,Dynamic SnapWave,
+2020,450,WHACS,"{'hs': 0.99, 'dir': 0.99, 'spr': 0.99}",buoy_Aunuu_Buoy,buoy,waves,spr,Spr,8784,-11.945242073413938,13.72290098404674,-5.432229917872008,Dynamic SnapWave,Buoy,Dynamic SnapWave,

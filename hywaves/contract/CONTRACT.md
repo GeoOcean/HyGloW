@@ -20,6 +20,7 @@ Run the validator (stdlib-only, copy it anywhere):
 ```bash
 python -m hywaves validate MyCase/             # development mode
 python -m hywaves validate MyCase/ --publish   # strict: ready for the portal
+python -m hywaves publish MyCase/              # export the portal bundle (§6)
 # or standalone, without the hywaves package:
 python validate.py MyCase/ --publish
 ```
@@ -105,6 +106,62 @@ captions expect): `fig01_domain.png`, `fig02_map_comparison.png`,
 embed in a case's own Jupyter Book report or other consumers — the notebook
 displays each figure inline (not just saving it) for exactly that reason.
 
+### 6. Portal bundle (`{Case}/portal/`)
+
+The portal never reads a case's working files directly. Instead,
+
+```bash
+python -m hywaves publish MyCase/
+```
+
+runs the strict (`--publish`) validation above and, only if it passes,
+exports everything the portal needs into `{Case}/portal/` — the one folder a
+deployment ships and a case author commits. Contract files are copied under
+fixed names; heavy sources are pre-computed into light files at publish
+time, so neither the portal nor its server needs the case's raw data or
+scientific stack.
+
+| Bundle file                                       | From                                                                      |
+| ------------------------------------------------- | ------------------------------------------------------------------------- |
+| `case.json`                                       | the case config JSON (§1), as is                                           |
+| `goals.json`                                      | `simulations.goals_file` (§2), as is                                       |
+| `observations.json`                               | `onshore_waves` (§3), as is                                                |
+| `aoi.geojson`                                     | `paths.aoi_file` shapefile → GeoJSON `FeatureCollection` (Polygon/MultiPolygon, EPSG:4326) |
+| `isobaths.json`                                   | `paths.topobathy_file` raster, contoured at each `simulations.output_sites_config.isobaths[].level` → `[{"name", "level", "segments": [[[lon, lat], …], …]}]` |
+| `output_sites.json`                               | first `output_sites_*.nc` under `simulations.metamodel_cases` (or, if that path isn't reachable, a same-named folder inside the case), buoy sites dropped → `{"lon": […], "lat": […], "source": […], "label": […]}` |
+| `validation_metrics.csv`                          | every `outputs/goal_*/validation_metrics.csv` (§4), merged — each row keeps its `goal` |
+| `metamodel_validation/*.csv`                      | `outputs/metamodel_validation/*.csv` (§5), as is                           |
+| `buoy_validation/*_summary_*.csv`                 | `outputs/buoy_validation/*_summary_*.csv` (§5), as is                      |
+| `buoy_validation/figures/*.png`                   | `outputs/buoy_validation/figures/*.png` (§5), downscaled                   |
+| `gui_figures/*.png`                               | `outputs/gui_figures/*.png` (§5), downscaled                               |
+| `book/`                                           | `book/_build/html/` if built (`--no-book` to skip) — **not** committed     |
+| `manifest.json`                                   | see below                                                                  |
+
+- Coordinates are rounded to 5 decimals (~1 m). PNGs whose longest side
+  exceeds `--max-image-px` (default 2400) are downscaled; smaller ones are
+  copied byte-for-byte. Re-publishing unchanged sources reproduces the same
+  files (only `manifest.json`'s timestamp changes), so re-commits stay clean.
+- Every optional layer degrades independently: a missing source file or
+  Python package skips just that file, with the reason recorded in the
+  manifest, and the portal shows that layer/tab as "not published yet".
+- The bundle is built in `portal.tmp/` and swapped in whole — a failed
+  publish never leaves a partial or stale `portal/`.
+
+**`manifest.json`** — `schema` (currently `1`), `hywaves_version`, `case`,
+`published_at` (UTC ISO-8601), `max_image_px`, `book` (bool), `skipped`
+(`{layer: reason}`), `files` (`{path: {size, sha256}}`, excluding `book/`),
+`sources` (`{case-relative path: {size, mtime_ns, sha256}}` of every input
+read) and `source_patterns` (the globs that found them).
+
+**Staleness.** `python -m hywaves validate` compares `sources` against the
+case folder (size and mtime first, re-hashing only files whose mtime moved)
+and re-runs `source_patterns`, warning `portal.stale` if anything changed,
+appeared or disappeared since the last publish — re-run `publish`.
+
+**Version control.** Commit `{Case}/portal/`; ignore `{Case}/portal/book/`
+(a built static site, tens of MB — deploy it separately) and the transient
+`portal.tmp/` / `portal.old/`.
+
 ---
 
 ## Level 2 — Engine contract (`metamodel` section present)
@@ -132,6 +189,12 @@ not importable — the validator itself never requires third-party packages.
 
 Every change to this document is recorded here.
 
+- **2026-09** (hywaves 0.5.0): added §6, the portal bundle —
+  `python -m hywaves publish` exports `{Case}/portal/` (contract files under
+  fixed names, pre-computed AoI/isobath/output-site layers, merged metrics,
+  web-sized figures, `manifest.json`), and the reference GUI now reads only
+  that folder. `validate` gained the `portal.missing` / `portal.ok` /
+  `portal.stale` findings. No change to the §1–§5 inputs themselves.
 - **2026-09** (hywaves 0.4.0): `outputs/gui_figures/fig*.png` is rendered by
   the reference GUI again, as a "Final Plots" tab of clickable thumbnails —
   corrects the note below saying it wasn't (that tab was retired, then

@@ -1,0 +1,59 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "SPC",
+        "recording": "1989-1990",
+        "depth": -80.0,
+        "name": "Savaii - Upolu middle buoy",
+        "instrument_id": "Apolima_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -172.2,
+          -13.88
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "SPC",
+        "recording": "2014-2018",
+        "depth": -75.0,
+        "name": "Ameican Samoa east buoy (Period 1)",
+        "instrument_id": "American_Samoa_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -170.493,
+          -14.265
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "SPC",
+        "recording": "2018-Present",
+        "depth": -55.0,
+        "name": "Ameican Samoa east buoy (Period 2)",
+        "instrument_id": "Aunuu_Buoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -170.5005,
+          -14.2732
+        ]
+      }
+    }
+  ]
+}
