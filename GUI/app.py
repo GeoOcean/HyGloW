@@ -25,6 +25,13 @@ def serve_buoy_figure(case_id: str, filename: str):
     return send_from_directory(directory, filename)
 
 
+@app.server.route("/gui-figures/<case_id>/<path:filename>")
+def serve_gui_figure(case_id: str, filename: str):
+    case = load_case(case_id)
+    directory = case_root(case) / "outputs" / "gui_figures"
+    return send_from_directory(directory, filename)
+
+
 @app.server.route("/case-book/<case_id>/")
 @app.server.route("/case-book/<case_id>/<path:filename>")
 def serve_book(case_id: str, filename: str = "index.html"):

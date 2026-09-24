@@ -60,9 +60,9 @@ Run notebooks with `__CASE_NAME__/` as the working directory.
 
 ## Stuck, or want to see it done first?
 
-**Samoa** (in the main HyGloW repository) is the most complete worked
-example — its README documents the full pipeline, the metamodel workflow,
-and the commit/re-run checklist in detail. **NewSouthWales** shows another
+**NewSouthWales** (in the main HyGloW repository) is the most complete
+worked example — its README documents the full pipeline, the metamodel
+workflow, and the commit/re-run checklist in detail. **Samoa** shows another
 use case. Both are real, runnable cases you can read notebook-by-notebook
 alongside your own.
 

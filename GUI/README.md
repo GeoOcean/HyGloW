@@ -8,11 +8,12 @@ Lightweight Dash portal for HyGloW use cases. Reads each case's standard files:
 - `{Case}/outputs/goal_*/validation_metrics.csv` — **Goals Validation** tab (written by `val.sweep()`, notebook 06)
 - `{Case}/outputs/metamodel_validation/*.csv` — **Metamodel Validation** tab (notebook 09's save-metrics cell)
 - `{Case}/outputs/buoy_validation/*_summary_*.csv` + `.../figures/<site>.png` — **Buoy Validation** tab (notebooks 10a/10b's save cells)
+- `{Case}/outputs/gui_figures/*.png` — **Final Plots** tab (a case's own `12_Final_Plots.ipynb`)
 - `{Case}/book/_build/html/` — rendered Jupyter Book report (optional; see below)
 
 Portal metadata (authors, institution, pipeline status, **continent** for the
 "Browse cases" picker below) lives in `catalog/cases.yaml`. A case can also pin
-`metamodel.mda_candidate` there (an int) — the fixed MDA train size all three
+`metamodel.mda_candidate` there (an int) — the fixed MDA train size the three
 validation tabs read; without it, the GUI falls back to the largest MDA
 candidate the case has actually fitted.
 
@@ -87,7 +88,7 @@ instance's own `unproject()`, which already accounts for the current pan/zoom.
 
 ## Results tabs
 
-Three tabs in the bottom drawer, each reading a different contract file (see
+Four tabs in the bottom drawer, each reading a different contract file (see
 above) and independent of goal/MDA selection in the UI — there's no goal
 picker; the tabs already aggregate across every goal or drill into one buoy:
 
@@ -99,6 +100,13 @@ picker; the tabs already aggregate across every goal or drill into one buoy:
 - **Buoy Validation** — the same boxplot style again, one panel each for
   offshore and onshore buoys, boxes colored by model (bulk / spectral
   metamodel / closest-goal offshore hindcast).
+- **Final Plots** — clickable thumbnails of the case's own
+  `12_Final_Plots.ipynb` figures (domain map with the mesh, a
+  dynamic-vs-metamodel reconstruction comparison, LHS training cases, and
+  the reconstruction spectra network); clicking one opens it full-size in a
+  modal (mirrors the buoy-marker-click convention). Degrades per-figure
+  (`loaders.available_gui_figures`) for a case that hasn't run that
+  notebook, or ran an older version with fewer figures.
 
 Chart and map colors (contour bands, buoy/goal markers, per-model colors,
 the dark Plotly theme) all come from one file, `hywaves_gui/colors.py` — edit

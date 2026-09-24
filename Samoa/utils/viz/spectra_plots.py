@@ -7,7 +7,7 @@ with a caller-supplied ``ax=``. So a real side-by-side comparison figure
 (e.g. buoy vs. two reconstructions, laid out so the same moment lines up
 across panels) can't be built by handing each source its own subplot in one
 figure the usual way — each spectrum is rendered to its own image, then the
-images are composed. Same technique ``00_Course_Figures.ipynb`` already uses
+images are composed. Same technique ``12_Final_Plots.ipynb`` already uses
 for its slide compositions; this is the general-purpose version of it.
 """
 

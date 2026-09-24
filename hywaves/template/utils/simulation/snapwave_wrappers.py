@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import cartopy.crs as ccrs
 import geopandas as gpd
@@ -30,9 +29,6 @@ from utils.config import SIMULATIONS, display_title
 from utils.directions import nautical_sector_to_wedge_angles
 from utils.geometry.output_sites import compute_output_sites, write_output_sites
 from utils.viz import case_plots as plot
-
-if TYPE_CHECKING:
-    from utils.viz.snapwave_case_plots import CasePlotStyle
 
 # SnapWave history NetCDF → HyGloW names
 POINT_VARS = {
@@ -318,10 +314,6 @@ class SnapWaveModelWrapper(BaseModelWrapper):
             Case parameter dicts for the base wrapper.
         goals_config
             ``{id: {lon, lat, angles}}`` from :func:`utils.config.goals_for_snapwave`.
-        templates_name
-            Template subset passed to the base wrapper (``"all"`` by default).
-        debug
-            Set the wrapper logger to ``DEBUG`` when ``True``, else ``INFO``.
         output_sites_df
             Pre-built output sites table; computed from AoI when omitted.
         sites_filename
@@ -511,13 +503,11 @@ rm snapwave.upw
         """
         cases_status: dict[str, str] = {}
         for case_dir in self.cases_dirs:
-            log = os.path.join(case_dir, "wrapper_out.log")
-            if not os.path.exists(log):
-                cases_status[os.path.basename(case_dir)] = "NOT STARTED"
-            elif os.path.getsize(log) == 0:
-                cases_status[os.path.basename(case_dir)] = "RUNNING"
-            else:
+            out_file = os.path.join(case_dir, "output_sites.nc")
+            if os.path.exists(out_file):
                 cases_status[os.path.basename(case_dir)] = "FINISHED"
+            else:
+                cases_status[os.path.basename(case_dir)] = "NOT STARTED"
 
         return super().monitor_cases(
             cases_status=cases_status, value_counts=value_counts
@@ -597,23 +587,6 @@ class SnapWaveMetaModelWrapper(SnapWaveModelWrapper):
         use this to actually read goal labels on a case with many goals,
         instead of the map being squeezed into the left column next to the
         bar and info panels.
-
-        Parameters
-        ----------
-        cases_df
-            Optional LHS table override. Defaults to ``metamodel_parameters``.
-        sector_radius_deg, arrow_scale_deg, max_arrows_per_goal
-            Map styling controls for sectors and direction arrows.
-        show_topobathy
-            Draw bathymetry under the map panel.
-        figsize
-            Figure size in inches.
-        show
-            Call ``plt.show()`` when ``True``.
-
-        Returns
-        -------
-        matplotlib.figure.Figure
         """
         df = (
             cases_df
@@ -644,7 +617,7 @@ class SnapWaveMetaModelWrapper(SnapWaveModelWrapper):
         time_index: int = 0,
         show_map: bool = True,
         map_variable: str = "hs",
-        style: CasePlotStyle | None = None,
+        style=None,
         show_satellite: bool = False,
         satellite_source: str = "arcgis",
         show: bool = True,
@@ -783,24 +756,6 @@ class SnapWaveDynamicModelWrapper(SnapWaveModelWrapper):
         use this to actually read goal labels on a case with many goals,
         instead of the map being squeezed into the left column next to the
         bar and info panels.
-
-        Parameters
-        ----------
-        offshore
-            Processed offshore dataset with dims ``(time, goal)`` and bulk
-            variables ``hs``, ``tp``, ``dir``, ``spr``.
-        sector_radius_deg, arrow_scale_deg, max_arrows_per_goal
-            Map styling controls for sectors and direction arrows.
-        show_topobathy
-            Draw bathymetry under the map panel.
-        figsize
-            Figure size in inches.
-        show
-            Call ``plt.show()`` when ``True``.
-
-        Returns
-        -------
-        matplotlib.figure.Figure
         """
         fig = plot.plot_dynamic_configuration_map(
             enclosure_polygon=self.enclosure_polygon,
@@ -825,7 +780,7 @@ class SnapWaveDynamicModelWrapper(SnapWaveModelWrapper):
         time_index: int = 0,
         show_map: bool = True,
         map_variable: str = "hs",
-        style: CasePlotStyle | None = None,
+        style=None,
         show_satellite: bool = False,
         satellite_source: str = "arcgis",
         show: bool = True,

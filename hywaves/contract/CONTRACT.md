@@ -95,9 +95,15 @@ publishes, that tab in the portal just shows a "run this notebook" message:
   time-series image per buoy) is shown when a viewer clicks that buoy's
   marker on the map.
 
-`outputs/gui_figures/fig*.png` — case showcase figures. Not currently
-rendered by the reference GUI (its Gallery tab was retired); still valid to
-produce for a case's own Jupyter Book report or other consumers.
+`outputs/gui_figures/fig*.png` — case showcase figures, from the case's own
+`12_Final_Plots.ipynb`. Rendered by the reference GUI's "Final Plots" tab as
+clickable thumbnails (full-size on click) — degrades per-figure for a case
+that hasn't run that notebook, or ran an older version producing fewer
+figures. The standard shape (not required, but what the reference GUI's
+captions expect): `fig01_domain.png`, `fig02_map_comparison.png`,
+`fig03_metamodel.png`, `fig04_spectra_reconstruction.png`. Also valid to
+embed in a case's own Jupyter Book report or other consumers — the notebook
+displays each figure inline (not just saving it) for exactly that reason.
 
 ---
 
@@ -126,6 +132,12 @@ not importable — the validator itself never requires third-party packages.
 
 Every change to this document is recorded here.
 
+- **2026-09** (hywaves 0.4.0): `outputs/gui_figures/fig*.png` is rendered by
+  the reference GUI again, as a "Final Plots" tab of clickable thumbnails —
+  corrects the note below saying it wasn't (that tab was retired, then
+  reinstated in this shape). Documented the standard 4-figure naming
+  (`fig01_domain` / `fig02_map_comparison` / `fig03_metamodel` /
+  `fig04_spectra_reconstruction`) `12_Final_Plots.ipynb` now produces.
 - **2026-09**: documented `outputs/metamodel_validation/` and
   `outputs/buoy_validation/` (§5, optional) — feed the reference GUI's
   Metamodel/Buoy Validation tabs and per-buoy map popups. Noted

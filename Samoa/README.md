@@ -30,7 +30,6 @@ After editing `Samoa.json`: restart kernel or `utils.config.reload()`.
 
 | Step  | Notebook                                       | Purpose                                      |
 | ----- | ---------------------------------------------- | -------------------------------------------- |
-| 00    | `00_Course_Figures.ipynb`                      | Slide-ready PNGs for teaching                |
 | 01–04 | Mesh, observations, goals                      | Static setup                                 |
 | 03    | `03_Generate_Observations_Configuration.ipynb` | Onshore buoy/site GeoJSON                    |
 | 05    | `05_Metamodel_Cases_Generation.ipynb`          | 500 LHS cases / goal                         |
@@ -40,6 +39,7 @@ After editing `Samoa.json`: restart kernel or `utils.config.reload()`.
 | 09    | `09_Validate_Linear_Summation.ipynb`           | Spectral reconstruct vs dynamic (bulk stats) |
 | 10    | `10_Validate_Buoy_Observations.ipynb`          | Buoy bulk comparison                         |
 | 11    | `11_Validate_Spectra.ipynb`                    | Buoy vs model spectra (in progress)          |
+| 12    | `12_Final_Plots.ipynb`                         | GUI showcase figures (`outputs/gui_figures/`)|
 
 ```
 Goals → LHS (05) → fit (06) → WHACS (07) → dynamic (08)
