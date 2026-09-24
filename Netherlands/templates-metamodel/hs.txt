@@ -1,0 +1,2 @@
+   0 {% for g in range(ngoals) %} {{ 1 if g == goal-1 else 0 }}{% endfor %}
+3600 {% for g in range(ngoals) %} {{ 1 if g == goal-1 else 0 }}{% endfor %}

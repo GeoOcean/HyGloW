@@ -349,9 +349,12 @@ def load_metamodel_validation(case: dict) -> pd.DataFrame:
 def load_buoy_validation(case: dict) -> pd.DataFrame:
     """Buoy validation summaries (``outputs/buoy_validation/*_summary_*.csv``).
 
-    Written by ``10a_Validate_Offshore_Buoys.ipynb`` / ``10b_Validate_Onshore_Buoys.ipynb``.
-    Adds a ``buoy_type`` column ("offshore"/"onshore") from each file's name
-    so both subsets can be shown together in one table.
+    Written by the case's ``10*_Validate_*_Buoys.ipynb`` notebook(s) — a case
+    with one buoy network only has one such file (e.g. the template's
+    ``10a``/``10b`` split collapsed to a single ``10_...`` notebook), a case
+    with two writes both. Adds a ``buoy_type`` column ("offshore"/"onshore")
+    from each file's name so any subsets present can be shown together in one
+    table.
     """
     outputs = case_root(case) / "outputs" / "buoy_validation"
     frames = []
