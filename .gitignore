@@ -210,7 +210,7 @@ QGIS/
 EuropePolygons/
 
 # Some raw files
-NewSouthWales/inputs/Observations/raw/
+NewSouthWales/inputs/Observations/
 NewSouthWales/tmp
 Netherlands/inputs/Hindcasts/
 Netherlands/inputs/Observations/raw/
