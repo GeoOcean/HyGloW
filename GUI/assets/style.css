@@ -463,10 +463,16 @@ body {
     filter: invert(1) grayscale(1) brightness(1.6);
 }
 
+/* Fit the figure inside the viewport (header + modal margins ≈ 10rem) rather
+   than stretching it to the xl modal's full width — tall figures otherwise
+   overflow the screen. Never upscale past the PNG's natural size. */
 .buoy-modal-img {
     display: block;
-    width: 100%;
+    width: auto;
     height: auto;
+    max-width: 100%;
+    max-height: calc(100vh - 10rem);
+    margin: 0 auto;
     border-radius: 6px;
     background: #fff;
 }
