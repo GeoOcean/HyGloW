@@ -1,0 +1,475 @@
+{
+ "schema": 1,
+ "hywaves_version": "0.5.0",
+ "case": "NewSouthWales",
+ "published_at": "2026-09-24T13:50:06+00:00",
+ "max_image_px": 2400,
+ "book": true,
+ "skipped": {},
+ "files": {
+  "aoi.geojson": {
+   "size": 519,
+   "sha256": "334654350e22aca8eeb1cf5f8907bb96e4d23dd98c96a90dcf043b96a5a59914"
+  },
+  "buoy_validation/figures/buoy_BatemansBay_Buoy.png": {
+   "size": 510095,
+   "sha256": "ba57f1e311d2814137c313e7c21b6c5e8240bfbd70425919a15e92ab11319d1f"
+  },
+  "buoy_validation/figures/buoy_Bengello_Buoy.png": {
+   "size": 459740,
+   "sha256": "ab43c9818dd4bd8e2fc4f8687a9745bd6c81dd2cadac4ef9eeaeed16f9e955e6"
+  },
+  "buoy_validation/figures/buoy_BoomerangA2_Buoy.png": {
+   "size": 455788,
+   "sha256": "41c7b9d1ee93bc88371e288a3624b802f3f4b6a8151ef152a3bac2b69c62b59a"
+  },
+  "buoy_validation/figures/buoy_BoomerangB2_Buoy.png": {
+   "size": 462621,
+   "sha256": "6454ccd170b9dd3c8a52dfca1b10aa54f4f7fa0a74fe84bc5c694e2f5d0929dc"
+  },
+  "buoy_validation/figures/buoy_Broulee2_Buoy.png": {
+   "size": 415451,
+   "sha256": "97dab59894664b87d29b0cfc4bb888ee4cc97dc50316d14797e58da82025a9f0"
+  },
+  "buoy_validation/figures/buoy_Broulee_Buoy.png": {
+   "size": 461193,
+   "sha256": "2f622c807cb3df5f6c6d32aacee3318f7315215ddc60d9e5ecab50be6691caef"
+  },
+  "buoy_validation/figures/buoy_ByronBay_Buoy.png": {
+   "size": 601047,
+   "sha256": "1118a064abc8b49bebb85a88cc2b614d59d21af6e0998cca40c2429857b7ba95"
+  },
+  "buoy_validation/figures/buoy_Collaroy4_Buoy.png": {
+   "size": 521098,
+   "sha256": "4645893d5451501bc6f9515d20a08a60fa481686f1d396fa49013f5a97fea9da"
+  },
+  "buoy_validation/figures/buoy_Collaroy5_Buoy.png": {
+   "size": 482010,
+   "sha256": "09e742e70b1976c3fcc7c13883df14e82d34d91aa8663384b28c90a20bf4056a"
+  },
+  "buoy_validation/figures/buoy_Deeban2_Buoy.png": {
+   "size": 532714,
+   "sha256": "bcc41e59b6d825d52598190b749751049f4b0e9dfc8ff1a48e90af4a0cc833ed"
+  },
+  "buoy_validation/figures/buoy_Deeban_Buoy.png": {
+   "size": 539264,
+   "sha256": "eb2d8a2ccdb92099d6cacde4c84fb1cdc55fb91944239e7df2f66a52d1690b94"
+  },
+  "buoy_validation/figures/buoy_Eden_Buoy.png": {
+   "size": 408771,
+   "sha256": "157ff47d03bf5090958c5a3534ddc1b84e1dd1bbe451a2bca02060209afa0ecb"
+  },
+  "buoy_validation/figures/buoy_FairyMeadow_Buoy.png": {
+   "size": 404976,
+   "sha256": "a36e6b0a39295de2fd2681435ec54f92ab212c5b382fc371a99d33bd015db536"
+  },
+  "buoy_validation/figures/buoy_Farquhar_Buoy.png": {
+   "size": 463163,
+   "sha256": "fbbf33605ef835d119166a96c585c2e4fc4c6f3f11632a82d9a6a95b7bee9f66"
+  },
+  "buoy_validation/figures/buoy_Figure8Pools_Buoy.png": {
+   "size": 522519,
+   "sha256": "ba4858cf278af12f952aae489496b424842e192dadca3c187c0129b6252270aa"
+  },
+  "buoy_validation/figures/buoy_Merimbula2_Buoy.png": {
+   "size": 451101,
+   "sha256": "a53031e9390b123511b0444592a9762185f7bcf617818428206640322050ca0a"
+  },
+  "buoy_validation/figures/buoy_Merimbula_Buoy.png": {
+   "size": 415019,
+   "sha256": "b611c8d50d75b780ef8e0ea2fa0a8679801452647298b96790ee0831199edfe6"
+  },
+  "buoy_validation/figures/buoy_OldBarA_Buoy.png": {
+   "size": 454443,
+   "sha256": "9ad7e1de6f3047d8c2e9ac4f24fb9a60a2000225124d07e1c76e2ed0ce394f7a"
+  },
+  "buoy_validation/figures/buoy_Stockton_Buoy.png": {
+   "size": 475289,
+   "sha256": "1fa72fe4b970c8eb66cff4fe75d06d6af23c8491baed804cc3180f55158e03b8"
+  },
+  "buoy_validation/figures/buoy_Sydney_Buoy.png": {
+   "size": 493130,
+   "sha256": "0790d375e1d58710d42cb46239d4579b4a34389711a6bde27ccfde5d59974026"
+  },
+  "buoy_validation/figures/buoy_Woonona_Buoy.png": {
+   "size": 454678,
+   "sha256": "7ad7c4a03f4312ba2409b0a6b66d0ec8b0506753a0e3c87e9cc9ec7e43d48488"
+  },
+  "buoy_validation/offshore_summary_2001-2011.csv": {
+   "size": 7824,
+   "sha256": "9370412c98a37ab62188e96ac635dbf8b546debd27ec29f12054723f494c89cc"
+  },
+  "buoy_validation/onshore_summary_2013-2017-2023.csv": {
+   "size": 48414,
+   "sha256": "bd8b473d76308685f5983f61d913c48d3c6edd68c68b565e4676dd0e57146070"
+  },
+  "case.json": {
+   "size": 3786,
+   "sha256": "4ef343f34bbf55a485e14df28b47d90d37c4f7162d93683c629250a20854922d"
+  },
+  "goals.json": {
+   "size": 23097,
+   "sha256": "31f8bbb03d649767eb8bbf81c9dca668f2aa5fd923367c3587b20d00d56898be"
+  },
+  "gui_figures/fig01_domain.png": {
+   "size": 903989,
+   "sha256": "fc772a24fa072e74cb3e2bcf07a22e58ca00fc9e4a28944d65090fce99ad3832"
+  },
+  "gui_figures/fig02_map_comparison.png": {
+   "size": 2895101,
+   "sha256": "0c298c0128f4219aafa8b30fcb75e1331ceb159b330af21634b67d0e812e14a2"
+  },
+  "gui_figures/fig03_metamodel.png": {
+   "size": 1235877,
+   "sha256": "39e454ebc47bc4b5c5f2677afc2b225607c091b8faf9db9a93429a08a79ab87c"
+  },
+  "gui_figures/fig04_spectra_reconstruction.png": {
+   "size": 1719126,
+   "sha256": "06879c487ef11eddfae8fdaeb62133a72b88134ec89ec6da05f46d253a1bb48b"
+  },
+  "isobaths.json": {
+   "size": 124395,
+   "sha256": "8c235979cb30464e04dfa1b70679f26f6fe3e431b9d5604fa126c3fc01a4e28c"
+  },
+  "metamodel_validation/linear_summation_2010-01.csv": {
+   "size": 33546,
+   "sha256": "d754f9145b7bdd85973fbaa5df67f97324e101bd2f2b1a6776e0044c9b3fd73c"
+  },
+  "observations.json": {
+   "size": 14831,
+   "sha256": "4f1f5e739497e5956e3e9b114e5e126d79bcf97855cb5e688b22ac77f54b0abf"
+  },
+  "output_sites.json": {
+   "size": 137060,
+   "sha256": "9a408c2dd98054e357325655766c155c5467aeb7a7404e900e3c6ab71ecf4b69"
+  },
+  "validation_metrics.csv": {
+   "size": 3441682,
+   "sha256": "c0f81a8039f0e6d6c1d2fed399f1a67d86eaaea06c2e69edd6d15fac7aea91d8"
+  }
+ },
+ "sources": {
+  "NewSouthWales.json": {
+   "size": 3786,
+   "mtime_ns": 1790256730000000000,
+   "sha256": "4ef343f34bbf55a485e14df28b47d90d37c4f7162d93683c629250a20854922d"
+  },
+  "inputs/Goals/NewSouthWales_Goals.json": {
+   "size": 23097,
+   "mtime_ns": 1786703978000000000,
+   "sha256": "31f8bbb03d649767eb8bbf81c9dca668f2aa5fd923367c3587b20d00d56898be"
+  },
+  "inputs/Observations/NewSouthWales_observations.json": {
+   "size": 14831,
+   "mtime_ns": 1785742594000000000,
+   "sha256": "4f1f5e739497e5956e3e9b114e5e126d79bcf97855cb5e688b22ac77f54b0abf"
+  },
+  "inputs/AoI_Polygons/NewSouthWales_AoI.shp": {
+   "size": 444,
+   "mtime_ns": 1785323730000000000,
+   "sha256": "7baded157d5f838afd2daf6b1dc61753172d2eaf9f5515133a7bad74f672e048"
+  },
+  "inputs/AoI_Polygons/NewSouthWales_AoI.shx": {
+   "size": 108,
+   "mtime_ns": 1785323730000000000,
+   "sha256": "7974853e4db54626b73662a99104807293d91788650294c07ad3394abe954742"
+  },
+  "inputs/AoI_Polygons/NewSouthWales_AoI.dbf": {
+   "size": 77,
+   "mtime_ns": 1785323730000000000,
+   "sha256": "514b81bf91337c0ce65db444dd6152f3347a7cfba33f957273d521ff86d0a97b"
+  },
+  "inputs/AoI_Polygons/NewSouthWales_AoI.prj": {
+   "size": 145,
+   "mtime_ns": 1785323376000000000,
+   "sha256": "a02a27b1d1982c8516d83398e85a3c8b1aef1713c13ef4d84d7bde17430c07c4"
+  },
+  "inputs/GEBCO/NewSouthWales_GEBCO.tiff": {
+   "size": 7287624,
+   "mtime_ns": 1786013303000000000,
+   "sha256": "d4a04576073d5ca5182b1eef58f73a70f6a2904f09710bb6174bd59c89edd1b5"
+  },
+  "SnapWave_CASES_Metamodel/output_sites_1.nc": {
+   "size": 31880612,
+   "mtime_ns": 1785845077000000000,
+   "sha256": "dbe928e2d7103a97c406ebe3baed58a69a224c673d0a649656da3386cd163ffd"
+  },
+  "outputs/goal_01/validation_metrics.csv": {
+   "size": 131632,
+   "mtime_ns": 1785924078000000000,
+   "sha256": "152941fd6d0f893fa074b46395106e34ef0c679b63ed319fc06377cb68fcfb73"
+  },
+  "outputs/goal_02/validation_metrics.csv": {
+   "size": 131502,
+   "mtime_ns": 1785924091000000000,
+   "sha256": "04cab5835d33889b7bb9543c44ff9cefd7fd5c3e5a5af048c867b392de4b0a1a"
+  },
+  "outputs/goal_03/validation_metrics.csv": {
+   "size": 131424,
+   "mtime_ns": 1785924104000000000,
+   "sha256": "12cc5df9b35eb574ca32d0cff341663cb4dad78a02250ed7941959bec0413612"
+  },
+  "outputs/goal_04/validation_metrics.csv": {
+   "size": 131169,
+   "mtime_ns": 1785924118000000000,
+   "sha256": "8893a51f52ec7d2b5536aad8030c4618dc4460c094f153763c18af306f9dd7da"
+  },
+  "outputs/goal_05/validation_metrics.csv": {
+   "size": 131449,
+   "mtime_ns": 1785924131000000000,
+   "sha256": "866d80ac24eb54ad0357f4d3b74fb0caaf7422fcdf7d21c77172852fb8a36ab8"
+  },
+  "outputs/goal_06/validation_metrics.csv": {
+   "size": 131112,
+   "mtime_ns": 1785924144000000000,
+   "sha256": "740187b57db97e4b520f9961a8c7ad0b727aa1a8218de14c909a19b4e1a961c1"
+  },
+  "outputs/goal_07/validation_metrics.csv": {
+   "size": 131255,
+   "mtime_ns": 1785924156000000000,
+   "sha256": "e4ab7e405d95e013075c7e2c9c4c4ed450038199f4db08436b393fc1379ec858"
+  },
+  "outputs/goal_08/validation_metrics.csv": {
+   "size": 131352,
+   "mtime_ns": 1785924168000000000,
+   "sha256": "75486e2b1611ab4b8725a6f961e67ebe0547afd9096cbdddf85a706b7f55f732"
+  },
+  "outputs/goal_09/validation_metrics.csv": {
+   "size": 131040,
+   "mtime_ns": 1785924180000000000,
+   "sha256": "4d259c362f8cd5f6d21618415e57a231ce1ae7d7e4306a0669074043472a0506"
+  },
+  "outputs/goal_10/validation_metrics.csv": {
+   "size": 131973,
+   "mtime_ns": 1785924192000000000,
+   "sha256": "5a069236bc413258ca8c08e8db9cc1ffc305b9b6bd6d797d93a8a5a24fca72cd"
+  },
+  "outputs/goal_11/validation_metrics.csv": {
+   "size": 131850,
+   "mtime_ns": 1785924207000000000,
+   "sha256": "19d23af487df5efba6bb2a64a795e8461b663690f45fe5f7ff9f41399ecf63f5"
+  },
+  "outputs/goal_12/validation_metrics.csv": {
+   "size": 131918,
+   "mtime_ns": 1785924222000000000,
+   "sha256": "eda5a5b53bcf554eff987f7982b8637bf0ffc5021bff674f7c92efec77b11d02"
+  },
+  "outputs/goal_13/validation_metrics.csv": {
+   "size": 131768,
+   "mtime_ns": 1785924235000000000,
+   "sha256": "24f5c563cd15d34e0ab5ea33ad8293ab8f0e3ff89516f04706463f36859f64b4"
+  },
+  "outputs/goal_14/validation_metrics.csv": {
+   "size": 131931,
+   "mtime_ns": 1785924249000000000,
+   "sha256": "a34d53143273ee7c2191371ad2d0d0fbea892871ed1ba70d68a20d6e2e890fc5"
+  },
+  "outputs/goal_15/validation_metrics.csv": {
+   "size": 131914,
+   "mtime_ns": 1785924264000000000,
+   "sha256": "147683c36267b246bec4c5df587ca08a6b0b56b827c2f5403f3b70e1e84df4c1"
+  },
+  "outputs/goal_16/validation_metrics.csv": {
+   "size": 131859,
+   "mtime_ns": 1785924278000000000,
+   "sha256": "bfa597aa653623e3dd13dd6eb488b4e9c41da5a2ebc3d4561ef18e6ca75c79e3"
+  },
+  "outputs/goal_17/validation_metrics.csv": {
+   "size": 131942,
+   "mtime_ns": 1785924292000000000,
+   "sha256": "42e60efa540eaf4bc347e49e122a00c5cce84b176de162a1e3fe0dbab73a57ba"
+  },
+  "outputs/goal_18/validation_metrics.csv": {
+   "size": 131857,
+   "mtime_ns": 1785924307000000000,
+   "sha256": "c79ca02b33e2157e914a87863e8bdbb11fca58c46da9b8dd5e30b220257faf08"
+  },
+  "outputs/goal_19/validation_metrics.csv": {
+   "size": 131796,
+   "mtime_ns": 1785924319000000000,
+   "sha256": "6394dab20f8e8932d1982af25130963b08e67b3a8efd48deb30cbf36b3cfecfc"
+  },
+  "outputs/goal_20/validation_metrics.csv": {
+   "size": 131956,
+   "mtime_ns": 1785924331000000000,
+   "sha256": "141625d319a3fa24729f35db426a03722c75285617868c8e9b48a5609e7f670d"
+  },
+  "outputs/goal_21/validation_metrics.csv": {
+   "size": 131976,
+   "mtime_ns": 1785924345000000000,
+   "sha256": "330bfb5c755bf0f34ed9326264a9256f7f8f6dff274a93d546f3794b5b5548d5"
+  },
+  "outputs/goal_22/validation_metrics.csv": {
+   "size": 131848,
+   "mtime_ns": 1785924357000000000,
+   "sha256": "cf4e6ffe6d75dfb1e9bddbf371598ae807dcd63705b630f538c17efd93522640"
+  },
+  "outputs/goal_23/validation_metrics.csv": {
+   "size": 132132,
+   "mtime_ns": 1785924369000000000,
+   "sha256": "3b15f3b2cefdf609131cb30a91904e51c56c79dbea5243bc1d0a2bfcdf9ee7b6"
+  },
+  "outputs/goal_24/validation_metrics.csv": {
+   "size": 132150,
+   "mtime_ns": 1785924381000000000,
+   "sha256": "b44fe004859e38a27b115798f95375efb7278b5e4b3d2d9b42de7293539facd2"
+  },
+  "outputs/goal_25/validation_metrics.csv": {
+   "size": 132066,
+   "mtime_ns": 1785924394000000000,
+   "sha256": "00eac09cd49b4f61845d9ea50917ef4053d9f6c2e143e5ded03121170e05cb4c"
+  },
+  "outputs/goal_26/validation_metrics.csv": {
+   "size": 131930,
+   "mtime_ns": 1785924407000000000,
+   "sha256": "f6af189563cecad6a70e77c6d5778409b0ae9715b05f060b1d24813456eb8d3b"
+  },
+  "outputs/metamodel_validation/linear_summation_2010-01.csv": {
+   "size": 33546,
+   "mtime_ns": 1788940984000000000,
+   "sha256": "d754f9145b7bdd85973fbaa5df67f97324e101bd2f2b1a6776e0044c9b3fd73c"
+  },
+  "outputs/buoy_validation/offshore_summary_2001-2011.csv": {
+   "size": 7824,
+   "mtime_ns": 1788948996000000000,
+   "sha256": "9370412c98a37ab62188e96ac635dbf8b546debd27ec29f12054723f494c89cc"
+  },
+  "outputs/buoy_validation/onshore_summary_2013-2017-2023.csv": {
+   "size": 48414,
+   "mtime_ns": 1788948958000000000,
+   "sha256": "bd8b473d76308685f5983f61d913c48d3c6edd68c68b565e4676dd0e57146070"
+  },
+  "outputs/buoy_validation/figures/buoy_BatemansBay_Buoy.png": {
+   "size": 510095,
+   "mtime_ns": 1788949077000000000,
+   "sha256": "ba57f1e311d2814137c313e7c21b6c5e8240bfbd70425919a15e92ab11319d1f"
+  },
+  "outputs/buoy_validation/figures/buoy_Bengello_Buoy.png": {
+   "size": 459740,
+   "mtime_ns": 1788949089000000000,
+   "sha256": "ab43c9818dd4bd8e2fc4f8687a9745bd6c81dd2cadac4ef9eeaeed16f9e955e6"
+  },
+  "outputs/buoy_validation/figures/buoy_BoomerangA2_Buoy.png": {
+   "size": 455788,
+   "mtime_ns": 1788949091000000000,
+   "sha256": "41c7b9d1ee93bc88371e288a3624b802f3f4b6a8151ef152a3bac2b69c62b59a"
+  },
+  "outputs/buoy_validation/figures/buoy_BoomerangB2_Buoy.png": {
+   "size": 462621,
+   "mtime_ns": 1788949092000000000,
+   "sha256": "6454ccd170b9dd3c8a52dfca1b10aa54f4f7fa0a74fe84bc5c694e2f5d0929dc"
+  },
+  "outputs/buoy_validation/figures/buoy_Broulee2_Buoy.png": {
+   "size": 415451,
+   "mtime_ns": 1788949095000000000,
+   "sha256": "97dab59894664b87d29b0cfc4bb888ee4cc97dc50316d14797e58da82025a9f0"
+  },
+  "outputs/buoy_validation/figures/buoy_Broulee_Buoy.png": {
+   "size": 461193,
+   "mtime_ns": 1788949094000000000,
+   "sha256": "2f622c807cb3df5f6c6d32aacee3318f7315215ddc60d9e5ecab50be6691caef"
+  },
+  "outputs/buoy_validation/figures/buoy_ByronBay_Buoy.png": {
+   "size": 601047,
+   "mtime_ns": 1788949079000000000,
+   "sha256": "1118a064abc8b49bebb85a88cc2b614d59d21af6e0998cca40c2429857b7ba95"
+  },
+  "outputs/buoy_validation/figures/buoy_Collaroy4_Buoy.png": {
+   "size": 521098,
+   "mtime_ns": 1788949097000000000,
+   "sha256": "4645893d5451501bc6f9515d20a08a60fa481686f1d396fa49013f5a97fea9da"
+  },
+  "outputs/buoy_validation/figures/buoy_Collaroy5_Buoy.png": {
+   "size": 482010,
+   "mtime_ns": 1788949098000000000,
+   "sha256": "09e742e70b1976c3fcc7c13883df14e82d34d91aa8663384b28c90a20bf4056a"
+  },
+  "outputs/buoy_validation/figures/buoy_Deeban2_Buoy.png": {
+   "size": 532714,
+   "mtime_ns": 1788949101000000000,
+   "sha256": "bcc41e59b6d825d52598190b749751049f4b0e9dfc8ff1a48e90af4a0cc833ed"
+  },
+  "outputs/buoy_validation/figures/buoy_Deeban_Buoy.png": {
+   "size": 539264,
+   "mtime_ns": 1788949099000000000,
+   "sha256": "eb2d8a2ccdb92099d6cacde4c84fb1cdc55fb91944239e7df2f66a52d1690b94"
+  },
+  "outputs/buoy_validation/figures/buoy_Eden_Buoy.png": {
+   "size": 408771,
+   "mtime_ns": 1788949102000000000,
+   "sha256": "157ff47d03bf5090958c5a3534ddc1b84e1dd1bbe451a2bca02060209afa0ecb"
+  },
+  "outputs/buoy_validation/figures/buoy_FairyMeadow_Buoy.png": {
+   "size": 404976,
+   "mtime_ns": 1788949103000000000,
+   "sha256": "a36e6b0a39295de2fd2681435ec54f92ab212c5b382fc371a99d33bd015db536"
+  },
+  "outputs/buoy_validation/figures/buoy_Farquhar_Buoy.png": {
+   "size": 463163,
+   "mtime_ns": 1788949105000000000,
+   "sha256": "fbbf33605ef835d119166a96c585c2e4fc4c6f3f11632a82d9a6a95b7bee9f66"
+  },
+  "outputs/buoy_validation/figures/buoy_Figure8Pools_Buoy.png": {
+   "size": 522519,
+   "mtime_ns": 1788949106000000000,
+   "sha256": "ba4858cf278af12f952aae489496b424842e192dadca3c187c0129b6252270aa"
+  },
+  "outputs/buoy_validation/figures/buoy_Merimbula2_Buoy.png": {
+   "size": 451101,
+   "mtime_ns": 1788949109000000000,
+   "sha256": "a53031e9390b123511b0444592a9762185f7bcf617818428206640322050ca0a"
+  },
+  "outputs/buoy_validation/figures/buoy_Merimbula_Buoy.png": {
+   "size": 415019,
+   "mtime_ns": 1788949107000000000,
+   "sha256": "b611c8d50d75b780ef8e0ea2fa0a8679801452647298b96790ee0831199edfe6"
+  },
+  "outputs/buoy_validation/figures/buoy_OldBarA_Buoy.png": {
+   "size": 454443,
+   "mtime_ns": 1788949110000000000,
+   "sha256": "9ad7e1de6f3047d8c2e9ac4f24fb9a60a2000225124d07e1c76e2ed0ce394f7a"
+  },
+  "outputs/buoy_validation/figures/buoy_Stockton_Buoy.png": {
+   "size": 475289,
+   "mtime_ns": 1788949111000000000,
+   "sha256": "1fa72fe4b970c8eb66cff4fe75d06d6af23c8491baed804cc3180f55158e03b8"
+  },
+  "outputs/buoy_validation/figures/buoy_Sydney_Buoy.png": {
+   "size": 493130,
+   "mtime_ns": 1788949080000000000,
+   "sha256": "0790d375e1d58710d42cb46239d4579b4a34389711a6bde27ccfde5d59974026"
+  },
+  "outputs/buoy_validation/figures/buoy_Woonona_Buoy.png": {
+   "size": 454678,
+   "mtime_ns": 1788949112000000000,
+   "sha256": "7ad7c4a03f4312ba2409b0a6b66d0ec8b0506753a0e3c87e9cc9ec7e43d48488"
+  },
+  "outputs/gui_figures/fig01_domain.png": {
+   "size": 903989,
+   "mtime_ns": 1790171005000000000,
+   "sha256": "fc772a24fa072e74cb3e2bcf07a22e58ca00fc9e4a28944d65090fce99ad3832"
+  },
+  "outputs/gui_figures/fig02_map_comparison.png": {
+   "size": 1834022,
+   "mtime_ns": 1790171032000000000,
+   "sha256": "e4bf3bdd5ac9f603015f0abaccc592d4c62b120892e8aa768289c5cdb15ed4c5"
+  },
+  "outputs/gui_figures/fig03_metamodel.png": {
+   "size": 940142,
+   "mtime_ns": 1790171046000000000,
+   "sha256": "e662776b7795c80a992967113e946ad84d174060c91721281aceb5142046cebd"
+  },
+  "outputs/gui_figures/fig04_spectra_reconstruction.png": {
+   "size": 1664090,
+   "mtime_ns": 1790171080000000000,
+   "sha256": "9f6032b08806944e7553c4be47e5f2fd72accdc26651776a1107c6781ff01de7"
+  }
+ },
+ "source_patterns": [
+  "outputs/goal_*/validation_metrics.csv",
+  "outputs/metamodel_validation/*.csv",
+  "outputs/buoy_validation/*_summary_*.csv",
+  "outputs/buoy_validation/figures/*.png",
+  "outputs/gui_figures/*.png"
+ ]
+}

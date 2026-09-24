@@ -8,7 +8,7 @@ project:
     Australia — rendered from the case's own working notebooks.
   authors:
     - name: Javier Tausía Hoyal
-      github: https://github.com/tausiaj
+      github: tausiaj
   github: https://github.com/tausiaj/HyGloW
   toc:
     - file: ../README.md

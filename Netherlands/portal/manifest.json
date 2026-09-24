@@ -1,0 +1,278 @@
+{
+ "schema": 1,
+ "hywaves_version": "0.5.0",
+ "case": "Netherlands",
+ "published_at": "2026-09-24T13:51:51+00:00",
+ "max_image_px": 2400,
+ "book": true,
+ "skipped": {},
+ "files": {
+  "aoi.geojson": {
+   "size": 257,
+   "sha256": "9caae135475789f6384723f9c7f59411987744722e1cf9541bd123c5f2580f8d"
+  },
+  "buoy_validation/figures/buoy_AmelanderZeegat_1_1.png": {
+   "size": 254280,
+   "sha256": "61b3675db69160253d42fa972018da5ce3b569b906a0389225b2f575be609b11"
+  },
+  "buoy_validation/figures/buoy_AmelanderZeegat_1_2.png": {
+   "size": 239917,
+   "sha256": "a5e816c620459a4c49bfd6ebfa48ce58d039cb39f1a7eace01a2d48c79521cab"
+  },
+  "buoy_validation/figures/buoy_EierlandseGat.png": {
+   "size": 283149,
+   "sha256": "79c32a1b6c5f23c3859b71784fee4d0aa5a7a06f28018fc03dd5ff9f44eb961f"
+  },
+  "buoy_validation/figures/buoy_EurogeulE13.png": {
+   "size": 279496,
+   "sha256": "eb13e9fa2f93451ce91794cae0c2ea2acf8fff679218b719fbdd61eb10d5696e"
+  },
+  "buoy_validation/figures/buoy_IJmuidenMunitiestort_1.png": {
+   "size": 281844,
+   "sha256": "77bb1ca3b15839d4073d51243e1d2982b05e33a26fea52f4cdd976efdc7c8223"
+  },
+  "buoy_validation/figures/buoy_PettenMeetraai01.png": {
+   "size": 94751,
+   "sha256": "c198f144487c1ac2516f802c52e589de3681df549242d84e8399f051daf1f349"
+  },
+  "buoy_validation/figures/buoy_StortemelkWest.png": {
+   "size": 279829,
+   "sha256": "07778e7d19fa0f524b761cea76ddd573ede14931b90972526b29eabfcb7f4a1b"
+  },
+  "buoy_validation/figures/buoy_WestereemsWest.png": {
+   "size": 257433,
+   "sha256": "07679ee861ebfef1740207f1b7663c05d14205f736458fe53fbec8824cdb73d7"
+  },
+  "buoy_validation/figures/buoy_ZandmoterBoeiNoord.png": {
+   "size": 94088,
+   "sha256": "47454308a1b45b48ab7691f31c163aae5b8982895a755c8654155129200575b3"
+  },
+  "buoy_validation/onshore_summary_2010-2015.csv": {
+   "size": 14723,
+   "sha256": "4709e6d5c31e683c721bee4a445d521b33c87c53e5462df199710568119e8135"
+  },
+  "case.json": {
+   "size": 3675,
+   "sha256": "b78c10bec90b4d0a4b4bf4698d2b9d270478a3c03508a673edcb748f4f7339b5"
+  },
+  "goals.json": {
+   "size": 8432,
+   "sha256": "3ca01049c59ff5cc2632b77fd8cad6f47f27cfd04442485c5ecb77f8908e81de"
+  },
+  "gui_figures/fig01_domain.png": {
+   "size": 1396410,
+   "sha256": "349a251722688adf09f21c5d17f3016b3ed913a64045b2e88441aa208b78ca6c"
+  },
+  "gui_figures/fig02_map_comparison.png": {
+   "size": 3690487,
+   "sha256": "65f6d6d6a3f8df793b8f4ea1e8e0ab3de56c3ca950be8fae2c2179e8a882c520"
+  },
+  "gui_figures/fig03_metamodel.png": {
+   "size": 763754,
+   "sha256": "743b5fd2f311346b0fbad05d7b2e2176e75d2633d6aa920c77bfe3e3aa5a5864"
+  },
+  "gui_figures/fig04_spectra_reconstruction.png": {
+   "size": 705183,
+   "sha256": "e76f8284dceb72d639d817b109f469c060b1a423b28d7abe0bb394bc98948f67"
+  },
+  "isobaths.json": {
+   "size": 65306,
+   "sha256": "1b384be41e0bb0d9cd32a3dd92245ea5b4cf296ccf3d244b9ac79271fbd43205"
+  },
+  "metamodel_validation/linear_summation_2010-2015.csv": {
+   "size": 10677,
+   "sha256": "d9249682937b57ba2083b6ff085d9ca851946de0397085bf8c0f2c33ee798feb"
+  },
+  "observations.json": {
+   "size": 3797,
+   "sha256": "dda9bc940d587627be4688814f87d65fcd80e3825e307654265405545591eea2"
+  },
+  "output_sites.json": {
+   "size": 39699,
+   "sha256": "8d6465c2c43088f1f0ed670821b62d0c897b8e4d4ac216793ff4aa84346c1e15"
+  },
+  "validation_metrics.csv": {
+   "size": 405694,
+   "sha256": "1ef2715c8d4a2ae9f284817fd2cb5bc0f11f40a24f5360468dfb733127c16dd0"
+  }
+ },
+ "sources": {
+  "Netherlands.json": {
+   "size": 3675,
+   "mtime_ns": 1790106694000000000,
+   "sha256": "b78c10bec90b4d0a4b4bf4698d2b9d270478a3c03508a673edcb748f4f7339b5"
+  },
+  "inputs/Goals/Netherlands_Goals.json": {
+   "size": 8432,
+   "mtime_ns": 1790067153000000000,
+   "sha256": "3ca01049c59ff5cc2632b77fd8cad6f47f27cfd04442485c5ecb77f8908e81de"
+  },
+  "inputs/Observations/Netherlands_observations.json": {
+   "size": 3797,
+   "mtime_ns": 1790066788000000000,
+   "sha256": "dda9bc940d587627be4688814f87d65fcd80e3825e307654265405545591eea2"
+  },
+  "inputs/AoI_Polygons/Netherlands_AoI.shp": {
+   "size": 268,
+   "mtime_ns": 1790063017000000000,
+   "sha256": "93f6b7cc6d1acbaf2abc4c305898743caa1320cdf3c1896d5b69030f046c2793"
+  },
+  "inputs/AoI_Polygons/Netherlands_AoI.shx": {
+   "size": 108,
+   "mtime_ns": 1790063017000000000,
+   "sha256": "5b2d18878a94b0c10f6ed4ed58023f2db5e09e8a4d7e6502a1be7a8425f4bcbf"
+  },
+  "inputs/AoI_Polygons/Netherlands_AoI.dbf": {
+   "size": 77,
+   "mtime_ns": 1790063016000000000,
+   "sha256": "ecbde973fa50ed1069412e101710182e44b93b5dbb1ca42dcdacbfde641d876a"
+  },
+  "inputs/AoI_Polygons/Netherlands_AoI.prj": {
+   "size": 145,
+   "mtime_ns": 1790063015000000000,
+   "sha256": "a02a27b1d1982c8516d83398e85a3c8b1aef1713c13ef4d84d7bde17430c07c4"
+  },
+  "inputs/GRID/UGdcsm-fm_100m2coast3d_v3_era5bnd_net.tiff": {
+   "size": 39557800,
+   "mtime_ns": 1790061741000000000,
+   "sha256": "d497079adc4cdcf9183b4cf4923d601f4eae8baec793f8a683218bcadd5fe661"
+  },
+  "SnapWave_CASES_Metamodel/output_sites_1.nc": {
+   "size": 10160129,
+   "mtime_ns": 1790100555000000000,
+   "sha256": "8cfad8360f234064b6482c10e2b65b7293f0ac020d762f7995264337ea4fe8c3"
+  },
+  "outputs/goal_01/validation_metrics.csv": {
+   "size": 40339,
+   "mtime_ns": 1790146972000000000,
+   "sha256": "402112184290bb6570535c7099e343ac817e90ac451b23dacd0926c46893b716"
+  },
+  "outputs/goal_02/validation_metrics.csv": {
+   "size": 40477,
+   "mtime_ns": 1790146984000000000,
+   "sha256": "1c86fbc4874ccbdc6f3b61e0ad0ba3851c769a1d0a893324904e02dd901b6f1d"
+  },
+  "outputs/goal_03/validation_metrics.csv": {
+   "size": 40415,
+   "mtime_ns": 1790146997000000000,
+   "sha256": "44b454a977463addc22225d1257e82de7549420aff7a3cb0b54b1f2bd23ac17c"
+  },
+  "outputs/goal_04/validation_metrics.csv": {
+   "size": 40450,
+   "mtime_ns": 1790147008000000000,
+   "sha256": "d5dd8e41e5f470c2b8eefe79505404b0eb1d16cce19444b72b8f1c18beba60de"
+  },
+  "outputs/goal_05/validation_metrics.csv": {
+   "size": 40414,
+   "mtime_ns": 1790147022000000000,
+   "sha256": "8dc936271d127cac9b2965a771d99d8b028ef7ec0b68d012930a193c5062a010"
+  },
+  "outputs/goal_06/validation_metrics.csv": {
+   "size": 40376,
+   "mtime_ns": 1790147033000000000,
+   "sha256": "1b77704f8ff95fcad019555ab2b5295b8dde0914db3c6beb42d1c0f5225ef485"
+  },
+  "outputs/goal_07/validation_metrics.csv": {
+   "size": 40469,
+   "mtime_ns": 1790147043000000000,
+   "sha256": "8c7083e9bfb6816fe4316e8e77fada6ca6d15927043a8a110b0d8eb68010a124"
+  },
+  "outputs/goal_08/validation_metrics.csv": {
+   "size": 40434,
+   "mtime_ns": 1790147053000000000,
+   "sha256": "fc1133bcc733f6c88ce15ea56131733c79a62070da86f99b1a93baf729c96d70"
+  },
+  "outputs/goal_09/validation_metrics.csv": {
+   "size": 40432,
+   "mtime_ns": 1790147063000000000,
+   "sha256": "88a361bdac5bf2748bc56b5d6af78e2d94fec613895df26532e9fccdb385ce7c"
+  },
+  "outputs/goal_10/validation_metrics.csv": {
+   "size": 40711,
+   "mtime_ns": 1790147072000000000,
+   "sha256": "c316f9542f8506337aca8e704c821d771a027b078ee6ebb50794eaf86ef78528"
+  },
+  "outputs/metamodel_validation/linear_summation_2010-2015.csv": {
+   "size": 10677,
+   "mtime_ns": 1790161221000000000,
+   "sha256": "d9249682937b57ba2083b6ff085d9ca851946de0397085bf8c0f2c33ee798feb"
+  },
+  "outputs/buoy_validation/onshore_summary_2010-2015.csv": {
+   "size": 14723,
+   "mtime_ns": 1790171918000000000,
+   "sha256": "4709e6d5c31e683c721bee4a445d521b33c87c53e5462df199710568119e8135"
+  },
+  "outputs/buoy_validation/figures/buoy_AmelanderZeegat_1_1.png": {
+   "size": 254280,
+   "mtime_ns": 1790171944000000000,
+   "sha256": "61b3675db69160253d42fa972018da5ce3b569b906a0389225b2f575be609b11"
+  },
+  "outputs/buoy_validation/figures/buoy_AmelanderZeegat_1_2.png": {
+   "size": 239917,
+   "mtime_ns": 1790171945000000000,
+   "sha256": "a5e816c620459a4c49bfd6ebfa48ce58d039cb39f1a7eace01a2d48c79521cab"
+  },
+  "outputs/buoy_validation/figures/buoy_EierlandseGat.png": {
+   "size": 283149,
+   "mtime_ns": 1790171946000000000,
+   "sha256": "79c32a1b6c5f23c3859b71784fee4d0aa5a7a06f28018fc03dd5ff9f44eb961f"
+  },
+  "outputs/buoy_validation/figures/buoy_EurogeulE13.png": {
+   "size": 279496,
+   "mtime_ns": 1790171946000000000,
+   "sha256": "eb13e9fa2f93451ce91794cae0c2ea2acf8fff679218b719fbdd61eb10d5696e"
+  },
+  "outputs/buoy_validation/figures/buoy_IJmuidenMunitiestort_1.png": {
+   "size": 281844,
+   "mtime_ns": 1790171947000000000,
+   "sha256": "77bb1ca3b15839d4073d51243e1d2982b05e33a26fea52f4cdd976efdc7c8223"
+  },
+  "outputs/buoy_validation/figures/buoy_PettenMeetraai01.png": {
+   "size": 94751,
+   "mtime_ns": 1790171947000000000,
+   "sha256": "c198f144487c1ac2516f802c52e589de3681df549242d84e8399f051daf1f349"
+  },
+  "outputs/buoy_validation/figures/buoy_StortemelkWest.png": {
+   "size": 279829,
+   "mtime_ns": 1790171948000000000,
+   "sha256": "07778e7d19fa0f524b761cea76ddd573ede14931b90972526b29eabfcb7f4a1b"
+  },
+  "outputs/buoy_validation/figures/buoy_WestereemsWest.png": {
+   "size": 257433,
+   "mtime_ns": 1790171949000000000,
+   "sha256": "07679ee861ebfef1740207f1b7663c05d14205f736458fe53fbec8824cdb73d7"
+  },
+  "outputs/buoy_validation/figures/buoy_ZandmoterBoeiNoord.png": {
+   "size": 94088,
+   "mtime_ns": 1790171949000000000,
+   "sha256": "47454308a1b45b48ab7691f31c163aae5b8982895a755c8654155129200575b3"
+  },
+  "outputs/gui_figures/fig01_domain.png": {
+   "size": 1396410,
+   "mtime_ns": 1790252828000000000,
+   "sha256": "349a251722688adf09f21c5d17f3016b3ed913a64045b2e88441aa208b78ca6c"
+  },
+  "outputs/gui_figures/fig02_map_comparison.png": {
+   "size": 5650979,
+   "mtime_ns": 1790252972000000000,
+   "sha256": "c269b41c6877e5794ed108110b5354693b4758c68b51d8b845f60ee0a957f691"
+  },
+  "outputs/gui_figures/fig03_metamodel.png": {
+   "size": 586305,
+   "mtime_ns": 1790252979000000000,
+   "sha256": "f456af46b6cd6fa7b2d693813b1c94a3aca819a1be7be4e603b0bd7186339116"
+  },
+  "outputs/gui_figures/fig04_spectra_reconstruction.png": {
+   "size": 728678,
+   "mtime_ns": 1790253056000000000,
+   "sha256": "681f086e1c5177c00e58e37ceca3861b48a153daf0f43af3d02fc56448875139"
+  }
+ },
+ "source_patterns": [
+  "outputs/goal_*/validation_metrics.csv",
+  "outputs/metamodel_validation/*.csv",
+  "outputs/buoy_validation/*_summary_*.csv",
+  "outputs/buoy_validation/figures/*.png",
+  "outputs/gui_figures/*.png"
+ ]
+}

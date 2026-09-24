@@ -11,5 +11,6 @@ def case_root(case: dict) -> Path:
     return REPO_ROOT / case["case_dir"]
 
 
-def resolve_case(case: dict, rel: str | Path) -> Path:
-    return case_root(case) / rel
+def portal_root(case: dict) -> Path:
+    """The case's published bundle (``python -m hywaves publish``) — the only thing the GUI reads."""
+    return case_root(case) / "portal"

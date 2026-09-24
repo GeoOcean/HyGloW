@@ -71,6 +71,10 @@ python -m hywaves validate MyCase/            # development mode: gaps are warni
 python -m hywaves validate MyCase/ --publish  # strict: is this ready to share?
 ```
 
+**4. Publish it** — `python -m hywaves publish MyCase/` validates, then
+writes `MyCase/portal/`: the small bundle (a few MB) the results portal
+reads. Commit that folder.
+
 ## Want to see a finished example first?
 
 | Case                                     | Region               | Status                                                                                          |
@@ -78,7 +82,7 @@ python -m hywaves validate MyCase/ --publish  # strict: is this ready to share?
 | [Samoa](Samoa/README.md)                 | Samoan archipelago   | Full pipeline: mesh → LHS → metamodel fit → offshore hindcast → buoy/spectra validation         |
 | [NewSouthWales](NewSouthWales/README.md) | NSW coast, Australia | Mesh, 26 goals, and a 35-buoy observations catalogue done; metamodel fit and validation pending |
 
-Or browse every published case in the results portal:
+Or browse every published case (each one's `portal/` bundle) in the results portal:
 
 ```bash
 cd GUI && python app.py   # http://localhost:8050
@@ -100,10 +104,10 @@ against real buoy records.
 
 | Path             | What it is                                                                             |
 | ---------------- | -------------------------------------------------------------------------------------- |
-| `hywaves/`        | The engine, contract, and CLI (`python -m hywaves ...`) — scaffolds and validates cases |
+| `hywaves/`        | The engine, contract, and CLI (`python -m hywaves ...`) — scaffolds, validates, and publishes cases |
 | `Samoa/`         | Reference case — Samoan archipelago                                                    |
 | `NewSouthWales/` | Reference case — NSW coast, Australia                                                  |
-| `GUI/`           | *HyGloW Results Explorer* — a Dash portal that reads any case's contract files         |
+| `GUI/`           | *HyGloW Results Explorer* — a Dash portal that reads each case's `portal/` bundle      |
 
 Full CLI reference (including `update`, which re-syncs a case's engine code
 from the template): [`hywaves/README.md`](hywaves/README.md).
@@ -117,7 +121,8 @@ case is conformance to the [case contract](hywaves/contract/CONTRACT.md).
 
 1. `python -m hywaves start --name YourCase`
 2. Fill in `YourCase/YourCase.json` and work through the numbered notebooks.
-3. `python -m hywaves validate YourCase/ --publish`
+3. `python -m hywaves publish YourCase/` (validates in strict mode, then writes
+   `YourCase/portal/` — commit it)
 4. Open a PR here (using your fork), or host it in your own repo and point the GUI catalog
    (`GUI/catalog/cases.yaml`) at it — the contract is the only thing that
    needs to match.

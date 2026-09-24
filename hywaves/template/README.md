@@ -50,13 +50,26 @@ Run notebooks with `__CASE_NAME__/` as the working directory.
    buoy (`outputs/buoy_validation/figures/<site>.png`), shown in the GUI when
    you click that buoy's star on the map.
 
-4. **Check your progress against the case contract** (this is also the
-   publish gate — the portal only ever reads contract files):
+4. **Check your progress against the case contract**:
 
    ```bash
    python -m hywaves validate __CASE_NAME__/            # while developing
    python -m hywaves validate __CASE_NAME__/ --publish  # portal-ready check
    ```
+
+5. **Publish to the portal.** The GUI never reads `inputs/` or `outputs/`
+   directly — it reads a small bundle that `publish` builds (validating
+   first) in `portal/`:
+
+   ```bash
+   python -m hywaves publish __CASE_NAME__/
+   ```
+
+   Commit `__CASE_NAME__/portal/` (a few MB: configs, merged metrics,
+   pre-computed map layers, web-sized figures), but git-ignore
+   `__CASE_NAME__/portal/book/` — a built report is deployed separately.
+   Re-run `publish` after re-running notebooks; `validate` warns
+   (`portal.stale`) whenever the bundle has fallen behind.
 
 ## Stuck, or want to see it done first?
 

@@ -1,0 +1,236 @@
+{
+ "schema": 1,
+ "hywaves_version": "0.5.0",
+ "case": "Samoa",
+ "published_at": "2026-09-24T13:48:20+00:00",
+ "max_image_px": 2400,
+ "book": true,
+ "skipped": {},
+ "files": {
+  "aoi.geojson": {
+   "size": 756,
+   "sha256": "62e5e1090faf6266eedaf6901e49df9e7a89d2e81e2001af437a7a80af916213"
+  },
+  "buoy_validation/figures/buoy_Aunuu_Buoy.png": {
+   "size": 564530,
+   "sha256": "4bca1bcce88bd36e059e208d71d9278d302c09985431a3749f3c18b21d024f29"
+  },
+  "buoy_validation/offshore_summary_2020.csv": {
+   "size": 3423,
+   "sha256": "f033b97d665203b7c2407230baae4bb71540a52bc8047b3b2062d38887f17cde"
+  },
+  "case.json": {
+   "size": 3969,
+   "sha256": "29b7383d813f065aa32792c2364ba3055de8ba8bbc63d4901d2928fcd2fa8689"
+  },
+  "goals.json": {
+   "size": 14250,
+   "sha256": "53ccf7857b1698ab3826640fe5dcaba641f90d7ddc365f9427835560af22aad0"
+  },
+  "gui_figures/fig01_domain.png": {
+   "size": 1431869,
+   "sha256": "a89753486f9d11c7e4ca5c10145cf33deb47937443c0651617c1fcfac468416f"
+  },
+  "gui_figures/fig02_map_comparison.png": {
+   "size": 964123,
+   "sha256": "2e14f8ed2d738110c89b8e2418486fdb46811255acd846b1d470ff4d4eef1898"
+  },
+  "gui_figures/fig03_metamodel.png": {
+   "size": 1086552,
+   "sha256": "aac810038f9b2d4884d79de5c514d29fefe483214d801579cff1a6867b08747e"
+  },
+  "gui_figures/fig04_spectra_reconstruction.png": {
+   "size": 735050,
+   "sha256": "dac5aad262ca5ef2ae811cbf69c7ab6952bbc11d9b3f11b10503275dc4e4a0fc"
+  },
+  "isobaths.json": {
+   "size": 37577,
+   "sha256": "3a113e013e1c1ee7a4c9d1c224999eb290327c067d348a1fe2c5835d38ab4ba5"
+  },
+  "metamodel_validation/linear_summation_2020-01.csv": {
+   "size": 6804,
+   "sha256": "e104ecebb1350fd24ebaca64303200ab8a5a23ab740498e6ffe9865b249b722f"
+  },
+  "observations.json": {
+   "size": 1258,
+   "sha256": "c21f500f195d66352dc855d5754934bd9b8ff7169d591643e753eeafcafaf36a"
+  },
+  "output_sites.json": {
+   "size": 143594,
+   "sha256": "bd6e422d11a284247ab488cc8e4656131bf3928d2c518628b659bfd4a91f1582"
+  },
+  "validation_metrics.csv": {
+   "size": 416779,
+   "sha256": "1e2a69ffd0746cfd3ebf89122ff10d52e70f42dffaf8f0ed03e8334410995615"
+  }
+ },
+ "sources": {
+  "Samoa.json": {
+   "size": 3969,
+   "mtime_ns": 1785487631000000000,
+   "sha256": "29b7383d813f065aa32792c2364ba3055de8ba8bbc63d4901d2928fcd2fa8689"
+  },
+  "inputs/Goals/Samoa_Goals.json": {
+   "size": 14250,
+   "mtime_ns": 1786711798000000000,
+   "sha256": "53ccf7857b1698ab3826640fe5dcaba641f90d7ddc365f9427835560af22aad0"
+  },
+  "inputs/Observations/Samoa_observations.json": {
+   "size": 1258,
+   "mtime_ns": 1785487631000000000,
+   "sha256": "c21f500f195d66352dc855d5754934bd9b8ff7169d591643e753eeafcafaf36a"
+  },
+  "inputs/AoI_Polygons/Samoa_AoI.shp": {
+   "size": 604,
+   "mtime_ns": 1782368772000000000,
+   "sha256": "6e8e3456ec4229ec63801d21d8c75b34af1c69b92d149399cbf9e1ff83d25503"
+  },
+  "inputs/AoI_Polygons/Samoa_AoI.shx": {
+   "size": 108,
+   "mtime_ns": 1782368772000000000,
+   "sha256": "e7db92b6e31de8711ce60b55a1c4c05ff0469bf79d09b7999c45fcaf3da988c8"
+  },
+  "inputs/AoI_Polygons/Samoa_AoI.dbf": {
+   "size": 77,
+   "mtime_ns": 1782368772000000000,
+   "sha256": "0de58a3d33aae126e1d1dbb36271c8001ccb4c05be53bea2e52832f5c4156e19"
+  },
+  "inputs/AoI_Polygons/Samoa_AoI.prj": {
+   "size": 145,
+   "mtime_ns": 1782368719000000000,
+   "sha256": "a02a27b1d1982c8516d83398e85a3c8b1aef1713c13ef4d84d7bde17430c07c4"
+  },
+  "inputs/GEBCO/Samoa_GEBCO_SMOOTH_NOAA_3s.tiff": {
+   "size": 68643846,
+   "mtime_ns": 1784284527000000000,
+   "sha256": "d5adbe7734f4085ff280fbb9fa0fc38ccfedebb2db6e7e78742dded79f732852"
+  },
+  "SnapWave_CASES_Metamodel/output_sites_1.nc": {
+   "size": 33735660,
+   "mtime_ns": 1785226318000000000,
+   "sha256": "2a816ae1d9d5158b1c53b1d63f7f3ea85e2a40437c16887f44751df4184c60bc"
+  },
+  "outputs/goal_01/validation_metrics.csv": {
+   "size": 25956,
+   "mtime_ns": 1790173226000000000,
+   "sha256": "f8502bfffa79a231c3e75b325802c8069da6b4cf6e9de3458bbba965b1e4b6f1"
+  },
+  "outputs/goal_02/validation_metrics.csv": {
+   "size": 25910,
+   "mtime_ns": 1790173232000000000,
+   "sha256": "2734147de13cd223577f91d4626affe0eef9e4ad680dddf468543127b1d122e7"
+  },
+  "outputs/goal_03/validation_metrics.csv": {
+   "size": 25934,
+   "mtime_ns": 1790173237000000000,
+   "sha256": "6775ac4ad7d24df7b26ca0540a2f9b50ae3b901dd1d4a30cae332c29123abef1"
+  },
+  "outputs/goal_04/validation_metrics.csv": {
+   "size": 25940,
+   "mtime_ns": 1790173243000000000,
+   "sha256": "882f92d61b3db8110bc79d4bdc2bc447cc7d4439114a100110b37957c4691411"
+  },
+  "outputs/goal_05/validation_metrics.csv": {
+   "size": 25929,
+   "mtime_ns": 1790173250000000000,
+   "sha256": "4ccdeb9fd7164c6ab8d2cc6f39191784286a5364d4b8ca7eadaaf4f58429b882"
+  },
+  "outputs/goal_06/validation_metrics.csv": {
+   "size": 25938,
+   "mtime_ns": 1790173255000000000,
+   "sha256": "c48eff033d547dbea73ad02a909837845eb663f485f421cef184c05325947525"
+  },
+  "outputs/goal_07/validation_metrics.csv": {
+   "size": 25959,
+   "mtime_ns": 1790173261000000000,
+   "sha256": "9fe299ec90a350211735d1ca8c717133855ca310c12ebf54ad32f68c84c0b1c5"
+  },
+  "outputs/goal_08/validation_metrics.csv": {
+   "size": 25945,
+   "mtime_ns": 1790173267000000000,
+   "sha256": "aa504f20b7c10b2427f5532313f18fe5d51e5b7b4ca6e929eb3147910dd4ed3f"
+  },
+  "outputs/goal_09/validation_metrics.csv": {
+   "size": 25948,
+   "mtime_ns": 1790173273000000000,
+   "sha256": "e0080fb2d8140c9d05698c6563a5668738ca32aa7148820632fb788a39fd4e68"
+  },
+  "outputs/goal_10/validation_metrics.csv": {
+   "size": 26076,
+   "mtime_ns": 1790173279000000000,
+   "sha256": "73682f6591593a12e23da32fdae1c42271f52dd6d15021ae17cb4505714ef9a8"
+  },
+  "outputs/goal_11/validation_metrics.csv": {
+   "size": 26113,
+   "mtime_ns": 1790173285000000000,
+   "sha256": "eac1df0ca302b84bc85dba5a23e70a09154ada40de8c06399f0bc69e5c992d74"
+  },
+  "outputs/goal_12/validation_metrics.csv": {
+   "size": 26147,
+   "mtime_ns": 1790173291000000000,
+   "sha256": "9e4ff95d706bdaa60c0de5792dfc604557d762314ea9576fda7d7011e84cf14c"
+  },
+  "outputs/goal_13/validation_metrics.csv": {
+   "size": 26158,
+   "mtime_ns": 1790173298000000000,
+   "sha256": "08daf29ca6a280ac987d71ab3e3334da59b6f0d1f16479db04bef4a6ff9ac350"
+  },
+  "outputs/goal_14/validation_metrics.csv": {
+   "size": 26089,
+   "mtime_ns": 1790173304000000000,
+   "sha256": "0113ac9c29582d586d60b289137c604846b28227b0b0c9824b4182d4b0aa44fe"
+  },
+  "outputs/goal_15/validation_metrics.csv": {
+   "size": 26121,
+   "mtime_ns": 1790173310000000000,
+   "sha256": "135d8c02768b59aa4ab97ad11fb0c8fcb2039e3d6a82d77a345bdfbb31e911b7"
+  },
+  "outputs/goal_16/validation_metrics.csv": {
+   "size": 26095,
+   "mtime_ns": 1790173315000000000,
+   "sha256": "9bedcfceff2af029045f723a0e8847e05c4f14b9bddd75e318ee060b086cc069"
+  },
+  "outputs/metamodel_validation/linear_summation_2020-01.csv": {
+   "size": 6804,
+   "mtime_ns": 1790174324000000000,
+   "sha256": "e104ecebb1350fd24ebaca64303200ab8a5a23ab740498e6ffe9865b249b722f"
+  },
+  "outputs/buoy_validation/offshore_summary_2020.csv": {
+   "size": 3423,
+   "mtime_ns": 1790173358000000000,
+   "sha256": "f033b97d665203b7c2407230baae4bb71540a52bc8047b3b2062d38887f17cde"
+  },
+  "outputs/buoy_validation/figures/buoy_Aunuu_Buoy.png": {
+   "size": 564530,
+   "mtime_ns": 1790173365000000000,
+   "sha256": "4bca1bcce88bd36e059e208d71d9278d302c09985431a3749f3c18b21d024f29"
+  },
+  "outputs/gui_figures/fig01_domain.png": {
+   "size": 1431869,
+   "mtime_ns": 1790171112000000000,
+   "sha256": "a89753486f9d11c7e4ca5c10145cf33deb47937443c0651617c1fcfac468416f"
+  },
+  "outputs/gui_figures/fig02_map_comparison.png": {
+   "size": 896045,
+   "mtime_ns": 1790171131000000000,
+   "sha256": "b26627cbdb51a1867788604996c65ac8495e6bf76f2909f532ea768ba5745269"
+  },
+  "outputs/gui_figures/fig03_metamodel.png": {
+   "size": 852380,
+   "mtime_ns": 1790171142000000000,
+   "sha256": "f21c45e15748d47adf41139246883f89de862d124f57f618b2fbae8e59a27bef"
+  },
+  "outputs/gui_figures/fig04_spectra_reconstruction.png": {
+   "size": 732663,
+   "mtime_ns": 1790171162000000000,
+   "sha256": "dcb0ffce97942b2c6f20778423023c22e6a314d66f899055bb5d67857251a616"
+  }
+ },
+ "source_patterns": [
+  "outputs/goal_*/validation_metrics.csv",
+  "outputs/metamodel_validation/*.csv",
+  "outputs/buoy_validation/*_summary_*.csv",
+  "outputs/buoy_validation/figures/*.png",
+  "outputs/gui_figures/*.png"
+ ]
+}

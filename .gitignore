@@ -214,3 +214,10 @@ NewSouthWales/inputs/Observations/
 NewSouthWales/tmp
 Netherlands/inputs/Hindcasts/
 Netherlands/inputs/Observations/raw/
+
+# Portal bundles (`python -m hywaves publish`): commit {Case}/portal/, but
+# the built book is deployed by hand, and the .tmp/.old dirs are transient.
+**/book/
+*/portal/book/
+*/portal.tmp/
+*/portal.old/

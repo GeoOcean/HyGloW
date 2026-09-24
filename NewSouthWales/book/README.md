@@ -16,14 +16,16 @@ the report.
 ```bash
 pip install jupyter-book   # one-time, only needed to build the report
 cd NewSouthWales/book
-./build.sh
+./build.sh                               # local GUI (served at /)
+HYGLOW_URL_BASE=/hyglow/ ./build.sh      # deployed GUI served under /hyglow/
 ```
 
 Don't run `jupyter-book build --html` directly — use `build.sh`. It wraps
 two required things `jupyter-book` doesn't do on its own:
 
 1. **`BASE_URL`**, matching the GUI's serving route (`/case-book/<case_id>`,
-   see `GUI/app.py`'s `serve_book`) — baked into every internal link and
+   under the GUI's `HYGLOW_URL_BASE` prefix if it has one — see
+   `GUI/app.py`'s `serve_book`) — baked into every internal link and
    asset path at build time. Wrong or missing, and the report loads with
    broken styling and dead nav links (every URL resolves against the site
    root instead of the actual mount path).
@@ -37,8 +39,11 @@ two required things `jupyter-book` doesn't do on its own:
    this upstream, that copy step becomes a no-op you can safely delete.
 
 Output goes to `_build/html/` (gitignored — a local/build-machine artifact,
-not committed). The GUI serves straight from that folder, so nothing else
-needs to run — just refresh the GUI page after rebuilding.
+not committed). The GUI serves the report from the case's portal bundle, so
+after rebuilding run `python -m hywaves publish NewSouthWales` (it copies
+`_build/html/` into `portal/book/`, also git-ignored) and refresh the GUI.
+For a deployment, copy `portal/book/` to the server by hand — see
+`GUI/README.md` → Deploy.
 
 ## Editing the table of contents
 

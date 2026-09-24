@@ -8,6 +8,7 @@ from .loaders import (
     load_case_config,
     load_catalog,
     offshore_names,
+    portal_manifest,
 )
 from .map_figure import DEFAULT_SANDBOX_LAYERS, SANDBOX_LAYER_LABELS, SANDBOX_MAP_CONFIG
 from .world_regions import WORLD_REGIONS
@@ -47,6 +48,14 @@ def _pipeline_badges(case: dict) -> html.Div:
     )
 
 
+def _published_label(case: dict) -> str:
+    """Publish date from the bundle manifest (``python -m hywaves publish``), or a not-yet note."""
+    manifest = portal_manifest(case)
+    if not manifest:
+        return "Not published yet"
+    return str(manifest.get("published_at", "—"))[:10]
+
+
 def case_panel(case: dict, config: dict) -> html.Div:
     return html.Div(
         [
@@ -80,6 +89,8 @@ def case_panel(case: dict, config: dict) -> html.Div:
                     ),
                     html.Dt("Last update"),
                     html.Dd(case.get("updated", "—")),
+                    html.Dt("Published"),
+                    html.Dd(_published_label(case)),
                 ],
                 className="meta-list",
             ),

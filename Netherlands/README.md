@@ -54,12 +54,18 @@ Run notebooks with `Netherlands/` as the working directory.
    buoy (`outputs/buoy_validation/figures/<site>.png`), shown in the GUI when
    you click that buoy's star on the map.
 
-4. **Check your progress against the case contract** (this is also the
-   publish gate — the portal only ever reads contract files):
+4. **Check your progress against the case contract**:
 
    ```bash
    python -m hywaves validate Netherlands/            # while developing
    python -m hywaves validate Netherlands/ --publish  # portal-ready check
+   ```
+
+5. **Publish to the portal** — the GUI reads only the `portal/` bundle this
+   writes (validating first); commit it, `portal/book/` is git-ignored:
+
+   ```bash
+   python -m hywaves publish Netherlands/
    ```
 
 ## Stuck, or want to see it done first?
