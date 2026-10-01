@@ -185,19 +185,22 @@ body {
     font-size: 0.8rem;
 }
 
+/* Expanded, the drawer can take most of the screen (charts get room to
+   breathe); it starts collapsed and folds back down with its toggle, so
+   covering the map while open is fine. */
 .results-drawer {
     left: 1rem;
     right: 1rem;
     bottom: 1rem;
-    max-height: 42vh;
+    max-height: 78vh;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     transition: max-height 0.2s ease;
 }
 
-/* Collapsed: only the tab bar (+ toggle) stays, so the map underneath is
-   free to pan/zoom without the drawer's ~42vh footprint in the way. */
+/* Collapsed (the initial state): only the tab bar (+ toggle) stays, so the
+   map underneath is free to pan/zoom without the drawer in the way. */
 .results-drawer.collapsed {
     max-height: 2.75rem;
 }
@@ -701,6 +704,6 @@ body {
     }
 
     .results-drawer {
-        max-height: 34vh;
+        max-height: 70vh;
     }
 }

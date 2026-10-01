@@ -682,9 +682,9 @@ def register_callbacks(app):
     )
     def toggle_drawer_collapsed(_n_clicks, current_class):
         # Collapsing just hides the tab content (CSS: .collapsed .drawer-body)
-        # and shrinks the drawer down to its tab bar — the drawer's ~42vh
-        # footprint otherwise sits right over the map, making it awkward to
-        # pan/zoom around a case while the stats tabs are open.
+        # and shrinks the drawer down to its tab bar — expanded, the drawer
+        # takes most of the screen height, right over the map, so it starts
+        # collapsed (layout.results_drawer) and toggles from there.
         if "collapsed" in (current_class or "").split():
             return "glass-panel results-drawer", "⌄", "Collapse — frees up the map underneath"
         return "glass-panel results-drawer collapsed", "⌃", "Expand"

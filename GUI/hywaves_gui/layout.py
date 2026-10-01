@@ -199,12 +199,14 @@ def results_drawer() -> html.Div:
                         active_tab="tab-metamodel",
                         className="drawer-tabs",
                     ),
+                    # Starts collapsed (just the tab bar) so a freshly opened
+                    # case shows its map first — see toggle_drawer_collapsed.
                     html.Button(
-                        "⌄",
+                        "⌃",
                         id="drawer-collapse-btn",
                         n_clicks=0,
                         className="drawer-collapse-btn",
-                        title="Collapse — frees up the map underneath",
+                        title="Expand",
                     ),
                 ],
                 className="drawer-header",
@@ -212,7 +214,7 @@ def results_drawer() -> html.Div:
             html.Div(id="tab-content", className="drawer-body"),
         ],
         id="results-drawer",
-        className="glass-panel results-drawer",
+        className="glass-panel results-drawer collapsed",
     )
 
 
