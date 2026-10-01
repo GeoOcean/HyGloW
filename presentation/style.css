@@ -1054,8 +1054,16 @@ body.mode-short .slide[data-depth="deep"] {
     display: none;
   }
   .fig-grid,
-  .cols-3 {
+  .cols-3,
+  .cols-4,
+  .cols-5 {
     grid-template-columns: repeat(2, 1fr);
+  }
+  .wa-stage {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .wa-link {
+    display: none;
   }
 }
 
@@ -1240,4 +1248,712 @@ body.mode-short .slide[data-depth="deep"] {
   transform: rotate(45deg);
   background: var(--surface-2);
   border: 1.5px solid var(--text-primary);
+}
+
+/* ---- Ecosystem slides (bluemath-tk toolkit, wrappers) ---- */
+
+.cols-5 {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.cols-5 .card {
+  padding: 1rem 1.1rem;
+}
+
+.tk-card {
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.tk-card .tk-hint {
+  margin-top: auto;
+  padding-top: 0.8rem;
+  font-size: 0.8rem;
+}
+
+.slide .tk-mod {
+  margin: 0.8rem 0 0.2rem;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.slide .tk-items {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.cols-4 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.cols-4 .card {
+  padding: 1rem 1.1rem;
+}
+
+.slide .mini-code {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0.5rem 0 0.7rem;
+  padding: 0.6rem 0.7rem;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.slide .mini-code .hl {
+  color: var(--accent);
+}
+
+.wr-flow .card h3 {
+  margin: 0.6rem 0 0;
+}
+
+.wr-strip {
+  margin-top: 1rem;
+  padding: 0.9rem 1.2rem;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  border-left: 3px solid var(--accent);
+}
+
+.code-modal .pdf-modal-inner {
+  height: auto;
+  max-height: 100%;
+  max-width: 980px;
+}
+
+.code-modal-note {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+#code-modal-code {
+  margin: 0;
+  padding: 1.2rem 1.5rem;
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+#code-modal-code .hl {
+  color: var(--accent);
+}
+
+/* ---- Wrappers, live (animated slide) ---- */
+
+.wa {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.wa-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.wa-steps {
+  display: flex;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: wa;
+  flex-wrap: wrap;
+}
+
+.wa-steps li {
+  counter-increment: wa;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  background: var(--surface-2);
+  transition: all 0.25s ease;
+}
+
+.wa-steps li::before {
+  content: counter(wa) " \00B7  ";
+}
+
+.wa-steps li.current {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: transparent;
+  font-weight: 700;
+}
+
+.wa-steps li.done {
+  color: var(--teal);
+}
+
+.wa-steps li.done::before {
+  content: "\2713  ";
+}
+
+.wa-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.wa-btn {
+  font-family: var(--mono);
+  font-size: 0.88rem;
+  font-weight: 700;
+  padding: 0.55rem 1.2rem;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  transition: transform 0.15s ease, opacity 0.2s ease;
+}
+
+.wa-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.wa-btn:disabled {
+  opacity: 0.45;
+  cursor: progress;
+}
+
+.wa-reset {
+  width: 2.3rem;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.wa-reset:hover {
+  color: var(--accent);
+}
+
+.wa-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) 3.2rem minmax(0, 2.7fr) 3.2rem minmax(0, 1.1fr);
+  align-items: stretch;
+}
+
+.wa-panel {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 0.9rem 1rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.wa-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.wa-ico {
+  width: 1.05rem;
+  height: 1.05rem;
+  fill: var(--accent);
+  flex: none;
+}
+
+.wa-count {
+  margin-left: auto;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.wa-files {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.wa-files li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+  padding: 0.3rem 0.5rem;
+  border-radius: 6px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+}
+
+.wa-tag {
+  font-style: normal;
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.wa-tag-jinja {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.wa-render {
+  margin: 0;
+  padding: 0.5rem 0.6rem;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  background: var(--surface-1);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  white-space: pre;
+  overflow: hidden;
+}
+
+.wa-render .hl {
+  color: var(--accent);
+}
+
+.wa-params {
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+  margin-top: auto;
+}
+
+.wa-params div {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.wa-params code {
+  color: var(--accent);
+  font-weight: 700;
+  min-width: 1.4rem;
+}
+
+.wa-mult {
+  padding-top: 0.3rem;
+  border-top: 1px solid var(--border);
+}
+
+/* connectors: dotted arrows that flow while their step runs */
+.wa-link {
+  position: relative;
+  align-self: center;
+  height: 1.4rem;
+}
+
+.wa-link span {
+  position: absolute;
+  top: 50%;
+  left: 0.35rem;
+  right: 0.7rem;
+  height: 6px;
+  transform: translateY(-50%);
+  background-image: radial-gradient(circle, var(--border) 2px, transparent 2.5px);
+  background-size: 11px 6px;
+  background-repeat: repeat-x;
+}
+
+.wa-link::after {
+  content: "";
+  position: absolute;
+  right: 0.25rem;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 7px solid transparent;
+  border-left: 9px solid var(--border);
+  border-right: 0;
+}
+
+.wa-link.active span {
+  background-image: radial-gradient(circle, var(--accent) 2.2px, transparent 2.7px);
+  animation: wa-flow 0.45s linear infinite;
+}
+
+.wa-link.active::after {
+  border-left-color: var(--accent);
+}
+
+@keyframes wa-flow {
+  to {
+    background-position: 11px 0;
+  }
+}
+
+/* case folders */
+.wa-grid {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 0.35rem;
+  flex: 1;
+  align-content: start;
+}
+
+.wa-tile {
+  position: relative;
+  height: 2.3rem;
+  padding: 0.3rem 0.3rem 0.2rem;
+  border-radius: 3px 6px 6px 6px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  font-family: var(--mono);
+  font-size: 0.55rem;
+  line-height: 1.25;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+  opacity: 0;
+  transform: scale(0.4);
+  transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1.25), opacity 0.35s ease,
+    background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease;
+}
+
+.wa-tile span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wa-tile::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 42%;
+  height: 3px;
+  background: var(--border);
+  transition: background-color 0.25s ease;
+}
+
+.wa-tile.built {
+  opacity: 1;
+  transform: none;
+}
+
+.wa-more {
+  border-style: dashed;
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+.wa-tile.running {
+  color: var(--accent);
+  border-color: var(--accent);
+  background-color: var(--surface-2);
+  background-image: repeating-linear-gradient(-45deg, var(--accent-soft) 0 6px, transparent 6px 12px);
+  background-size: 17px 17px;
+  animation: wa-stripes 0.5s linear infinite;
+}
+
+.wa-tile.running::before {
+  background: var(--accent);
+}
+
+@keyframes wa-stripes {
+  to {
+    background-position: 17px 0;
+  }
+}
+
+.wa-tile.done {
+  color: var(--teal);
+  border-color: var(--teal);
+  background-color: color-mix(in srgb, var(--teal) 12%, var(--surface-2));
+}
+
+.wa-tile.done::before {
+  background: var(--teal);
+}
+
+.wa-tile.done::after {
+  content: "\2713";
+  position: absolute;
+  top: 0.1rem;
+  right: 0.25rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+.wa-tile.flying {
+  opacity: 0;
+  transition: transform 0.6s cubic-bezier(0.55, 0, 0.35, 1), opacity 0.6s ease-in;
+}
+
+.wa-run {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.wa-launchers {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.wa-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-right: 0.2rem;
+}
+
+.wa-chip {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  padding: 0.18rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.wa-chip.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+  font-weight: 700;
+}
+
+.wa.running .wa-chip.active {
+  animation: wa-pulse 0.9s ease-in-out infinite;
+}
+
+@keyframes wa-pulse {
+  50% {
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+}
+
+.wa-chip:disabled {
+  cursor: default;
+}
+
+.wa-chip:disabled:not(.active) {
+  opacity: 0.5;
+}
+
+.wa-note {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-left: 0.3rem;
+}
+
+.wa-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.wa-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.wa-bar span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, var(--accent), var(--teal));
+  transition: width 0.25s ease;
+}
+
+.wa-progress code {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* output file */
+.wa-nc {
+  display: grid;
+  justify-items: center;
+  gap: 0.25rem;
+  padding: 0.4rem 0;
+}
+
+.wa-doc {
+  position: relative;
+  width: 3.6rem;
+  height: 4.4rem;
+  border: 2px dashed var(--border);
+  border-radius: 6px 16px 6px 6px;
+  display: grid;
+  place-items: center;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  transition: all 0.35s ease;
+}
+
+.wa-nc.filling .wa-doc {
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: scale(1.12);
+}
+
+.wa-nc.filled .wa-doc {
+  border-style: solid;
+  border-color: var(--teal);
+  background: color-mix(in srgb, var(--teal) 14%, var(--surface-2));
+  color: var(--teal);
+  animation: wa-pop 0.5s cubic-bezier(0.2, 0.8, 0.2, 1.4);
+}
+
+@keyframes wa-pop {
+  0% {
+    transform: scale(1.25);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.wa-nc-name {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  color: var(--text-primary);
+  text-align: center;
+  word-break: break-all;
+}
+
+.wa-nc-size {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.wa-nc.filled .wa-nc-size {
+  color: var(--teal);
+  font-weight: 700;
+}
+
+.wa-repr {
+  margin: 0;
+  padding: 0.5rem 0.6rem;
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  white-space: pre;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+.wa-repr .hl {
+  color: var(--accent);
+}
+
+.wa-repr.show {
+  opacity: 1;
+  transform: none;
+}
+
+/* the call being made */
+.wa-code {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 2.4rem;
+  padding: 0.5rem 1rem;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  overflow: hidden;
+}
+
+.wa-code code {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wa-prompt {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.wa-caret {
+  width: 0.5rem;
+  height: 1rem;
+  margin-left: -0.4rem;
+  background: var(--accent);
+  animation: wa-blink 1s steps(1) infinite;
+  flex: none;
+}
+
+@keyframes wa-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.wa.wa-instant *,
+.wa.wa-instant *::before,
+.wa.wa-instant *::after {
+  transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wa *,
+  .wa *::before,
+  .wa *::after {
+    animation: none !important;
+    transition-duration: 0.01s !important;
+  }
 }

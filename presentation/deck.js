@@ -485,6 +485,10 @@
   modeBtn?.addEventListener("click", toggleMode);
 
   window.addEventListener("keydown", (e) => {
+    if (codeModalOpen()) {
+      if (e.key === "Escape") closeCodeModal();
+      return;
+    }
     if (lightboxOpen()) {
       if (e.key === "Escape") closeLightbox();
       return;
@@ -558,6 +562,318 @@
       openLightbox(el.getAttribute("data-img"), el.getAttribute("data-alt"));
     });
   });
+
+  /* ---------------------------------------------------------------------
+   * Code modal -- clickable cards with data-code="<template id>" (the
+   * bluemath-tk toolkit slide) show that <template>'s snippet in a popup.
+   * ------------------------------------------------------------------- */
+  const codeModal = document.querySelector("#code-modal");
+  const codeModalCode = document.querySelector("#code-modal-code");
+  const codeModalTitle = document.querySelector("#code-modal-title");
+
+  function openCodeModal(templateId, title) {
+    const tpl = document.getElementById(templateId);
+    if (!codeModal || !codeModalCode || !tpl) return;
+    // Snippets live in <template><pre>: the <pre> keeps HTML formatters from
+    // re-indenting the code.
+    const pre = tpl.content.querySelector("pre");
+    codeModalCode.innerHTML = pre ? pre.innerHTML : tpl.innerHTML;
+    codeModalCode.scrollTop = 0;
+    if (codeModalTitle) codeModalTitle.textContent = title || "";
+    codeModal.classList.add("open");
+  }
+  function closeCodeModal() {
+    codeModal?.classList.remove("open");
+  }
+  function codeModalOpen() {
+    return !!codeModal?.classList.contains("open");
+  }
+
+  document.querySelectorAll("[data-code]").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      if (e.target.closest("a")) return;
+      openCodeModal(el.getAttribute("data-code"), el.getAttribute("data-title"));
+    });
+  });
+  document.querySelector("#code-modal-close")?.addEventListener("click", closeCodeModal);
+  codeModal?.addEventListener("click", (e) => {
+    if (e.target === codeModal) closeCodeModal();
+  });
+
+  /* ---------------------------------------------------------------------
+   * Wrappers, live -- step-by-step animation of the BinWaves propagation
+   * (templates -> build_cases -> run_cases -> postprocess_cases). Tile
+   * names are a real, evenly spaced sample of BinWaves/Paradip_CASES/.
+   * ------------------------------------------------------------------- */
+  (function wrapperAnimation() {
+    const root = document.querySelector("#wa");
+    if (!root) return;
+
+    const TOTAL = 1260;
+    const NAMES = [
+      "dm5.0fp0.035", "dm5.0fp0.281", "dm15.0fp0.074", "dm15.0fp0.603", "dm25.0fp0.175",
+      "dm35.0fp0.051", "dm35.0fp0.374", "dm45.0fp0.108", "dm45.0fp0.883", "dm55.0fp0.232",
+      "dm65.0fp0.067", "dm65.0fp0.548", "dm75.0fp0.144", "dm85.0fp0.042", "dm85.0fp0.340",
+      "dm95.0fp0.099", "dm95.0fp0.729", "dm105.0fp0.211", "dm115.0fp0.061", "dm115.0fp0.453",
+      "dm125.0fp0.131", "dm135.0fp0.038", "dm135.0fp0.309", "dm145.0fp0.081", "dm145.0fp0.663",
+      "dm155.0fp0.192", "dm165.0fp0.051", "dm165.0fp0.412", "dm175.0fp0.119", "dm185.0fp0.035",
+      "dm185.0fp0.256", "dm195.0fp0.074", "dm195.0fp0.603", "dm205.0fp0.159", "dm215.0fp0.046",
+      "dm215.0fp0.374", "dm225.0fp0.099", "dm225.0fp0.802", "dm235.0fp0.232", "dm245.0fp0.067",
+      "dm245.0fp0.498", "dm255.0fp0.144", "dm265.0fp0.042", "dm265.0fp0.309", "dm275.0fp0.090",
+      "dm275.0fp0.729", "dm285.0fp0.211", "dm295.0fp0.056", "dm295.0fp0.453", "dm305.0fp0.131",
+      "dm315.0fp0.035", "dm315.0fp0.281", "dm325.0fp0.081", "dm325.0fp0.603", "dm335.0fp0.175",
+      "dm345.0fp0.051", "dm345.0fp0.412", "dm355.0fp0.108", "dm355.0fp0.883",
+    ];
+    const LAUNCHERS = {
+      serial: {
+        workers: 10,
+        code: 'wrapper.run_cases(launcher="serial", num_workers=10)',
+        note: "10 SWAN processes on this laptop",
+      },
+      docker: {
+        workers: 10,
+        code: 'wrapper.run_cases_in_background(launcher="docker_serial", num_workers=10)',
+        note: "10 geoocean/rocky8 containers, notebook stays free",
+      },
+      slurm: {
+        workers: NAMES.length,
+        code: 'wrapper.run_cases_bulk(launcher="sbatch --array=1-1260 sbatch_example.sh")',
+        note: "one Slurm array job, every case on its own core",
+      },
+    };
+    const CODE = [
+      "swan_cases  # {'dm': 36 directions, 'fp': 35 frequencies}",
+      "wrapper.build_cases(mode=\"all_combinations\", cases_name_format=lambda ctx: f\"dm{ctx['dm']:.1f}fp{ctx['fp']:.3f}\")",
+      null, // launcher-dependent
+      "ds = wrapper.postprocess_cases()  # -> output_postprocessed.nc",
+    ];
+    // step = index of the next call to make (0, "templates", is the resting state)
+    const BUTTON = {
+      1: "build_cases() &#9654;",
+      2: "run_cases() &#9654;",
+      3: "postprocess_cases() &#9654;",
+      4: "Replay &#8634;",
+    };
+    const BUSY = { 1: "building&hellip;", 2: "running&hellip;", 3: "merging&hellip;" };
+
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const $ = (sel) => root.querySelector(sel);
+    const grid = $("#wa-grid");
+    const btn = $("#wa-next");
+    const codeEl = $("#wa-code");
+    const countEl = $("#wa-count");
+    const caseNumEl = $("#wa-casenum");
+    const bar = $("#wa-bar");
+    const pct = $("#wa-pct");
+    const note = $("#wa-note");
+    const nc = $("#wa-nc");
+    const ncSize = $("#wa-nc-size");
+    const repr = $("#wa-repr");
+    const link1 = $("#wa-link1");
+    const link2 = $("#wa-link2");
+    const chips = root.querySelectorAll(".wa-chip");
+    const pills = root.querySelectorAll(".wa-steps li");
+
+    const tiles = NAMES.map((name) => {
+      const [dm, fp] = name.replace("dm", "").split("fp");
+      const t = document.createElement("div");
+      t.className = "wa-tile";
+      t.title = name;
+      t.innerHTML = `<span>dm${dm}</span><span>fp${fp}</span>`;
+      grid.appendChild(t);
+      return t;
+    });
+    const more = document.createElement("div");
+    more.className = "wa-tile wa-more";
+    more.innerHTML = `<span>+${(TOTAL - NAMES.length).toLocaleString("en")}</span><span>more</span>`;
+    grid.appendChild(more);
+
+    let step = 0;
+    let busy = false;
+    let launcher = "serial";
+    let timers = [];
+    let typer = null;
+
+    const fmt = (n) => Math.round(n).toLocaleString("en");
+    function later(fn, ms) {
+      timers.push(setTimeout(fn, reduce ? 0 : ms));
+    }
+
+    function typeCode(text) {
+      clearInterval(typer);
+      if (reduce) {
+        codeEl.textContent = text;
+        return;
+      }
+      let i = 0;
+      codeEl.textContent = "";
+      typer = setInterval(() => {
+        i += 2;
+        codeEl.textContent = text.slice(0, i);
+        if (i >= text.length) clearInterval(typer);
+      }, 14);
+    }
+
+    function render() {
+      pills.forEach((p, i) => {
+        p.classList.toggle("done", i < step);
+        p.classList.toggle("current", i === step);
+      });
+      btn.innerHTML = busy ? BUSY[step] : BUTTON[step];
+      btn.disabled = busy;
+      chips.forEach((c) => (c.disabled = busy || step > 2));
+      note.textContent = LAUNCHERS[launcher].note;
+    }
+
+    function setProgress(fraction) {
+      bar.style.width = `${fraction * 100}%`;
+      pct.innerHTML = `monitor_cases()&nbsp;&nbsp;${Math.round(fraction * 100)}%`;
+    }
+
+    function finish(nextStep) {
+      busy = false;
+      step = nextStep;
+      render();
+    }
+
+    function build() {
+      busy = true;
+      render();
+      typeCode(CODE[1]);
+      link1.classList.add("active");
+      const stagger = 32;
+      const total = tiles.length * stagger;
+      [...tiles, more].forEach((t, i) => later(() => t.classList.add("built"), 250 + i * stagger));
+      // Jinja rendering the {{ case_num }} placeholder, case after case
+      let shown = 0;
+      const ticks = 30;
+      for (let k = 1; k <= ticks; k++) {
+        later(() => {
+          shown = Math.round((k / ticks) * (TOTAL - 1));
+          caseNumEl.textContent = String(shown);
+          countEl.textContent = `${fmt(((k / ticks) * TOTAL))} cases`;
+        }, 250 + (k / ticks) * total);
+      }
+      later(() => {
+        link1.classList.remove("active");
+        caseNumEl.textContent = "{{ case_num }}";
+        countEl.textContent = `${fmt(TOTAL)} cases`;
+        finish(2);
+        typeCode(LAUNCHERS[launcher].code);
+      }, 450 + total);
+    }
+
+    function run() {
+      busy = true;
+      render();
+      typeCode(LAUNCHERS[launcher].code);
+      root.classList.add("running");
+      const workers = LAUNCHERS[launcher].workers;
+      const queue = [...tiles];
+      let active = 0;
+      let done = 0;
+      const pump = () => {
+        while (active < workers && queue.length) {
+          const t = queue.shift();
+          active++;
+          t.classList.add("running");
+          later(() => {
+            t.classList.remove("running");
+            t.classList.add("done");
+            active--;
+            done++;
+            setProgress(done / tiles.length);
+            if (done === tiles.length) {
+              more.classList.add("done");
+              root.classList.remove("running");
+              typeCode(CODE[3]);
+              finish(3);
+            } else {
+              pump();
+            }
+          }, 350 + Math.random() * 650);
+        }
+      };
+      pump();
+    }
+
+    function postprocess() {
+      busy = true;
+      render();
+      link2.classList.add("active");
+      const target = nc.querySelector(".wa-doc").getBoundingClientRect();
+      const tx = target.left + target.width / 2;
+      const ty = target.top + target.height / 2;
+      const stagger = 22;
+      [...tiles, more].forEach((t, i) => {
+        const r = t.getBoundingClientRect();
+        const dx = tx - (r.left + r.width / 2);
+        const dy = ty - (r.top + r.height / 2);
+        t.style.transitionDelay = reduce ? "0ms" : `${i * stagger}ms`;
+        t.classList.add("flying");
+        t.style.transform = `translate(${dx}px, ${dy}px) scale(0.15)`;
+      });
+      const total = (tiles.length + 1) * stagger + 650;
+      later(() => nc.classList.add("filling"), total * 0.4);
+      later(() => {
+        link2.classList.remove("active");
+        nc.classList.remove("filling");
+        nc.classList.add("filled");
+        ncSize.textContent = "1 file, 191 MB";
+        repr.classList.add("show");
+        countEl.textContent = "merged";
+        typeCode("ds  # one xarray.Dataset with every case -> BinWaves reconstruction");
+        finish(4);
+      }, total);
+    }
+
+    function reset() {
+      timers.forEach(clearTimeout);
+      timers = [];
+      clearInterval(typer);
+      root.classList.add("wa-instant");
+      root.classList.remove("running");
+      [...tiles, more].forEach((t) => {
+        t.className = t === more ? "wa-tile wa-more" : "wa-tile";
+        t.style.transform = "";
+        t.style.transitionDelay = "";
+      });
+      link1.classList.remove("active");
+      link2.classList.remove("active");
+      nc.classList.remove("filled", "filling");
+      repr.classList.remove("show");
+      ncSize.innerHTML = "waiting&hellip;";
+      caseNumEl.textContent = "{{ case_num }}";
+      countEl.textContent = "empty";
+      setProgress(0);
+      void root.offsetWidth; // flush styles before re-enabling transitions
+      root.classList.remove("wa-instant");
+      busy = false;
+      step = 1;
+      codeEl.textContent = CODE[0];
+      render();
+    }
+
+    btn.addEventListener("click", () => {
+      if (busy) return;
+      if (step === 1) build();
+      else if (step === 2) run();
+      else if (step === 3) postprocess();
+      else reset();
+    });
+    $("#wa-reset").addEventListener("click", reset);
+    chips.forEach((chip) =>
+      chip.addEventListener("click", () => {
+        if (busy || step > 2) return;
+        launcher = chip.getAttribute("data-launcher");
+        chips.forEach((c) => c.classList.toggle("active", c === chip));
+        if (step === 2) typeCode(LAUNCHERS[launcher].code);
+        render();
+      })
+    );
+
+    reset();
+  })();
 
   /* ---------------------------------------------------------------------
    * Theme toggle (per-viewer convenience only)
