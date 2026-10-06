@@ -205,6 +205,7 @@ QGIS/
 # VS Code
 .vscode/
 .claude/
+CLAUDE.md
 
 # EuropePolygons still test
 EuropePolygons/
