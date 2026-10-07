@@ -47,7 +47,9 @@ Expect rough edges while this is young. Issues and PRs are welcome either way.
 - [**SnapWave**](https://github.com/danoroelvink/snapwave/) — the nearshore
   propagation model. It's an external binary: clone that repo and compile it
   yourself (see its own README for build instructions). You'll need it
-  before the notebooks that actually run cases (step 05 onward below).
+  before the notebooks that actually run cases (step 05 onward below):
+  either as `snapwave` on your PATH, or, on the GeoOcean cluster, through
+  SLURM job arrays (`wrapper.run_cases_slurm()`).
 
 **1. Create your case:**
 

@@ -413,11 +413,11 @@ ds = wrapper.postprocess_cases(write_output_nc=True, clean_after=False)
 
 
 <span class="hl"># Adding a new model: two methods. This is how SnapWave was added for this workshop</span>
-<span class="hl"># (HyWaves/utils/simulation/snapwave_wrappers.py)</span>
+<span class="hl"># (bluemath_tk/wrappers/snapwave/snapwave_wrapper.py)</span>
 <span class="hl">from</span> bluemath_tk.wrappers._base_wrappers <span class="hl">import</span> BaseModelWrapper
 
 <span class="hl">class</span> SnapWaveModelWrapper(BaseModelWrapper):
-    available_launchers = {"default": ".../SnapWave/lnx64/bin/snapwave"}
+    available_launchers = {"default": "snapwave"}
 
     <span class="hl">def</span> build_case(self, case_context, case_dir):
         <span class="hl"># write the boundary files for this case (hs.txt, tp.txt, dir.txt, ...)</span>

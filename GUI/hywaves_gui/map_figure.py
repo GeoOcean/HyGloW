@@ -23,7 +23,7 @@ MAP_STYLE = "open-street-map"
 # MAP_STYLE above) top out at street/terrain maps — none of them is actual
 # satellite imagery. This raster overlay is the same Esri World Imagery
 # source already used for the case-plot notebooks (see
-# ``utils.viz.case_plots.SATELLITE_SOURCE = "arcgis"``), free and tokenless.
+# ``utils.viz.SATELLITE_SOURCE = "arcgis"``), free and tokenless.
 SATELLITE_TILE_URL = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
 SATELLITE_LAYER = {
     "sourcetype": "raster",

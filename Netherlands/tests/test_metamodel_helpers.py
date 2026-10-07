@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from utils.model import metamodel as mm
+from utils import metamodel as mm
 
 
 class TestMetamodelHelpers(unittest.TestCase):

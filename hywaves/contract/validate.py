@@ -36,6 +36,12 @@ REQUIRED_METRICS_COLUMNS = {
     "r2",
 }
 
+# Written by every engine since hywaves 0.6.0, when metrics moved to the
+# reference-first convention (R² normalised by the reference, not the
+# estimate). A metrics CSV without it predates that fix: still contract-valid,
+# but its r2 should be recomputed.
+CONVENTION_MARKER_COLUMN = "rrmse"
+
 ERROR = "ERROR"
 WARN = "WARN"
 INFO = "INFO"
@@ -290,10 +296,45 @@ def _check_outputs(case_dir: Path, report: _Report) -> None:
         report.info(
             "outputs.ok", f"{len(metrics_files)} validation_metrics.csv file(s)"
         )
+    _check_metrics_convention(case_dir, metrics_files, report)
 
     figures = sorted((case_dir / "outputs" / "gui_figures").glob("fig*.png"))
     if not figures and report.publish:
         report.warn("outputs.figures", "no portal figures in outputs/gui_figures/")
+
+
+def _check_metrics_convention(
+    case_dir: Path, metrics_files: list[Path], report: _Report
+) -> None:
+    """Warn about metrics CSVs written before the reference-first fix (hywaves 0.6.0).
+
+    Covers the §4 holdout files and the optional §5 linear-summation and buoy
+    summaries; see :data:`CONVENTION_MARKER_COLUMN`.
+    """
+    outputs = case_dir / "outputs"
+    candidates = [
+        *metrics_files,
+        *sorted((outputs / "metamodel_validation").glob("*.csv")),
+        *sorted((outputs / "buoy_validation").glob("*_summary_*.csv")),
+    ]
+    legacy = []
+    for path in candidates:
+        try:
+            with path.open(encoding="utf-8", newline="") as f:
+                header = next(csv.reader(f), [])
+        except OSError:
+            continue  # unreadable files are reported by the caller
+        if CONVENTION_MARKER_COLUMN not in header:
+            legacy.append(path.relative_to(outputs).as_posix())
+    if legacy:
+        report.warn(
+            "outputs.metrics_legacy",
+            f"{len(legacy)} metrics CSV(s) predate the hywaves 0.6.0 metrics fix "
+            f"(no {CONVENTION_MARKER_COLUMN!r} column; r2 was normalised by the "
+            "estimate) — re-run notebooks 06/09/10 save cells: "
+            + ", ".join(legacy[:5])
+            + (" …" if len(legacy) > 5 else ""),
+        )
 
 
 def _sha256(path: Path) -> str:

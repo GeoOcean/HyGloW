@@ -1,2 +1,2 @@
-   0 {% for g in range(ngoals) %} {{ tp }}{% endfor %}
-3600 {% for g in range(ngoals) %} {{ tp }}{% endfor %}
+   0 {% for n in range(n_nodes) %} {{ tp }}{% endfor %}
+3600 {% for n in range(n_nodes) %} {{ tp }}{% endfor %}

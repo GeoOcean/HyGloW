@@ -1,4 +1,15 @@
-"""Load the case config JSON and expose its sections plus :func:`resolve`."""
+"""Load the case config JSON and expose its sections, path resolution, and helpers.
+
+Reads ``<CaseDir>/<CaseDir>.json`` once at import time into module-level
+globals (:data:`PATHS`, :data:`OFFSHORE_WAVES`, :data:`ONSHORE_WAVES`,
+:data:`OUTPUT_SITES`, :data:`SIMULATIONS`, :data:`OUTPUT_SITES_CONFIG`,
+:data:`METAMODEL`); call :func:`reload` to re-read after editing the file.
+Also provides case-relative path resolution (:func:`resolve`), goals-file
+and offshore-waves accessors, metamodel config validation
+(:func:`validate_metamodel_config`), and notebook logging setup
+(:func:`configure_notebook_logging`, applied automatically on import when
+running inside a Jupyter kernel).
+"""
 
 from __future__ import annotations
 
@@ -150,7 +161,7 @@ def goals_for_snapwave(
     -------
     dict[str, dict]
         ``{id: {lon, lat, angles}}`` per goal. ``angles`` is nautical
-        clockwise ``[left, right]`` (see :mod:`utils.directions`).
+        clockwise ``[left, right]`` (see :mod:`bluemath_tk.core.operations`).
     """
     return {
         key: {
@@ -421,12 +432,14 @@ def reload() -> dict[str, Any]:
 
 
 def _normalize_log_level(level: int | str) -> int:
+    """Convert a level name (e.g. ``"WARNING"``) or int to a numeric logging level."""
     if isinstance(level, str):
         return logging.getLevelName(level.upper())
     return int(level)
 
 
 def _is_console_handler(handler: logging.Handler) -> bool:
+    """Return ``True`` for a stream handler that is not a file handler."""
     return isinstance(handler, logging.StreamHandler) and not isinstance(
         handler, logging.FileHandler
     )
@@ -589,6 +602,7 @@ def configure_notebook_logging(
 
 
 def _running_in_notebook() -> bool:
+    """Return ``True`` when executing inside a Jupyter/IPython kernel."""
     try:
         from IPython import get_ipython
 

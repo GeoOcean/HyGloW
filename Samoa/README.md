@@ -16,10 +16,10 @@ timestep.
 ## Quick start
 
 ```python
-from utils.model import metamodel as mm
-from utils.evaluation import validation as val
+from utils import metamodel as mm
+from utils import validation as val
 from utils.config import METAMODEL, load_goals, validate_metamodel_config
-from utils.observation import onshore_sites as obs
+from utils import onshore_sites as obs
 ```
 
 After editing `Samoa.json`: restart kernel or `utils.config.reload()`.

@@ -17,7 +17,9 @@ Run notebooks with `Netherlands/` as the working directory.
   propagation model that actually runs each case. It's an external binary:
   clone that repo and compile it yourself (see its README for build
   instructions). You don't need it for notebooks 01–04, but you do from
-  05 onward.
+  05 onward. Notebooks 05/08 run it as `snapwave` from your PATH
+  (`launcher="default"`), or on the GeoOcean cluster as a SLURM job array
+  with `wrapper.run_cases_slurm()` (loads the `snapwave` module for you).
 
 ## Getting started
 

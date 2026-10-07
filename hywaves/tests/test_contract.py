@@ -178,6 +178,23 @@ class TestValidateCase(unittest.TestCase):
         findings = validate_case(self.case_dir)
         self.assertIn("outputs.metrics", [f.code for f in _errors(findings)])
 
+    def test_pre_060_metrics_csv_is_flagged_legacy(self) -> None:
+        header = "goal,mda_candidate,group,variable,n,bias,rmse,r2"
+        metrics_dir = self.case_dir / "outputs" / "goal_01"
+        metrics_dir.mkdir(parents=True)
+        (metrics_dir / "validation_metrics.csv").write_text(f"{header}\n1,50,5m,hs,10,0,0.1,0.9\n")
+        buoy_dir = self.case_dir / "outputs" / "buoy_validation"
+        buoy_dir.mkdir(parents=True)
+        (buoy_dir / "onshore_summary_2010.csv").write_text(f"{header},rrmse\n")
+        self._write_config(_minimal_config())
+
+        findings = validate_case(self.case_dir)
+        legacy = [f for f in _warnings(findings) if f.code == "outputs.metrics_legacy"]
+        self.assertEqual(len(legacy), 1)
+        self.assertIn("goal_01/validation_metrics.csv", legacy[0].message)
+        self.assertNotIn("onshore_summary", legacy[0].message)
+        self.assertEqual(_errors(findings), [])
+
     def test_metamodel_absent_skips_engine_checks(self) -> None:
         self._write_config(_minimal_config())
         findings = validate_case(self.case_dir)

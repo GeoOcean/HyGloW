@@ -8,7 +8,7 @@ import numpy as np
 import xarray as xr
 
 from utils import config
-from utils.observation import onshore_sites as obs
+from utils import onshore_sites as obs
 
 
 class TestOnshoreSites(unittest.TestCase):

@@ -78,6 +78,15 @@ goal, mda_candidate, group, variable, n, bias, rmse, r2
 - `variable` — one of the case's validated variables (e.g. `hs`, `tp`).
 - `n`, `bias`, `rmse`, `r2` — sample count and holdout metrics.
 
+Metrics follow `bluemath_tk.core.metrics`: computed as
+`metric(reference, estimate)`, with `bias = mean(estimate − reference)`
+(positive = overestimation) and `r2` normalised by the reference variance.
+The reference is what is trusted (SnapWave in the holdout, dynamic SnapWave
+for linear summation, the buoy for buoy validation). Cases may add optional
+columns such as `rrmse` (RMSE / mean of the reference), `si` (Mentaschi et
+al. 2013 scatter index) and `r` (Pearson); they are `NaN` for directional
+variables.
+
 At publish, at least one metrics file must exist.
 
 ### 5. Further validation outputs (optional)
@@ -189,6 +198,19 @@ not importable — the validator itself never requires third-party packages.
 
 Every change to this document is recorded here.
 
+- **2026-10** (hywaves 0.8.0): SnapWave cases are driven by
+  `bluemath_tk.wrappers.snapwave`. The case templates (`templates-metamodel/`,
+  `templates-dynamic/`) keep the same SnapWave settings but use its context
+  names: `n_nodes`, `active_node`, `hs_nodes`/`tp_nodes`/`dir_nodes`/`spr_nodes`
+  (formerly `ngoals`, `goal`, `*_goals`).
+- **2026-10** (hywaves 0.6.0): metrics follow the reference-first convention
+  of `bluemath_tk.core.metrics` (§4): `bias = mean(estimate − reference)`,
+  `r2` normalised by the **reference** variance. Earlier engines normalised
+  `r2` by the estimate, so pre-0.6.0 metrics CSVs (no `rrmse` column) report
+  different R²; `validate` flags them as `outputs.metrics_legacy`. The engine
+  now also writes optional `rrmse`, `si` and `r` columns, and floors the
+  metamodel's predicted `hs` at 0 (calm-site negatives used to be dropped
+  from the metrics).
 - **2026-09** (hywaves 0.5.0): added §6, the portal bundle —
   `python -m hywaves publish` exports `{Case}/portal/` (contract files under
   fixed names, pre-computed AoI/isobath/output-site layers, merged metrics,

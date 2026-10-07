@@ -27,7 +27,7 @@ MESH_SITE_COLOR = "#a78bfa"
 # Drives BOTH the map (isobath lines + their output-site dots, map_figure.py)
 # AND the validation charts (per-contour boxes/bars, callbacks.py) — "5m"
 # is always this same teal everywhere in the app. Same hex values as
-# ``utils.viz.case_plots.ISOBATH_COLORS`` in the science codebase, so the
+# ``utils.viz.ISOBATH_COLORS`` in the science codebase, so the
 # GUI and the notebook-generated gallery figures agree too.
 CONTOUR_COLORS: dict[str, str] = {
     "5m": "#8dd3c7",

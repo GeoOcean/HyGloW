@@ -1,13 +1,1 @@
-"""HyGloW case utilities package."""
-
-__all__ = [
-    "config",
-    "directions",
-    "evaluation",
-    "geometry",
-    "mesh",
-    "model",
-    "observation",
-    "simulation",
-    "viz",
-]
+"""HyGloW case utilities: the JSON/case layer over bluemath_tk."""

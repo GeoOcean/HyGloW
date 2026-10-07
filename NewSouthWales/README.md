@@ -21,7 +21,7 @@ reference case.
   (spectral density) file is corrupted in the raw MHL archive (entirely
   null bytes), so Sydney's processed spectra carry the peak-normalized
   shape only (`efth_norm`), not an absolute-scale spectrum (`efth`) — see
-  `utils/observation/raw_spectra.py`'s module docstring.
+  `utils/raw_spectra.py`'s module docstring.
 
 **Environment:** conda `bluemath-311-dev`; run notebooks with
 `NewSouthWales/` as cwd.

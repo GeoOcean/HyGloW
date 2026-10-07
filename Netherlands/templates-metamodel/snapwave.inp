@@ -1,6 +1,6 @@
-tref           = 20251209 000000
-tstart         = 20251209 000000
-tstop          = 20251209 000000
+tref           = 20000101 000000
+tstart         = 20000101 000000
+tstop          = 20000101 000000
 timestep       = 3600.0
 
 gridfile       = {{ gridfile }}

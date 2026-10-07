@@ -161,7 +161,7 @@ def goals_for_snapwave(
     -------
     dict[str, dict]
         ``{id: {lon, lat, angles}}`` per goal. ``angles`` is nautical
-        clockwise ``[left, right]`` (see :mod:`utils.directions`).
+        clockwise ``[left, right]`` (see :mod:`bluemath_tk.core.operations`).
     """
     return {
         key: {

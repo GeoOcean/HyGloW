@@ -14,7 +14,7 @@ import os, time
 os.environ["OMP_NUM_THREADS"] = "8"
 import numpy as np, pandas as pd, xarray as xr
 from utils.config import SIMULATIONS, resolve
-from utils.model import metamodel as mm
+from utils import metamodel as mm
 t0=time.perf_counter()
 meta = mm.reconstruct(slice("2010","2015"), 450, spectral=False, offshore_name="WHACS",
                       sites=None, pca_variance=0.99, workers=8, save_spectra=False)
@@ -25,17 +25,18 @@ common_t = np.intersect1d(meta.time.values, dyn.time.values)
 common_s = np.intersect1d(meta.sites.values, dyn.sites.values)
 m = meta.sel(time=common_t, sites=common_s); d = dyn.sel(time=common_t, sites=common_s).load()
 print(list(meta.data_vars))
-from utils.evaluation import validation as val
+from utils import validation as val
 rows=[]
 for var in ("hs", "dir", "spr"):
     spec = val.PARAMETERS[var]
     mv, dv = m[var].values, d[var].values
     for i, s in enumerate(common_s):
-        r = val.compute_metrics(mv[:, i], dv[:, i], circular=bool(spec["circular"]), variable=var)
+        # reference = dynamic SnapWave, estimate = metamodel
+        r = val.compute_metrics(dv[:, i], mv[:, i], circular=bool(spec["circular"]), variable=var)
         if r["n"] < 100:
             continue
         rows.append(dict(site=str(s), group=str(s).split("_")[0], variable=var, n=r["n"], bias=r["bias"],
-                         rmse=r["rmse"], r2=r["r2"], ref_mean=float(np.nanmean(dv[:, i])),
+                         rmse=r["rmse"], rrmse=r["rrmse"], r2=r["r2"], ref_mean=float(np.nanmean(dv[:, i])),
                          lon=float(d.site_longitude.sel(sites=s)), lat=float(d.site_latitude.sel(sites=s))))
 df=pd.DataFrame(rows); df.to_csv(OUT, index=False)
 for (v,g),x in df.groupby(["variable","group"]):
