@@ -48,7 +48,11 @@ def compute_output_sites(
     ----------
     config
         Override or extend ``simulations.output_sites_config`` from
-        the case config JSON.
+        the case config JSON. Each ``isobaths`` entry is ``{"name", "level"}``
+        plus optional ``smooth_m`` (Gaussian smoothing of the bathymetry
+        before contouring), ``min_length_m`` (drop shorter contour pieces) and
+        ``spacing_m`` (points every that many metres along the smoothed
+        contour); see :func:`bluemath_tk.waves.hywaves.output_points.get_isobath_points`.
     topobathy
         Bathymetry raster; opened from ``paths.topobathy_file`` when omitted.
     aoi_polygon
@@ -84,8 +88,10 @@ def compute_output_sites(
             pts = get_isobath_points(
                 topobathy,
                 level=float(spec["level"]),
-                spacing=spec.get("spacing"),
                 aoi_polygon=aoi_polygon,
+                spacing_m=spec.get("spacing_m"),
+                smooth_m=spec.get("smooth_m"),
+                min_length_m=spec.get("min_length_m"),
             )
             for i, (lon, lat) in enumerate(pts):
                 rows.append(

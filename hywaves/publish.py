@@ -47,8 +47,8 @@ MANIFEST_SCHEMA = 1
 MAX_IMAGE_PX = 2400
 
 # Display-only resampling for isobath lines: independent of the case config's
-# per-isobath `spacing` (that one spaces discrete SnapWave output sites along
-# the contour; this one just keeps the drawn line smooth and light).
+# per-isobath `spacing_m` (that one spaces discrete SnapWave output sites along
+# the contour; this one just keeps the drawn line light).
 ISOBATH_DISPLAY_SPACING_DEG = 0.02
 
 # ~1 m at the equator — far below anything visible on the map.
@@ -213,6 +213,10 @@ def _publish_isobaths(bundle: _Bundle, config: dict) -> None:
     ``{"name", "level", "segments"}`` where ``segments`` is a list of
     ``[[lon, lat], ...]`` lines (a level can have several disjoint contours,
     e.g. one per island).
+
+    A spec's ``smooth_m`` / ``min_length_m`` are applied as for the output
+    sites (via ``bluemath_tk.waves.hywaves.output_points``), so the drawn lines
+    are the contours the sites sit on.
     """
     rel = config.get("paths", {}).get("topobathy_file")
     specs = config.get("simulations", {}).get("output_sites_config", {}).get("isobaths") or []
@@ -223,12 +227,10 @@ def _publish_isobaths(bundle: _Bundle, config: dict) -> None:
     path = bundle.case_path(rel)
     if not path.is_file():
         raise LayerSkipped(f"topobathy raster not found: {rel}")
-    try:
-        import contourpy
-        import numpy as np
-        import rioxarray
-    except ImportError as exc:
-        raise LayerSkipped(f"{exc.name} is not installed") from None
+    import contourpy
+    import numpy as np
+    import rioxarray
+    from bluemath_tk.waves.hywaves.output_points import polyline_length_m, smooth_raster
 
     bundle.source(path)
     da = rioxarray.open_rasterio(path).squeeze("band", drop=True)
@@ -237,18 +239,29 @@ def _publish_isobaths(bundle: _Bundle, config: dict) -> None:
     if xname is None or yname is None:
         raise LayerSkipped(f"no x/y (or lon/lat) coordinates in {rel}")
 
-    cg = contourpy.contour_generator(
-        x=da[xname].values,
-        y=da[yname].values,
-        z=np.asarray(da.values, dtype=float),
-        line_type=contourpy.LineType.Separate,
-    )
+    generators: dict = {}
+
+    def _contours(smooth_m):
+        """Contour generator of the raster, smoothed by *smooth_m* (cached)."""
+        if smooth_m not in generators:
+            raster = smooth_raster(da, float(smooth_m)) if smooth_m else da
+            generators[smooth_m] = contourpy.contour_generator(
+                x=raster[xname].values,
+                y=raster[yname].values,
+                z=np.asarray(raster.values, dtype=float),
+                line_type=contourpy.LineType.Separate,
+            )
+        return generators[smooth_m]
+
     isobaths = []
     for spec in specs:
         level = spec.get("level")
         if level is None:
             continue
-        segments = [s for s in cg.lines(float(level)) if len(s) >= 2]
+        segments = [s for s in _contours(spec.get("smooth_m")).lines(float(level)) if len(s) >= 2]
+        min_length = spec.get("min_length_m")
+        if min_length:
+            segments = [s for s in segments if polyline_length_m(s) >= float(min_length)]
         segments = [_resample_polyline(s, ISOBATH_DISPLAY_SPACING_DEG) for s in segments]
         isobaths.append(
             {
@@ -315,14 +328,15 @@ def _publish_output_sites(bundle: _Bundle, config: dict) -> None:
 
 
 def _publish_metrics(bundle: _Bundle) -> None:
-    """Merge every ``outputs/goal_*/validation_metrics.csv`` into one ``validation_metrics.csv``.
+    """Merge every ``outputs/goal_*/*/validation_metrics.csv`` into one ``validation_metrics.csv``.
 
-    Each row already carries its ``goal`` column (contract §4), so nothing is
-    lost. Columns are the union across files, in first-seen order.
+    Each row already carries its ``goal`` and ``metamodel`` columns (contract
+    §4), so nothing is lost. Columns are the union across files, in
+    first-seen order.
     """
-    files = bundle.glob("outputs/goal_*/validation_metrics.csv")
+    files = bundle.glob("outputs/goal_*/*/validation_metrics.csv")
     if not files:
-        raise LayerSkipped("no outputs/goal_*/validation_metrics.csv")
+        raise LayerSkipped("no outputs/goal_*/*/validation_metrics.csv")
     fieldnames: list[str] = []
     rows: list[dict] = []
     for path in files:

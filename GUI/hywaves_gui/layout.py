@@ -3,6 +3,7 @@ from dash import dcc, html
 
 from .colors import CONTOUR_COLORS, CONTOUR_DEFAULT
 from .loaders import (
+    case_options,
     catalog_by_continent,
     load_case,
     load_case_config,
@@ -56,6 +57,15 @@ def _published_label(case: dict) -> str:
     return str(manifest.get("published_at", "—"))[:10]
 
 
+def _version_line(case: dict) -> list:
+    """Snapshot tag + note under the case title (nothing for the latest portal)."""
+    info = case.get("version")
+    if not info:
+        return []
+    text = info["tag"] + (f" — {info['note']}" if info["note"] else "")
+    return [html.Span(f"Version: {text}", className="panel-version")]
+
+
 def case_panel(case: dict, config: dict) -> html.Div:
     return html.Div(
         [
@@ -69,6 +79,7 @@ def case_panel(case: dict, config: dict) -> html.Div:
                 [
                     html.Span("USE CASE", className="panel-kicker"),
                     html.H2(config.get("name", case["id"]), className="panel-title"),
+                    *_version_line(case),
                 ],
                 className="panel-heading",
             ),
@@ -117,12 +128,10 @@ def controls_panel(catalog: list[dict]) -> html.Div:
             html.Label("Use case", className="control-label"),
             dcc.Dropdown(
                 id="case-select",
-                options=[
-                    {"label": c.get("case_dir", c["id"]), "value": c["id"]}
-                    for c in same_continent
-                ],
+                options=case_options(same_continent),
                 value=catalog[0]["id"],
                 clearable=False,
+                searchable=True,
                 className="hywaves-dropdown",
             ),
         ],

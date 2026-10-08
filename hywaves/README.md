@@ -19,6 +19,9 @@ python -m hywaves validate MyCase/ --publish   # strict: portal-ready check
 python -m hywaves publish MyCase/              # commit MyCase/portal/ (its book/ is git-ignored)
 python -m hywaves publish MyCase/ --no-book --max-image-px 1600
 
+# Keep the current portal as a version before re-running/re-publishing → MyCase/portal_<tag>/
+python -m hywaves snapshot MyCase/ hs1 --note "unit Hs metamodel"   # commit it; its book/ is git-ignored
+
 # Re-sync a case's vendored engine from the template
 python -m hywaves update MyCase/ --dry-run     # report only
 python -m hywaves update MyCase/               # sync untouched files, keep local edits
@@ -39,6 +42,7 @@ No data is downloaded.
 | `contract/CONTRACT.md` | The case contract (Level 1 portal + Level 2 engine)         |
 | `contract/validate.py` | Stdlib-only validator — copyable standalone into any repo   |
 | `publish.py`           | `publish` implementation — builds `{Case}/portal/` (CONTRACT.md §6) |
+| `snapshot.py`          | `snapshot` implementation — freezes `portal/` as `portal_<tag>/`    |
 | `config.py`            | `CaseConfig` class — load any case folder programmatically  |
 | `scaffold.py`          | `start` implementation (vendoring + manifest)               |
 | `template/`            | The canonical case reference (see below)                    |

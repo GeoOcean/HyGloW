@@ -60,9 +60,32 @@ class TestTemplatesDir(unittest.TestCase):
             sws.templates_dir("other")
 
 
+class TestGenerateCases(unittest.TestCase):
+    def test_lhs_keeps_plausible_sea_states(self) -> None:
+        """LHS per goal within its sector; steep samples are dropped."""
+        sim = {
+            "num_samples_per_goal": 200,
+            "max_steepness": 0.05,
+            "bounds": {"hs": [0.05, 8.0], "tp": [2, 15], "spr": [5, 40], "wl": [-1, 1]},
+        }
+        goals = {"1": {"angles": [-30, 30]}, "2": {"angles": [180, 270]}}
+        with mock.patch.dict(sws.SIMULATIONS, sim):
+            cases = sws.generate_cases(goals)
+        self.assertEqual(
+            list(cases.columns),
+            ["goal", "active_node", "hs", "tp", "dir", "spr", "wl"],
+        )
+        steepness = cases["hs"] / (9.81 * cases["tp"] ** 2 / (2 * np.pi))
+        self.assertLessEqual(float(steepness.max()), 0.05)
+        per_goal = cases.groupby("goal").size()
+        self.assertTrue(((per_goal > 50) & (per_goal < 200)).all())
+        g2 = cases[cases["goal"] == "2"]
+        self.assertTrue(g2["dir"].between(180, 270).all())
+
+
 class TestMetamodelCases(unittest.TestCase):
     def test_cases_end_to_end(self) -> None:
-        """Goal 2 gets unit Hs at node 2; output is split per goal with site coords."""
+        """Goal 2 gets its Hs at node 2; output is split per goal with site coords."""
         setup = _setup()
         kwargs = setup.metamodel_kwargs()
         self.assertEqual(kwargs["boundary_nodes"], [(0.0, 1.0), (1.0, 1.0)])
@@ -73,6 +96,7 @@ class TestMetamodelCases(unittest.TestCase):
                 metamodel_parameters={
                     "goal": [1, 2],
                     "active_node": [1, 2],
+                    "hs": [1.0, 2.5],
                     "tp": [8.0, 12.0],
                     "dir": [300.0, 310.0],
                     "spr": [20.0, 25.0],
@@ -86,7 +110,7 @@ class TestMetamodelCases(unittest.TestCase):
             wrapper.build_cases()
             case_dir = Path(wrapper.cases_dirs[1])
             hs = read_forcing_table(case_dir / "hs.txt").iloc[0].to_numpy()
-            np.testing.assert_array_equal(hs, [0.0, 1.0])
+            np.testing.assert_array_equal(hs, [0.0, 2.5])
 
             for d in wrapper.cases_dirs:
                 xr.Dataset(
@@ -107,11 +131,12 @@ class TestMetamodelCases(unittest.TestCase):
                 self.assertEqual(set(sws.SITE_COORDS) - set(ds.coords), set())
                 self.assertEqual(float(ds.site_depth.sel(sites="buoy_A")), 12.0)
                 self.assertEqual(float(ds.tp_forcing.squeeze()), 12.0)
+                self.assertEqual(float(ds.hs_forcing.squeeze()), 2.5)
                 self.assertEqual(ds.case_num.item(), 1)
                 self.assertEqual(
                     sorted(ds.data_vars),
-                    ["dir", "dir_forcing", "hs", "spr", "spr_forcing", "tp",
-                     "tp_forcing", "wl_forcing"],
+                    ["dir", "dir_forcing", "hs", "hs_forcing", "spr", "spr_forcing",
+                     "tp", "tp_forcing", "wl_forcing"],
                 )
 
 

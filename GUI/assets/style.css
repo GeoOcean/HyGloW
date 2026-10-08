@@ -224,6 +224,16 @@ body {
     font-weight: 700;
 }
 
+.panel-version {
+    display: inline-block;
+    margin-top: 0.35rem;
+    padding: 0.1rem 0.5rem;
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    font-size: 0.75rem;
+    color: var(--accent);
+}
+
 .panel-desc {
     font-size: 0.85rem;
     line-height: 1.45;

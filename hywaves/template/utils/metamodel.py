@@ -6,6 +6,16 @@ module is the case layer: it reads ``metamodel`` from the case JSON, keeps the
 fitted artefacts under ``outputs/goal_XX`` (``mda.pkl``, ``split.json``, PCA/GP
 pickles), loops goals x partitions x months and caches reconstructions.
 
+The metamodel inputs are the offshore ``hs``, ``tp``, ``dir``, ``spr`` and
+``wl`` of each goal, and it predicts absolute nearshore fields (``hs`` in m).
+
+Metamodel sets (``metamodel.sets`` in the case JSON) are PCA + GP models fitted
+on a subset of the output sites, e.g. ``{"buoys": {"sites": "buoy"},
+"isobaths": {"sites": "isobath"}}``: they share the SnapWave cases and the MDA
+selection of each goal, and every fit/predict/reconstruct call names its set
+(``metamodel="buoys"``). Artefacts: ``outputs/goal_XX/{set}/pca_{n}``,
+``gp_{n}``.
+
 Training: :func:`fit`, :func:`fit_all`
 Prediction: :func:`predict` (LHS ``case_num`` or hindcast ``time`` via ``row_dim``)
 Hindcast: :func:`reconstruct` — ``spectral=False`` bulk (partition ``-1``),
@@ -73,9 +83,7 @@ MDA_INPUTS = METAMODEL["mda_inputs"]
 MDA_DIRECTIONAL = METAMODEL["mda_directional_variables"]
 MDA_CANDIDATES = METAMODEL["mda_candidates"]
 SITE_FILTER = METAMODEL["site_filter"]
-FORCING_COLS = tuple(
-    c for c in MDA_INPUTS if c != "wl"
-)  # validity mask for hindcast rows (wl optional)
+SETS = METAMODEL["sets"]
 
 # Offshore partitions: bulk = -1; wind sea + swells = 0-3 (WHACS ``phs{i}``...)
 BULK_PARTITION = hw.BULK_PARTITION
@@ -426,35 +434,58 @@ def split_path(goal: str | int) -> Path:
     return goal_output_dir(goal) / "split.json"
 
 
-def gp_model_path(goal: str | int, n: int) -> Path:
-    """Return the fitted GP pickle path for one goal and MDA size.
+def _check_set(metamodel: str) -> str:
+    """Return *metamodel* if it names a set in ``metamodel.sets``."""
+    if metamodel not in SETS:
+        raise ValueError(
+            f"Unknown metamodel set {metamodel!r}; configured: {list(SETS)}"
+        )
+    return metamodel
+
+
+def _artefact_dir(key: str, goal: str | int, metamodel: str, n: int) -> Path:
+    """Resolve ``metamodel.paths.{key}`` for one goal, set and MDA size."""
+    template = METAMODEL["paths"][key]
+    return resolve(
+        template.format(
+            goal=f"goal_{int(goal):02d}",
+            metamodel=_check_set(metamodel),
+            mda_candidate=n,
+        )
+    )
+
+
+def gp_model_path(goal: str | int, metamodel: str, n: int) -> Path:
+    """Return the fitted GP pickle path for one goal, metamodel set and MDA size.
 
     Parameters
     ----------
     goal
         Goal id from the case goals JSON.
+    metamodel
+        Metamodel set (key of ``metamodel.sets``).
     n
         MDA train size (candidate from ``mda_candidates``).
 
     Returns
     -------
     Path
-        ``outputs/goal_XX/gp_{n}/gp_model.pkl``.
+        ``outputs/goal_XX/{set}/gp_{n}/gp_model.pkl``.
     """
-    template = METAMODEL["paths"]["gp_dir"]
-    return (
-        resolve(template.format(goal=f"goal_{int(goal):02d}", mda_candidate=n))
-        / "gp_model.pkl"
-    )
+    return _artefact_dir("gp_dir", goal, metamodel, n) / "gp_model.pkl"
 
 
-def pca_model_path(goal: str | int, n: int, variable: str, variance: float) -> Path:
-    """Return the fitted PCA pickle path for one goal, MDA size and variable.
+def pca_model_path(
+    goal: str | int, metamodel: str, n: int, variable: str, variance: float
+) -> Path:
+    """Return the fitted PCA pickle path for one goal, set, MDA size and variable.
 
     Parameters
     ----------
     goal
         Goal id from the case goals JSON.
+    metamodel
+        Metamodel set (key of ``metamodel.sets``).
     n
         MDA train size (candidate from ``mda_candidates``).
     variable
@@ -465,11 +496,29 @@ def pca_model_path(goal: str | int, n: int, variable: str, variance: float) -> P
     Returns
     -------
     Path
-        ``outputs/goal_XX/pca_{n}/pca_{variable}_{variance}_model.pkl``.
+        ``outputs/goal_XX/{set}/pca_{n}/pca_{variable}_{variance}_model.pkl``.
     """
-    template = METAMODEL["paths"]["pca_dir"]
-    base = resolve(template.format(goal=f"goal_{int(goal):02d}", mda_candidate=n))
+    base = _artefact_dir("pca_dir", goal, metamodel, n)
     return base / f"pca_{variable}_{_variance_tag(variance)}_model.pkl"
+
+
+def set_sites(cases: xr.Dataset, metamodel: str) -> list[str]:
+    """Sites of *cases* that belong to a metamodel set.
+
+    Parameters
+    ----------
+    cases
+        Dataset with a ``sites`` dimension (e.g. :func:`load_cases_goal`).
+    metamodel
+        Metamodel set; its ``sites`` selector (group, umbrella, site ids or
+        ``null`` for all) is resolved with :func:`utils.geometry.resolve_sites`.
+
+    Returns
+    -------
+    list[str]
+        Site labels of the set present in *cases*.
+    """
+    return resolve_sites(cases, SETS[_check_set(metamodel)]["sites"])
 
 
 # ---------------------------------------------------------------------------
@@ -584,22 +633,26 @@ def _write_split_dict(goal: str | int, data: dict[str, Any]) -> None:
         json.dump(data, f, indent=2)
 
 
-def load_fit_summary(goal: str | int, n: int | None = None) -> dict[str, Any]:
+def load_fit_summary(
+    goal: str | int, metamodel: str, n: int | None = None
+) -> dict[str, Any]:
     """Return persisted PCA/GP fit summary from ``split.json``.
 
     Parameters
     ----------
     goal
         Goal id from the case goals JSON.
+    metamodel
+        Metamodel set.
     n
-        MDA train size. If ``None``, return the full ``fit_by_mda`` mapping.
+        MDA train size. If ``None``, return every size of the set.
 
     Returns
     -------
     dict
         Fit summary for one MDA size, or all sizes when *n* is ``None``.
     """
-    fit_by = _read_split_dict(goal).get("fit_by_mda", {})
+    fit_by = _read_split_dict(goal).get("fit_by_metamodel", {}).get(metamodel, {})
     if n is None:
         return fit_by
     return fit_by.get(str(int(n)), {})
@@ -620,8 +673,10 @@ def _consolidated_pca_sites(
     return sorted(consolidated)
 
 
-def _persist_fit_summary(goal: str | int, n: int, summary: dict[str, Any]) -> None:
-    """Merge one MDA-size fit summary into ``split.json``."""
+def _persist_fit_summary(
+    goal: str | int, metamodel: str, n: int, summary: dict[str, Any]
+) -> None:
+    """Merge one set and MDA-size fit summary into ``split.json``."""
     data = _read_split_dict(goal)
     if "pca_nan_policy" not in data:
         value_replace, nan_drop = _pca_preprocessing()
@@ -629,7 +684,7 @@ def _persist_fit_summary(goal: str | int, n: int, summary: dict[str, Any]) -> No
             "value_to_replace_nans": value_replace,
             "nan_threshold_to_drop": nan_drop,
         }
-    fit_by = data.setdefault("fit_by_mda", {})
+    fit_by = data.setdefault("fit_by_metamodel", {}).setdefault(metamodel, {})
     fit_by[str(int(n))] = summary
     _write_split_dict(goal, data)
 
@@ -726,14 +781,16 @@ def load_context(goal: str | int) -> dict[str, Any]:
 
 
 def _missing_model_paths(
-    goal: str | int, n: int, *, pca_variance: PcaVariance = None
+    goal: str | int, metamodel: str, n: int, *, pca_variance: PcaVariance = None
 ) -> list[Path]:
-    """Return paths of missing GP/PCA model files for one goal and MDA size.
+    """Return paths of missing GP/PCA model files for one goal, set and MDA size.
 
     Parameters
     ----------
     goal
         Goal id from the case goals JSON.
+    metamodel
+        Metamodel set.
     n
         MDA train size.
     pca_variance
@@ -745,22 +802,26 @@ def _missing_model_paths(
         Missing pickle paths; empty when all models exist.
     """
     missing: list[Path] = []
-    if not gp_model_path(goal, n).exists():
-        missing.append(gp_model_path(goal, n))
+    if not gp_model_path(goal, metamodel, n).exists():
+        missing.append(gp_model_path(goal, metamodel, n))
     for name, variance, _ in _pca_variables(pca_variance):
-        p = pca_model_path(goal, n, name, variance)
+        p = pca_model_path(goal, metamodel, n, name, variance)
         if not p.exists():
             missing.append(p)
     return missing
 
 
-def models_exist(goal: str | int, n: int, *, pca_variance: PcaVariance = None) -> bool:
-    """Check whether GP and all PCA pickles exist for one goal and MDA size.
+def models_exist(
+    goal: str | int, metamodel: str, n: int, *, pca_variance: PcaVariance = None
+) -> bool:
+    """Check whether GP and all PCA pickles exist for one goal, set and MDA size.
 
     Parameters
     ----------
     goal
         Goal id from the case goals JSON.
+    metamodel
+        Metamodel set.
     n
         MDA train size.
     pca_variance
@@ -771,11 +832,11 @@ def models_exist(goal: str | int, n: int, *, pca_variance: PcaVariance = None) -
     bool
         ``True`` when no model files are missing.
     """
-    return not _missing_model_paths(goal, n, pca_variance=pca_variance)
+    return not _missing_model_paths(goal, metamodel, n, pca_variance=pca_variance)
 
 
 def require_models(
-    goal: str | int, n: int, *, pca_variance: PcaVariance = None
+    goal: str | int, metamodel: str, n: int, *, pca_variance: PcaVariance = None
 ) -> None:
     """Raise :class:`ModelsNotFittedError` if any model file is missing.
 
@@ -783,6 +844,8 @@ def require_models(
     ----------
     goal
         Goal id from the case goals JSON.
+    metamodel
+        Metamodel set.
     n
         MDA train size.
     pca_variance
@@ -793,10 +856,10 @@ def require_models(
     ModelsNotFittedError
         If the GP or any PCA pickle is absent.
     """
-    missing = _missing_model_paths(goal, n, pca_variance=pca_variance)
+    missing = _missing_model_paths(goal, metamodel, n, pca_variance=pca_variance)
     if missing:
         raise ModelsNotFittedError(
-            f"Models not fitted: goal={goal!r}, n={n}, "
+            f"Models not fitted: goal={goal!r}, metamodel={metamodel!r}, n={n}, "
             f"pca_variance={resolved_pca_variances(pca_variance)}. Missing:\n"
             + "\n".join(f"  {p}" for p in missing)
             + ModelsNotFittedError._FIT_HINT
@@ -804,6 +867,7 @@ def require_models(
 
 
 def require_models_all(
+    metamodel: str,
     n: int,
     goals: Iterable[str | int] | None = None,
     *,
@@ -813,6 +877,8 @@ def require_models_all(
 
     Parameters
     ----------
+    metamodel
+        Metamodel set.
     n
         MDA train size.
     goals
@@ -826,11 +892,12 @@ def require_models_all(
         If any goal is missing GP or PCA pickles.
     """
     for goal in _goals(goals):
-        require_models(goal, n, pca_variance=pca_variance)
+        require_models(goal, metamodel, n, pca_variance=pca_variance)
 
 
 def load_models(
     goal: str | int,
+    metamodel: str,
     n: int,
     *,
     pca_variance: PcaVariance = None,
@@ -840,8 +907,8 @@ def load_models(
 
     Parameters
     ----------
-    goal, n
-        Goal id and MDA train size (must match saved artefacts).
+    goal, metamodel, n
+        Goal id, metamodel set and MDA train size (must match saved artefacts).
     pca_variance
         Override PCA variance fractions; default uses the case config JSON.
     device
@@ -857,12 +924,12 @@ def load_models(
     ModelsNotFittedError
         If any pickle is missing.
     """
-    require_models(goal, n, pca_variance=pca_variance)
+    require_models(goal, metamodel, n, pca_variance=pca_variance)
     pcas = {
-        name: load_model(pca_model_path(goal, n, name, var))
+        name: load_model(pca_model_path(goal, metamodel, n, name, var))
         for name, var, _ in _pca_variables(pca_variance)
     }
-    gp = load_model(gp_model_path(goal, n))
+    gp = load_model(gp_model_path(goal, metamodel, n))
     if device is not None:
         _set_gp_device(gp, device)
     return {
@@ -953,6 +1020,13 @@ def _fit_mda(
 
     if not force_retrain and path.exists() and split_file.exists():
         mda = load_model(path)
+        missing = set(MDA_INPUTS) - set(mda.centroids.columns)
+        if missing:
+            raise ValueError(
+                f"Goal {goal}: saved MDA ({path}) lacks mda_inputs "
+                f"{sorted(missing)} (fitted on an older configuration). "
+                "Re-fit with force_retrain=True (or remove outputs/goal_*)."
+            )
         train_idx, test_idx = load_split(goal)
         logger.info(
             "Goal %s: loaded MDA (%d train, %d test)",
@@ -975,6 +1049,13 @@ def _fit_mda(
         )
 
     num_centers = mda_max_points()
+    n_cases = int(cases.sizes["case_num"])
+    if num_centers >= n_cases:
+        raise ValueError(
+            f"Goal {goal}: largest mda_candidates ({num_centers}) must be below the "
+            f"number of SnapWave cases ({n_cases}) to leave holdout cases; raise "
+            "simulations.num_samples_per_goal or lower mda_candidates."
+        )
     mda, train_idx, test_idx = hw.fit_mda(
         forcing_dataframe(cases), num_centers, MDA_DIRECTIONAL
     )
@@ -994,7 +1075,7 @@ def _fit_mda(
                     "value_to_replace_nans": value_replace,
                     "nan_threshold_to_drop": nan_drop,
                 },
-                "fit_by_mda": {},
+                "fit_by_metamodel": {},
             },
             f,
             indent=2,
@@ -1007,6 +1088,7 @@ def _fit_mda(
 
 def _fit_models(
     goal: str | int,
+    metamodel: str,
     n: int,
     *,
     mda: Any | None = None,
@@ -1015,16 +1097,19 @@ def _fit_models(
     gp_epochs: int = 1000,
     pca_variance: PcaVariance = None,
 ) -> dict[str, Any]:
-    """Fit or load PCA + GP models for one goal and MDA size *n*.
+    """Fit or load PCA + GP models for one goal, metamodel set and MDA size *n*.
 
-    Uses the first *n* MDA train cases. Each variable in ``vars_to_predict``
-    (except ``raw``) gets a PCA on stacked site fields; all PC blocks are
-    concatenated and regressed with an exact GP on MDA centroids.
+    Uses the first *n* MDA train cases and the sites of the set. Each variable
+    in ``vars_to_predict`` (except ``raw``) gets a PCA on stacked site fields;
+    all PC blocks are concatenated and regressed with an exact GP on MDA
+    centroids.
 
     Parameters
     ----------
     goal
         Goal id from the case goals JSON.
+    metamodel
+        Metamodel set.
     n
         Number of MDA centroids (must be in ``mda_candidates``).
     mda, train_idx
@@ -1047,9 +1132,11 @@ def _fit_models(
     if n > mda_max_points():
         raise ValueError(f"n={n} exceeds mda_max_points={mda_max_points()}")
 
-    if not force_retrain and models_exist(goal, n, pca_variance=pca_variance):
-        logger.info("Goal %s / n=%d: loaded models", goal, n)
-        out = load_models(goal, n, pca_variance=pca_variance)
+    if not force_retrain and models_exist(
+        goal, metamodel, n, pca_variance=pca_variance
+    ):
+        logger.info("Goal %s / %s / n=%d: loaded models", goal, metamodel, n)
+        out = load_models(goal, metamodel, n, pca_variance=pca_variance)
         out["train_idx"] = train_idx
         return out
 
@@ -1057,6 +1144,7 @@ def _fit_models(
         mda, train_idx, _ = _fit_mda(goal, force_retrain=force_retrain)
 
     cases = load_cases_goal(goal).isel(case_num=train_idx[:n])
+    cases = cases.sel(sites=set_sites(cases, metamodel))
     value_replace, nan_drop = _pca_preprocessing()
     n_requested = n
     n_cases = int(cases.sizes["case_num"])
@@ -1070,8 +1158,9 @@ def _fit_models(
         )
     targets = _pca_variables(pca_variance)
     logger.info(
-        "Goal %s / n=%d: fitting PCA %s (%d cases × %d sites)",
+        "Goal %s / %s / n=%d: fitting PCA %s (%d cases × %d sites)",
         goal,
+        metamodel,
         n,
         [name for name, _, _ in targets],
         n_cases,
@@ -1088,7 +1177,7 @@ def _fit_models(
             n_sites,
             pca_summary["pca_sites_dropped"][name],
         )
-        path = pca_model_path(goal, n, name, variance)
+        path = pca_model_path(goal, metamodel, n, name, variance)
         path.parent.mkdir(parents=True, exist_ok=True)
         pcas[name].save_model(path)
 
@@ -1104,13 +1193,16 @@ def _fit_models(
 
     gp = hw.fit_gp(centroids, pcas, MDA_DIRECTIONAL, epochs=gp_epochs)
     n_components = int(hw.stack_pcs(pcas).shape[1])
-    gp_p = gp_model_path(goal, n)
+    gp_p = gp_model_path(goal, metamodel, n)
     gp_p.parent.mkdir(parents=True, exist_ok=True)
     gp.save_model(gp_p)
-    logger.info("Goal %s / n=%d: GP saved (%d PCs)", goal, n, n_components)
+    logger.info(
+        "Goal %s / %s / n=%d: GP saved (%d PCs)", goal, metamodel, n, n_components
+    )
 
     _persist_fit_summary(
         goal,
+        metamodel,
         n,
         {
             "n_cases_requested": n_requested,
@@ -1134,17 +1226,20 @@ def _fit_models(
 def fit(
     goal: str | int,
     *,
+    metamodels: Iterable[str] | None = None,
     candidates: Iterable[int] | None = None,
     force_retrain: bool = False,
     gp_epochs: int = 1000,
     pca_variance: PcaVariance = None,
 ) -> None:
-    """Train MDA, PCA and GP models for one goal and all MDA candidate sizes.
+    """Train the MDA of one goal, then PCA and GP models per set and MDA size.
 
     Parameters
     ----------
     goal
         Goal id from the case goals JSON.
+    metamodels
+        Metamodel sets to fit; default every set in ``metamodel.sets``.
     candidates
         MDA train sizes to fit; default ``mda_candidates`` from config.
     force_retrain
@@ -1157,21 +1252,24 @@ def fit(
     goal = str(goal)
     validate_metamodel_config()
     mda, train_idx, _ = _fit_mda(goal, force_retrain=force_retrain)
-    for n in candidates or MDA_CANDIDATES:
-        _fit_models(
-            goal,
-            int(n),
-            mda=mda,
-            train_idx=train_idx,
-            force_retrain=force_retrain,
-            gp_epochs=gp_epochs,
-            pca_variance=pca_variance,
-        )
+    for metamodel in metamodels or SETS:
+        for n in candidates or MDA_CANDIDATES:
+            _fit_models(
+                goal,
+                metamodel,
+                int(n),
+                mda=mda,
+                train_idx=train_idx,
+                force_retrain=force_retrain,
+                gp_epochs=gp_epochs,
+                pca_variance=pca_variance,
+            )
 
 
 def fit_all(
     goals: Iterable[str | int] | None = None,
     *,
+    metamodels: Iterable[str] | None = None,
     candidates: Iterable[int] | None = None,
     force_retrain: bool = False,
     gp_epochs: int = 1000,
@@ -1183,6 +1281,8 @@ def fit_all(
     ----------
     goals
         Goals to fit; default all configured goals.
+    metamodels
+        Metamodel sets to fit; default every set in ``metamodel.sets``.
     candidates
         MDA train sizes to fit; default ``mda_candidates`` from config.
     force_retrain
@@ -1195,6 +1295,7 @@ def fit_all(
     for goal in _goals(goals):
         fit(
             goal,
+            metamodels=metamodels,
             candidates=candidates,
             force_retrain=force_retrain,
             gp_epochs=gp_epochs,
@@ -1212,6 +1313,7 @@ def predict(
     n: int,
     forcing: pd.DataFrame,
     *,
+    metamodel: str,
     models: dict[str, Any] | None = None,
     pca_variance: PcaVariance = None,
     sites: Iterable[str] | None = None,
@@ -1230,14 +1332,17 @@ def predict(
     goal, n
         Goal id and MDA train size used at fitting time.
     forcing
-        DataFrame indexed by case/time row, columns ``mda_inputs`` from config.
-        Index is renamed internally to ``case_num`` for PCA compatibility.
+        DataFrame indexed by case/time row, with the ``mda_inputs`` columns
+        from config (extra columns are ignored). Index is renamed internally
+        to ``case_num`` for PCA compatibility.
+    metamodel
+        Metamodel set.
     models
         Pre-loaded dict from :func:`load_models`; loaded from disk if omitted.
     pca_variance
         Must match the variances used when models were fitted.
     sites
-        Subset of site labels; default all sites for the goal.
+        Subset of site labels; default all sites of the set.
     row_dim
         Name of the output row dimension (``case_num`` for LHS holdout,
         ``time`` for hindcast).
@@ -1260,15 +1365,21 @@ def predict(
 
     goal = str(goal)
     if models is None:
-        models = load_models(goal, n, pca_variance=pca_variance, device=device)
+        models = load_models(
+            goal, metamodel, n, pca_variance=pca_variance, device=device
+        )
 
     cases = load_cases_goal(goal)
-    all_sites = [str(s) for s in cases.sites.values]
+    all_sites = set_sites(cases, metamodel)
     site_ids = all_sites if sites is None else [s for s in sites if s in all_sites]
     if not site_ids:
-        raise ValueError(f"No requested sites found for goal {goal!r}")
+        raise ValueError(
+            f"No requested sites found for goal {goal!r} in set {metamodel!r}"
+        )
 
-    fields = hw.predict_fields(models["gp"], models["pcas"], forcing, VARS, site_ids)
+    fields = hw.predict_fields(
+        models["gp"], models["pcas"], forcing[MDA_INPUTS], VARS, site_ids
+    )
     meta = cases.sel(sites=site_ids)
     ds = fields.assign_coords(
         {name: meta[name] for name in SITE_META if name in meta.coords}
@@ -1308,12 +1419,14 @@ def resolve_reconstruction_sites(
     ds: xr.Dataset,
     sites: str | Iterable[str] | None = None,
     *,
+    metamodel: str,
     goals: Iterable[str | int] | None = None,
 ) -> list[str]:
-    """Site labels valid for multi-goal hindcast reconstruction.
+    """Site labels valid for multi-goal hindcast reconstruction with one set.
 
-    Intersects user *sites* selection (via :func:`resolve_sites`) with
-    :func:`common_model_sites` so every retained site exists in all goals.
+    Intersects user *sites* selection (via :func:`resolve_sites`) with the
+    sites of the metamodel set and :func:`common_model_sites`, so every
+    retained site exists in all goals.
 
     Parameters
     ----------
@@ -1321,7 +1434,9 @@ def resolve_reconstruction_sites(
         Reference dataset for site metadata (typically one goal's cases).
     sites
         Group name, umbrella (``buoy``/``isobath``/``mesh``), site id, or list;
-        ``None`` returns all common sites.
+        ``None`` returns all common sites of the set.
+    metamodel
+        Metamodel set.
     goals
         Goals to intersect; default all configured goals.
 
@@ -1336,6 +1451,7 @@ def resolve_reconstruction_sites(
         If the intersection is empty.
     """
     common = set(common_model_sites(goals))
+    common &= set(set_sites(load_cases_goal(_goals(goals)[0]), metamodel))
     if sites is None:
         return sorted(common)
 
@@ -1344,8 +1460,9 @@ def resolve_reconstruction_sites(
     dropped = [s for s in selected if s not in common]
     if dropped:
         logger.warning(
-            "Dropped %d site(s) not in all goals: %s",
+            "Dropped %d site(s) not in all goals or not in set %r: %s",
             len(dropped),
+            metamodel,
             ", ".join(dropped[:8]) + ("…" if len(dropped) > 8 else ""),
         )
     if not kept:
@@ -1365,22 +1482,14 @@ def _reconstruction_partitions(spectral: bool, offshore: xr.Dataset) -> list[int
 
 
 def _valid_timesteps(
-    forcing_df: pd.DataFrame,
-    hs_offshore: xr.DataArray,
-    partition: int,
-    *,
-    goal: str | int | None = None,
+    forcing_df: pd.DataFrame, *, goal: str | int | None = None
 ) -> pd.Series:
     """Usable hindcast time steps; restricted to the goal's sector when *goal* is given.
 
     See :func:`bluemath_tk.waves.hywaves.metamodel.valid_timesteps`.
     """
     return hw.valid_timesteps(
-        forcing_df,
-        hs_offshore,
-        partition,
-        required_columns=FORCING_COLS,
-        sector=_goal_sector(goal) if goal is not None else None,
+        forcing_df, sector=_goal_sector(goal) if goal is not None else None
     )
 
 
@@ -1390,8 +1499,8 @@ def _offshore_forcing(
     *,
     partition: int,
     wl: float = 0.0,
-) -> tuple[pd.DataFrame, xr.DataArray]:
-    """MDA forcing and offshore ``hs`` of one goal and partition.
+) -> pd.DataFrame:
+    """MDA forcing (``hs``, ``tp``, ``dir``, ``spr``, ``wl``) of one goal and partition.
 
     See :func:`bluemath_tk.waves.hywaves.metamodel.goal_forcing`.
     """
@@ -1404,6 +1513,7 @@ def _predict_offshore(
     n: int,
     site_ids: list[str],
     *,
+    metamodel: str,
     partition: int,
     wl: float = 0.0,
     pca_variance: PcaVariance = None,
@@ -1422,6 +1532,8 @@ def _predict_offshore(
         MDA train size used at fitting time.
     site_ids
         Nearshore site labels to predict.
+    metamodel
+        Metamodel set.
     partition
         WHACS partition id (bulk ``-1`` or spectral ``0``–``3``).
     wl
@@ -1439,26 +1551,22 @@ def _predict_offshore(
         Predicted ``hs``, ``tp``, ``dir``, ``spr`` on ``(time, sites)``, or
         ``None`` when no valid timesteps remain.
     """
-    forcing_df, hs_offshore = _offshore_forcing(
-        offshore, goal, partition=partition, wl=wl
-    )
-    valid = _valid_timesteps(forcing_df, hs_offshore, partition, goal=goal)
+    forcing_df = _offshore_forcing(offshore, goal, partition=partition, wl=wl)
+    valid = _valid_timesteps(forcing_df, goal=goal)
     if not valid.any():
         return None
 
-    pred = predict(
+    return predict(
         goal,
         n,
         forcing_df.loc[valid],
+        metamodel=metamodel,
         models=models,
         pca_variance=pca_variance,
         sites=site_ids,
         row_dim="time",
         device=device,
     )
-    # Scale hs by offshore partition/bulk height (transfer function)
-    pred["hs"] = pred["hs"] * hs_offshore.sel(time=pred.coords["time"])
-    return pred
 
 
 def _wavespectra_sum(
@@ -1658,6 +1766,7 @@ def reconstruction_cache_path(
     time_label: str | slice,
     n: int,
     *,
+    metamodel: str,
     spectral: bool,
     offshore_name: str,
     goals: Iterable[str | int] | None,
@@ -1668,10 +1777,10 @@ def reconstruction_cache_path(
 ) -> Path:
     """Build the NetCDF cache path for one reconstruction request.
 
-    The filename encodes offshore source, MDA size, spectral mode, goals,
-    water level, resolved site list, output variable mapping, PCA settings,
-    metamodel config fingerprint (``site_filter`` + ``pca_preprocessing``),
-    and time span.
+    The filename encodes offshore source, metamodel set, MDA size, spectral
+    mode, goals, water level, resolved site list, output variable mapping, PCA
+    settings, metamodel config fingerprint (``site_filter`` +
+    ``pca_preprocessing``), and time span.
 
     Parameters
     ----------
@@ -1679,6 +1788,8 @@ def reconstruction_cache_path(
         Time selector for this cache entry (month or full period).
     n
         MDA train size.
+    metamodel
+        Metamodel set.
     spectral
         ``True`` for spectral partition sum; ``False`` for bulk only.
     offshore_name
@@ -1702,8 +1813,8 @@ def reconstruction_cache_path(
     """
     var_map = _reconstruction_variables(override=variables)
     stem = (
-        "reconstruct-v6__"  # v6: predicted hs floored at MIN_HS
-        f"reconstruct__offshore-{offshore_name}__n-{n}__"
+        "reconstruct-v7__"  # v7: hs as a metamodel input, metamodel sets
+        f"reconstruct__offshore-{offshore_name}__set-{metamodel}__n-{n}__"
         f"{'spectral' if spectral else 'bulk'}__"
         f"goals-{_goals_label(goals)}__wl-{wl:g}__"
         f"sites-{'-'.join(sorted(site_ids))}__"
@@ -1719,6 +1830,7 @@ def load_reconstruction_spectra(
     time_label: str | slice,
     n: int,
     *,
+    metamodel: str,
     spectral: bool,
     offshore_name: str,
     goals: Iterable[str | int] | None = None,
@@ -1736,6 +1848,8 @@ def load_reconstruction_spectra(
         Same time selector used for the paired bulk reconstruction.
     n
         MDA train size.
+    metamodel
+        Metamodel set used for reconstruction.
     spectral
         Spectral or bulk partition mode used for reconstruction.
     offshore_name
@@ -1763,6 +1877,7 @@ def load_reconstruction_spectra(
     bulk_path = reconstruction_cache_path(
         time_label,
         n,
+        metamodel=metamodel,
         spectral=spectral,
         offshore_name=offshore_name,
         goals=goals,
@@ -1847,6 +1962,7 @@ def _reconstruct_period(
     offshore: xr.Dataset,
     n: int,
     *,
+    metamodel: str,
     time_label: str | slice,
     active: list[str],
     site_ids: list[str],
@@ -1872,6 +1988,8 @@ def _reconstruct_period(
         Offshore forcing for the period to reconstruct.
     n
         MDA train size.
+    metamodel
+        Metamodel set.
     time_label
         Time label used for logging and cache lookup.
     active
@@ -1925,6 +2043,7 @@ def _reconstruct_period(
         cache_path = reconstruction_cache_path(
             time_label,
             n,
+            metamodel=metamodel,
             spectral=spectral,
             offshore_name=offshore_name,
             goals=active,
@@ -1964,7 +2083,9 @@ def _reconstruct_period(
         goal_models = (
             models_by_goal[str(goal)]
             if models_by_goal is not None
-            else load_models(goal, n, pca_variance=pca_variance, device=device)
+            else load_models(
+                goal, metamodel, n, pca_variance=pca_variance, device=device
+            )
         )
         try:
             for part in part_ids:
@@ -1973,6 +2094,7 @@ def _reconstruct_period(
                     goal,
                     n,
                     site_ids,
+                    metamodel=metamodel,
                     partition=part,
                     wl=wl,
                     pca_variance=pca_variance,
@@ -2037,6 +2159,7 @@ def _reconstruct_periods_batch(
     periods: list[str],
     n: int,
     *,
+    metamodel: str,
     active: list[str],
     site_ids: list[str],
     spectral: bool,
@@ -2074,8 +2197,8 @@ def _reconstruct_periods_batch(
     periods
         Calendar-month labels to compute; caller has already confirmed none
         of these are cached.
-    n, active, site_ids, spectral, pca_variance, wl, use_cache, device,
-    save_spectra, variables
+    n, metamodel, active, site_ids, spectral, pca_variance, wl, use_cache,
+    device, save_spectra, variables
         Same as :func:`reconstruct`.
     cache_kw
         Shared kwargs for :func:`reconstruction_cache_path` (built once by
@@ -2121,7 +2244,9 @@ def _reconstruct_periods_batch(
 
     chunks: list[xr.Dataset] = []
     for goal in active:
-        goal_models = load_models(goal, n, pca_variance=pca_variance, device=device)
+        goal_models = load_models(
+            goal, metamodel, n, pca_variance=pca_variance, device=device
+        )
         try:
             for part in part_ids:
                 pred = _predict_offshore(
@@ -2129,6 +2254,7 @@ def _reconstruct_periods_batch(
                     goal,
                     n,
                     site_ids,
+                    metamodel=metamodel,
                     partition=part,
                     wl=wl,
                     pca_variance=pca_variance,
@@ -2193,6 +2319,7 @@ def reconstruct(
     time: str | slice,
     n: int,
     *,
+    metamodel: str,
     spectral: bool = True,
     offshore_name: str = "WHACS",
     goals: Iterable[str | int] | None = None,
@@ -2222,6 +2349,8 @@ def reconstruct(
         Period passed to the offshore zarr (e.g. ``"2020-05"`` or ``"2020"``).
     n
         MDA train size; fitted models must exist for every active goal.
+    metamodel
+        Metamodel set (key of ``metamodel.sets``); *sites* must belong to it.
     spectral
         ``False`` — bulk offshore partition ``-1`` per goal.
         ``True`` — WHACS partitions ``phs0``–``phs3`` (``0``–``3``).
@@ -2232,7 +2361,7 @@ def reconstruct(
     wl
         Constant water level for MDA forcing (m).
     sites
-        Site selector; see :func:`resolve_sites`.
+        Site selector within the set; see :func:`resolve_sites`.
     pca_variance
         PCA fractions used at fit time.
     load
@@ -2292,14 +2421,17 @@ def reconstruct(
 
     active = _goals(goals)
     validate_metamodel_config()
-    require_models_all(n, active, pca_variance=pca_variance)
+    require_models_all(metamodel, n, active, pca_variance=pca_variance)
 
     template = load_cases_goal(active[0])
-    site_ids = resolve_reconstruction_sites(template, sites, goals=active)
+    site_ids = resolve_reconstruction_sites(
+        template, sites, metamodel=metamodel, goals=active
+    )
     variable_map = _reconstruction_variables(override=variables)
 
     cache_kw = dict(
         n=n,
+        metamodel=metamodel,
         spectral=spectral,
         offshore_name=offshore_name,
         goals=goals,
@@ -2325,6 +2457,7 @@ def reconstruct(
     periods = _month_periods(time, offshore_store)
 
     period_kw = dict(
+        metamodel=metamodel,
         active=active,
         site_ids=site_ids,
         spectral=spectral,
@@ -2404,6 +2537,7 @@ def reconstruct(
                     offshore_store,
                     batch,
                     n,
+                    metamodel=metamodel,
                     active=active,
                     site_ids=site_ids,
                     spectral=spectral,
@@ -2461,6 +2595,7 @@ __all__ = [
     "MDA_CANDIDATES",
     "ModelsNotFittedError",
     "PcaVariance",
+    "SETS",
     "SITE_META",
     "SPECTRAL_PARTITIONS",
     "VARS",
@@ -2484,4 +2619,5 @@ __all__ = [
     "resolve_reconstruction_sites",
     "resolve_sites",
     "resolved_pca_variances",
+    "set_sites",
 ]

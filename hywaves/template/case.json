@@ -19,18 +19,20 @@
         "dynamic_templates": "templates-dynamic",
         "metamodel_cases": "SnapWave_CASES_Metamodel",
         "dynamic_cases": "SnapWave_CASES_Dynamic",
-        "num_samples_per_goal": 500,
+        "num_samples_per_goal": 1000,
+        "max_steepness": 0.06,
         "bounds": {
+            "hs": [0.05, 8.0],
             "tp": [1, 15],
             "spr": [1, 45],
             "wl": [-3.5, 3.5]
         },
         "output_sites_config": {
             "isobaths": [
-                {"name": "5m", "level": -5.0, "spacing": 0.1},
-                {"name": "10m", "level": -10.0, "spacing": 0.1},
-                {"name": "20m", "level": -20.0, "spacing": 0.1},
-                {"name": "50m", "level": -50.0, "spacing": 0.1}
+                {"name": "5m", "level": -5.0, "smooth_m": 1000.0, "min_length_m": 5000.0, "spacing_m": 5000.0},
+                {"name": "10m", "level": -10.0, "smooth_m": 1000.0, "min_length_m": 5000.0, "spacing_m": 5000.0},
+                {"name": "20m", "level": -20.0, "smooth_m": 1000.0, "min_length_m": 5000.0, "spacing_m": 5000.0},
+                {"name": "50m", "level": -50.0, "smooth_m": 1000.0, "min_length_m": 5000.0, "spacing_m": 5000.0}
             ],
             "polygons": [],
             "include_buoys": true,
@@ -38,8 +40,12 @@
         }
     },
     "metamodel": {
+        "sets": {
+            "buoys": {"sites": "buoy"},
+            "isobaths": {"sites": "isobath"}
+        },
         "mda_candidates": [50, 100, 150, 250, 450],
-        "mda_inputs": ["tp", "dir", "spr", "wl"],
+        "mda_inputs": ["hs", "tp", "dir", "spr", "wl"],
         "mda_directional_variables": ["dir"],
         "vars_to_predict": {
             "hs": {
@@ -57,7 +63,7 @@
             }
         },
         "site_filter": {
-            "hs_max": 10.0,
+            "hs_ratio_max": 3.0,
             "tp_min": 0.5
         },
         "pca_preprocessing": {
@@ -87,8 +93,8 @@
             "save_spectra": true
         },
         "paths": {
-            "pca_dir": "outputs/{goal}/pca_{mda_candidate}",
-            "gp_dir": "outputs/{goal}/gp_{mda_candidate}"
+            "pca_dir": "outputs/{goal}/{metamodel}/pca_{mda_candidate}",
+            "gp_dir": "outputs/{goal}/{metamodel}/gp_{mda_candidate}"
         }
     }
 }

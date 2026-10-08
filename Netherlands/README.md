@@ -24,8 +24,12 @@ Run notebooks with `Netherlands/` as the working directory.
 ## Getting started
 
 1. **Fill in the config** — open `Netherlands.json` and replace the `TODO`
-   values. Review the LHS `bounds`, `output_sites_config` isobaths, and
-   `metamodel` settings for your region.
+   values. Review the LHS `bounds` (incl. `hs`), `max_steepness` (implausible
+   steep samples are dropped, so each goal keeps fewer than
+   `num_samples_per_goal` cases), `output_sites_config` isobaths (`smooth_m`,
+   `min_length_m`, `spacing_m` in metres), and the `metamodel` settings for
+   your region — `sets` fits one PCA + GP per group of output sites (e.g.
+   `buoys`, `isobaths`) on the same SnapWave cases.
 2. **Area of interest** — put your AoI shapefile in `inputs/AoI_Polygons/`.
 3. **Work through the notebooks in order:**
 

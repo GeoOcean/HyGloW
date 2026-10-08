@@ -17,7 +17,7 @@ so a deployment needs the bundles alone — a few MB per case:
 | `aoi.geojson`                                     | AoI outline (case map + landing map)                        | `paths.aoi_file` shapefile                                     |
 | `isobaths.json`                                   | depth-contour lines                                         | `paths.topobathy_file` raster, contoured at publish            |
 | `output_sites.json`                               | isobath/mesh output-site dots                               | first `output_sites_*.nc` under `simulations.metamodel_cases` (or a same-named folder in the case) |
-| `validation_metrics.csv`                          | **Goals Validation** tab                                    | every `outputs/goal_*/validation_metrics.csv` (notebook 06)    |
+| `validation_metrics.csv`                          | **Goals Validation** tab                                    | every `outputs/goal_*/<set>/validation_metrics.csv` (notebook 06)    |
 | `metamodel_validation/*.csv`                      | **Metamodel Validation** tab                                | notebook 09's save-metrics cell                                |
 | `buoy_validation/*_summary_*.csv`, `…/figures/*.png` | **Buoy Validation** tab + buoy-click popups              | notebooks 10a/10b's save cells                                 |
 | `gui_figures/*.png`                               | **Final Plots** tab                                         | the case's own `12_Final_Plots.ipynb`                          |
@@ -26,6 +26,13 @@ so a deployment needs the bundles alone — a few MB per case:
 
 Any missing file just empties that layer/tab (a "not published yet"
 message), and a case with no `portal/` at all still appears in the catalog.
+
+**Versions.** `python -m hywaves snapshot {Case}/ <tag> --note "…"` freezes
+the current `portal/` (book included) as `{Case}/portal_<tag>/`. The GUI finds
+every `portal_*` folder of a catalog case and lists it in the searchable
+**Use case** dropdown right after the case (`Netherlands · hs1 — <note>
+(<date>)`, id `netherlands@hs1`); every tab, figure and the report then read
+that folder. The landing map and case cards show only the latest `portal/`.
 
 Portal metadata (authors, institution, pipeline status, **continent** for the
 "Browse cases" picker below) lives in `catalog/cases.yaml`. A case can also pin
@@ -157,8 +164,8 @@ location /hyglow {
 
 (In a systemd unit: `Environment=HYGLOW_URL_BASE=/hyglow/`.)
 
-**Reports** (`portal/book/`) are not in git — copy them to the server by
-hand after publishing, e.g.
+**Reports** (`portal/book/`, and each snapshot's `portal_<tag>/book/`) are
+not in git — copy them to the server by hand after publishing, e.g.
 `rsync -a NewSouthWales/portal/book/ server:/deploys/HyGloW/NewSouthWales/portal/book/`.
 A book's links are baked in at build time, so build it for the same prefix
 first: `HYGLOW_URL_BASE=/hyglow/ NewSouthWales/book/build.sh`, then re-run

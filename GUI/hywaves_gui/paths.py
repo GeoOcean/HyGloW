@@ -12,5 +12,10 @@ def case_root(case: dict) -> Path:
 
 
 def portal_root(case: dict) -> Path:
-    """The case's published bundle (``python -m hywaves publish``) — the only thing the GUI reads."""
-    return case_root(case) / "portal"
+    """The case's published bundle — the only thing the GUI reads.
+
+    ``portal/`` (latest, ``python -m hywaves publish``) or, for a version
+    picked in the dropdown, its snapshot ``portal_<tag>/``
+    (``python -m hywaves snapshot``).
+    """
+    return case_root(case) / case.get("portal", "portal")

@@ -6,7 +6,10 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from .paths import CATALOG_PATH, portal_root
+from .paths import CATALOG_PATH, case_root, portal_root
+
+#: Separates a catalog case id from a snapshot tag: ``netherlands@hs1``.
+VERSION_SEP = "@"
 
 
 def load_catalog() -> list[dict]:
@@ -14,11 +17,67 @@ def load_catalog() -> list[dict]:
         return yaml.safe_load(f)["cases"]
 
 
+def case_versions(case: dict) -> list[dict]:
+    """Snapshot versions of a catalog case (``{Case}/portal_<tag>/``, newest first).
+
+    Each is the catalog entry with ``id`` = ``<case id>@<tag>``, ``portal`` =
+    the snapshot folder and ``version`` = ``{"tag", "note", "date"}`` from the
+    snapshot's ``manifest.json`` (see ``python -m hywaves snapshot``).
+    """
+    versions = []
+    for folder in case_root(case).glob("portal_*"):
+        manifest = folder / "manifest.json"
+        if not manifest.is_file():
+            continue
+        info = json.loads(manifest.read_text(encoding="utf-8")).get("snapshot", {})
+        tag = info.get("tag") or folder.name.removeprefix("portal_")
+        versions.append(
+            {
+                **case,
+                "id": f"{case['id']}{VERSION_SEP}{tag}",
+                "portal": folder.name,
+                "version": {
+                    "tag": tag,
+                    "note": info.get("note", ""),
+                    "date": str(info.get("created", ""))[:10],
+                },
+            }
+        )
+    return sorted(versions, key=lambda v: v["version"]["date"], reverse=True)
+
+
 def load_case(case_id: str) -> dict:
+    """Catalog case by id, or one of its versions (``<case id>@<tag>``)."""
+    base_id = case_id.split(VERSION_SEP, 1)[0]
     for case in load_catalog():
-        if case["id"] == case_id:
+        if case["id"] != base_id:
+            continue
+        if base_id == case_id:
             return case
+        for version in case_versions(case):
+            if version["id"] == case_id:
+                return version
     raise KeyError(f"Unknown case: {case_id}")
+
+
+def case_options(cases: list[dict]) -> list[dict]:
+    """Dropdown options: each case (latest portal), followed by its versions.
+
+    Version labels carry the tag, note and date, so the searchable dropdown
+    finds them by any of those (e.g. typing "hs1" or "unit").
+    """
+    options = []
+    for case in cases:
+        name = case.get("case_dir", case["id"])
+        options.append({"label": name, "value": case["id"]})
+        for v in case_versions(case):
+            info = v["version"]
+            note = f" — {info['note']}" if info["note"] else ""
+            date = f" ({info['date']})" if info["date"] else ""
+            options.append(
+                {"label": f"{name} · {info['tag']}{note}{date}", "value": v["id"]}
+            )
+    return options
 
 
 def catalog_by_continent(catalog: list[dict]) -> dict[str, list[dict]]:

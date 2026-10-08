@@ -1,6 +1,6 @@
 {
-  "hywaves_version": "0.8.0",
-  "source": "hywaves-template@0.8.0",
+  "hywaves_version": "0.9.0",
+  "source": "hywaves-template@0.9.0",
   "created": "2026-07-29T11:07:02+00:00",
   "notebooks": [
     "00_Course_Figures.ipynb",
@@ -19,7 +19,7 @@
   "engine_files": {
     "utils/__init__.py": "e67e21b00a58c9bd83407d426a468e1ff02a1f52888d47a4488e8cd97fb3361b",
     "utils/config.py": "7fad2efb5516a22ada55dcd39b9f6592dd3798e99582d8771fb9bbf88cd2eb4c",
-    "utils/geometry.py": "eb7421c799e3bc7db2e12da285081e3d605f681b7740c9fa2d02900e65992524",
+    "utils/geometry.py": "cf4ee5e0fc22836ff7c263f4b8af1a7125cdbcf962c2b05f88cfc7409feffd32",
     "utils/metamodel.py": "7525bc1eda99ab38f0032f28dc8ca39f86d0024cf018dcd838826f5c07679b95",
     "utils/onshore_sites.py": "ac0fe1cf8c9d6bf27db8a75427fdce7b29f2b4dc6eb2a8b9cee5bad3951951b1",
     "utils/simulation.py": "9077be164e5a2ebacac5e7e3fbf85a885ccbbd5c0ecffdfc974ffb1acf52d681",
@@ -31,6 +31,6 @@
     "tests/test_simulation.py": "77a829c9a56d7851b6b37a4cd03a08a093a7257c57e7be7d5494439f855f3ae6",
     "tests/test_validation_helpers.py": "df70278f84a90a2949954069d46ff9477164ad2c8fa45bad29fe34aa11e0d831"
   },
-  "updated": "2026-10-07T09:09:36+00:00",
+  "updated": "2026-10-07T10:57:23+00:00",
   "schema_version": 1
 }

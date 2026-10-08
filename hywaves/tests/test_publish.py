@@ -21,7 +21,7 @@ def _has(module: str) -> bool:
     return importlib.util.find_spec(module) is not None
 
 
-METRICS_HEADER = "goal,mda_candidate,group,variable,n,bias,rmse,r2"
+METRICS_HEADER = "goal,metamodel,mda_candidate,group,variable,n,bias,rmse,r2"
 
 
 def _quiet(_msg: str) -> None:
@@ -61,7 +61,7 @@ class _CaseFixture(unittest.TestCase):
                 ],
             },
         )
-        self._write_metrics("goal_01", ["1,50,10m,hs,100,0.01,0.1,0.9"])
+        self._write_metrics("goal_01", ["1,isobaths,50,10m,hs,100,0.01,0.1,0.9"])
         self._write_config()
 
     def _write_json(self, rel: str, data) -> Path:
@@ -74,7 +74,7 @@ class _CaseFixture(unittest.TestCase):
         self._write_json("PubCase.json", self.config)
 
     def _write_metrics(self, goal_dir: str, rows: list[str], header: str = METRICS_HEADER) -> Path:
-        path = self.case_dir / "outputs" / goal_dir / "validation_metrics.csv"
+        path = self.case_dir / "outputs" / goal_dir / "isobaths" / "validation_metrics.csv"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("\n".join([header, *rows]) + "\n")
         return path
@@ -118,14 +118,14 @@ class TestPublishBasics(_CaseFixture):
         self.assertEqual(set(manifest["files"]), set(result.files))
         self.assertNotIn("manifest.json", manifest["files"])
         self.assertIn("PubCase.json", manifest["sources"])
-        self.assertIn("outputs/goal_01/validation_metrics.csv", manifest["sources"])
-        self.assertIn("outputs/goal_*/validation_metrics.csv", manifest["source_patterns"])
+        self.assertIn("outputs/goal_01/isobaths/validation_metrics.csv", manifest["sources"])
+        self.assertIn("outputs/goal_*/*/validation_metrics.csv", manifest["source_patterns"])
         self.assertEqual(manifest["skipped"], result.skipped)
 
     def test_metrics_are_merged_with_union_of_columns(self) -> None:
         self._write_metrics(
             "goal_02",
-            ["2,50,10m,hs,100,0.02,0.2,0.8,isobath"],
+            ["2,isobaths,50,10m,hs,100,0.02,0.2,0.8,isobath"],
             header=METRICS_HEADER + ",site_source",
         )
         self._publish()
@@ -331,14 +331,14 @@ class TestPortalStaleness(_CaseFixture):
 
     def test_new_output_file_makes_bundle_stale(self) -> None:
         self._publish()
-        self._write_metrics("goal_02", ["2,50,10m,hs,100,0.02,0.2,0.8"])
+        self._write_metrics("goal_02", ["2,isobaths,50,10m,hs,100,0.02,0.2,0.8"])
         findings = self._portal_findings()
         self.assertEqual([f.code for f in findings], ["portal.stale"])
         self.assertIn("goal_02", findings[0].message)
 
     def test_removed_source_makes_bundle_stale(self) -> None:
         self._publish()
-        (self.case_dir / "outputs" / "goal_01" / "validation_metrics.csv").unlink()
+        (self.case_dir / "outputs" / "goal_01" / "isobaths" / "validation_metrics.csv").unlink()
         codes = [f.code for f in self._portal_findings()]
         self.assertIn("portal.stale", codes)
 

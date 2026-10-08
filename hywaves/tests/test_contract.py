@@ -171,7 +171,7 @@ class TestValidateCase(unittest.TestCase):
         self.assertIn("outputs.metrics", [f.code for f in _warnings(findings)])
 
     def test_metrics_csv_missing_required_columns_is_an_error(self) -> None:
-        metrics_dir = self.case_dir / "outputs" / "goal_01"
+        metrics_dir = self.case_dir / "outputs" / "goal_01" / "isobaths"
         metrics_dir.mkdir(parents=True)
         (metrics_dir / "validation_metrics.csv").write_text("goal,rmse\n1,0.1\n")
         self._write_config(_minimal_config())
@@ -179,10 +179,12 @@ class TestValidateCase(unittest.TestCase):
         self.assertIn("outputs.metrics", [f.code for f in _errors(findings)])
 
     def test_pre_060_metrics_csv_is_flagged_legacy(self) -> None:
-        header = "goal,mda_candidate,group,variable,n,bias,rmse,r2"
-        metrics_dir = self.case_dir / "outputs" / "goal_01"
+        header = "goal,metamodel,mda_candidate,group,variable,n,bias,rmse,r2"
+        metrics_dir = self.case_dir / "outputs" / "goal_01" / "isobaths"
         metrics_dir.mkdir(parents=True)
-        (metrics_dir / "validation_metrics.csv").write_text(f"{header}\n1,50,5m,hs,10,0,0.1,0.9\n")
+        (metrics_dir / "validation_metrics.csv").write_text(
+            f"{header}\n1,isobaths,50,5m,hs,10,0,0.1,0.9\n"
+        )
         buoy_dir = self.case_dir / "outputs" / "buoy_validation"
         buoy_dir.mkdir(parents=True)
         (buoy_dir / "onshore_summary_2010.csv").write_text(f"{header},rrmse\n")
@@ -191,7 +193,7 @@ class TestValidateCase(unittest.TestCase):
         findings = validate_case(self.case_dir)
         legacy = [f for f in _warnings(findings) if f.code == "outputs.metrics_legacy"]
         self.assertEqual(len(legacy), 1)
-        self.assertIn("goal_01/validation_metrics.csv", legacy[0].message)
+        self.assertIn("goal_01/isobaths/validation_metrics.csv", legacy[0].message)
         self.assertNotIn("onshore_summary", legacy[0].message)
         self.assertEqual(_errors(findings), [])
 
@@ -208,6 +210,31 @@ class TestValidateCase(unittest.TestCase):
         self.assertIn("engine.mda_candidates", codes)
         self.assertIn("engine.mda_inputs", codes)
         self.assertIn("engine.vars_to_predict", codes)
+        self.assertIn("engine.sets", codes)
+        self.assertIn("engine.max_steepness", codes)
+
+    def test_engine_checks_sets_paths_and_bounds(self) -> None:
+        metamodel = {
+            "mda_candidates": [50],
+            "mda_inputs": ["hs", "tp", "dir"],
+            "mda_directional_variables": ["dir"],
+            "sets": {"buoys": {"sites": "buoy"}, "bad": {}},
+            "paths": {"pca_dir": "outputs/{goal}/pca", "gp_dir": "outputs/{goal}/{metamodel}/gp"},
+        }
+        simulations = {
+            "goals_file": "Goals.json",
+            "bounds": {"tp": [1, 15]},
+            "max_steepness": 0.06,
+        }
+        config = _minimal_config(metamodel=metamodel)
+        config["simulations"].update(simulations)
+        self._write_config(config)
+        messages = [f.message for f in _errors(validate_case(self.case_dir))]
+        self.assertTrue(any("sets['bad']" in m for m in messages))
+        self.assertTrue(any("paths.pca_dir" in m for m in messages))
+        self.assertFalse(any("paths.gp_dir" in m for m in messages))
+        self.assertTrue(any("bounds.hs" in m for m in messages))
+        self.assertFalse(any("bounds.dir" in m or "bounds.tp" in m for m in messages))
 
 
 class TestFindCaseConfig(unittest.TestCase):

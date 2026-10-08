@@ -125,7 +125,7 @@ class TestCaseConfig(unittest.TestCase):
         self.assertEqual(case.goal_metrics_files(), [])
         self.assertEqual(case.figure_files(), [])
 
-        metrics_dir = self.case_dir / "outputs" / "goal_01"
+        metrics_dir = self.case_dir / "outputs" / "goal_01" / "isobaths"
         metrics_dir.mkdir(parents=True)
         (metrics_dir / "validation_metrics.csv").write_text("goal\n1\n")
         fig_dir = self.case_dir / "outputs" / "gui_figures"

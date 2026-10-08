@@ -351,7 +351,23 @@ def validate_metamodel_config(config: dict[str, Any] | None = None) -> None:
     for key in site_filter:
         if not (key.endswith("_max") or key.endswith("_min")):
             raise ValueError(
-                f"metamodel.site_filter key {key!r} must end with '_max' or '_min'"
+                f"metamodel.site_filter key {key!r} must end with '_max', "
+                "'_ratio_max' or '_min'"
+            )
+
+    sets = mm.get("sets")
+    if not isinstance(sets, dict) or not sets:
+        raise ValueError(
+            "metamodel.sets must be a non-empty dict "
+            '(name → {"sites": selector}), e.g. {"all": {"sites": null}}'
+        )
+    for name, spec in sets.items():
+        if not isinstance(spec, dict) or "sites" not in spec:
+            raise ValueError(f"metamodel.sets[{name!r}] must be a dict with 'sites'")
+        selector = spec["sites"]
+        if selector is not None and not isinstance(selector, (str, list)):
+            raise TypeError(
+                f"metamodel.sets[{name!r}].sites must be null, a string or a list"
             )
 
     pca_pp = mm.get("pca_preprocessing", {})
@@ -412,6 +428,10 @@ def validate_metamodel_config(config: dict[str, Any] | None = None) -> None:
     for key in ("pca_dir", "gp_dir"):
         if key not in paths or not isinstance(paths[key], str):
             raise ValueError(f"metamodel.paths.{key} must be a template string")
+        if "{metamodel}" not in paths[key]:
+            raise ValueError(
+                f"metamodel.paths.{key} must contain '{{metamodel}}' (the set name)"
+            )
 
 
 def reload() -> dict[str, Any]:

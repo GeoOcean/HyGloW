@@ -1,7 +1,7 @@
 """Compare wave datasets: metrics and plots.
 
 Holdout validation (:func:`validate`, :func:`sweep`) — metamodel vs SnapWave on MDA
-test cases (requires :func:`utils.metamodel.fit`).
+test cases, per metamodel set (requires :func:`utils.metamodel.fit`).
 
 Generic comparison (:func:`compare`, :func:`resolve_comparison_variables`) — any
 aligned estimate/reference pair on ``(time, sites)`` bulk variables.
@@ -322,9 +322,9 @@ def metrics_table(
     return out
 
 
-def validation_metrics_path(goal: str | int) -> Path:
-    """CSV path for :func:`sweep` output on one goal."""
-    return mm.goal_output_dir(goal) / "validation_metrics.csv"
+def validation_metrics_path(goal: str | int, metamodel: str) -> Path:
+    """CSV path for :func:`sweep` output on one goal and metamodel set."""
+    return mm.goal_output_dir(goal) / metamodel / "validation_metrics.csv"
 
 
 def _slug(label: str) -> str:
@@ -332,9 +332,13 @@ def _slug(label: str) -> str:
     return re.sub(r"[^A-Za-z0-9_-]+", "-", label).strip("-")
 
 
-def metamodel_validation_path(period: str) -> Path:
-    """CSV path for the linear-summation-vs-dynamic comparison (``09_Validate_Linear_Summation.ipynb``)."""
-    return resolve("outputs/metamodel_validation") / f"linear_summation_{_slug(period)}.csv"
+def metamodel_validation_path(period: str, metamodel: str) -> Path:
+    """CSV path for the linear-summation-vs-dynamic comparison of one metamodel set
+    (``09_Validate_Linear_Summation.ipynb``)."""
+    return (
+        resolve("outputs/metamodel_validation")
+        / f"linear_summation_{metamodel}_{_slug(period)}.csv"
+    )
 
 
 def buoy_validation_path(name: str, period_label: str) -> Path:
@@ -785,9 +789,10 @@ HOLDOUT_REFERENCE_LABEL = "SnapWave"
 
 @dataclass
 class HoldoutValidationResult(ComparisonResult):
-    """Holdout metamodel validation for one goal and MDA train size."""
+    """Holdout metamodel validation for one goal, metamodel set and MDA train size."""
 
     goal: str = ""
+    metamodel: str = ""
     mda_candidate: int = 0
     n_test_cases: int = 0
     _default_estimate_label: str = field(default=HOLDOUT_ESTIMATE_LABEL, repr=False)
@@ -855,6 +860,7 @@ class HoldoutValidationResult(ComparisonResult):
 
 def _holdout_pair(
     goal: str,
+    metamodel: str,
     mda_candidate: int,
     *,
     context: dict[str, Any] | None = None,
@@ -869,14 +875,18 @@ def _holdout_pair(
         context = mm.load_context(goal)
     test_idx = context["test_idx"]
     if models is None:
-        models = mm.load_models(goal, mda_candidate, pca_variance=pca_variance)
+        models = mm.load_models(
+            goal, metamodel, mda_candidate, pca_variance=pca_variance
+        )
 
     cases = mm.load_cases_goal(goal)
+    cases = cases.sel(sites=mm.set_sites(cases, metamodel))
     idx = np.asarray(test_idx, dtype=int)
     estimate = mm.predict(
         goal,
         mda_candidate,
         mm.forcing_dataframe(cases).iloc[idx],
+        metamodel=metamodel,
         models=models,
         pca_variance=pca_variance,
     )
@@ -885,14 +895,17 @@ def _holdout_pair(
     missing = [v for v in configured if v in PARAMETERS and v not in vars_]
     if missing:
         logger.warning(
-            "Goal %s / n=%d: configured metrics variables missing from "
+            "Goal %s / %s / n=%d: configured metrics variables missing from "
             "estimate or reference: %s",
             goal,
+            metamodel,
             mda_candidate,
             missing,
         )
-    reference = cases.isel(case_num=idx)[vars_].assign(
-        **{name: cases[name] for name in SITE_META if name in cases}
+    reference = (
+        cases.isel(case_num=idx)[vars_]
+        .assign(**{name: cases[name] for name in SITE_META if name in cases})
+        .sel(sites=estimate.sites.values)
     )
     return reference, estimate, len(test_idx)
 
@@ -946,17 +959,19 @@ def _tag_metrics(
     table: pd.DataFrame,
     *,
     goal: str,
+    metamodel: str,
     n: int,
     n_test: int,
     pca_variance: mm.PcaVariance,
     estimate_label: str = HOLDOUT_ESTIMATE_LABEL,
     reference_label: str = HOLDOUT_REFERENCE_LABEL,
 ) -> pd.DataFrame:
-    """Insert holdout identifying columns (goal, n, labels, …) into a metrics table in place."""
+    """Insert holdout identifying columns (goal, set, n, labels, …) into a metrics table in place."""
     table.insert(0, "goal", goal)
-    table.insert(1, "mda_candidate", n)
-    table.insert(2, "n_test_cases", n_test)
-    table.insert(3, "pca_variances", str(mm.resolved_pca_variances(pca_variance)))
+    table.insert(1, "metamodel", metamodel)
+    table.insert(2, "mda_candidate", n)
+    table.insert(3, "n_test_cases", n_test)
+    table.insert(4, "pca_variances", str(mm.resolved_pca_variances(pca_variance)))
     table["reference_label"] = reference_label
     table["estimate_label"] = estimate_label
     return table
@@ -966,16 +981,19 @@ def validate(
     goal: str | int,
     n: int,
     *,
+    metamodel: str,
     variables: Iterable[str] | None = None,
     pca_variance: mm.PcaVariance = None,
 ) -> HoldoutValidationResult:
     """
-    Holdout validation for one goal and MDA train size.
+    Holdout validation for one goal, metamodel set and MDA train size.
 
     Parameters
     ----------
     goal, n
         Goal id and MDA train size (saved models must exist).
+    metamodel
+        Metamodel set.
     variables
         Metrics variables to score.
     pca_variance
@@ -989,16 +1007,20 @@ def validate(
     goal = str(goal)
     n = int(n)
     validate_metamodel_config()
-    reference, estimate, n_test = _holdout_pair(goal, n, pca_variance=pca_variance)
+    reference, estimate, n_test = _holdout_pair(
+        goal, metamodel, n, pca_variance=pca_variance
+    )
     table = _tag_metrics(
         metrics_table(reference, estimate, variables=variables),
         goal=goal,
+        metamodel=metamodel,
         n=n,
         n_test=n_test,
         pca_variance=pca_variance,
     )
     return HoldoutValidationResult(
         goal=goal,
+        metamodel=metamodel,
         mda_candidate=n,
         reference=reference,
         estimate=estimate,
@@ -1011,17 +1033,20 @@ def validate(
 def sweep(
     goal: str | int,
     *,
+    metamodel: str,
     candidates: Iterable[int] | None = None,
     variables: Iterable[str] | None = None,
     pca_variance: mm.PcaVariance = None,
     save: bool = True,
 ) -> pd.DataFrame:
-    """Holdout metrics for every MDA candidate size on one goal.
+    """Holdout metrics for every MDA candidate size on one goal and metamodel set.
 
     Parameters
     ----------
     goal
         Goal id from the case goals JSON (fitted models must exist).
+    metamodel
+        Metamodel set.
     candidates
         MDA train sizes to validate; default ``mda_candidates`` from config.
     variables
@@ -1042,14 +1067,15 @@ def sweep(
 
     frames: list[pd.DataFrame] = []
     for n in cand:
-        logger.info("Goal %s: validating n=%d", goal, n)
+        logger.info("Goal %s / %s: validating n=%d", goal, metamodel, n)
         reference, estimate, n_test = _holdout_pair(
-            goal, n, context=context, pca_variance=pca_variance
+            goal, metamodel, n, context=context, pca_variance=pca_variance
         )
         frames.append(
             _tag_metrics(
                 metrics_table(reference, estimate, variables=variables),
                 goal=goal,
+                metamodel=metamodel,
                 n=n,
                 n_test=n_test,
                 pca_variance=pca_variance,
@@ -1058,7 +1084,7 @@ def sweep(
 
     out = pd.concat(frames, ignore_index=True)
     if save:
-        path = validation_metrics_path(goal)
+        path = validation_metrics_path(goal, metamodel)
         path.parent.mkdir(parents=True, exist_ok=True)
         out.to_csv(path, index=False)
         logger.info("Wrote %s", path)
@@ -1068,17 +1094,20 @@ def sweep(
 def sweep_all(
     goals: Iterable[str | int] | None = None,
     *,
+    metamodels: Iterable[str] | None = None,
     candidates: Iterable[int] | None = None,
     variables: Iterable[str] | None = None,
     pca_variance: mm.PcaVariance = None,
     save: bool = True,
 ) -> pd.DataFrame:
-    """Run :func:`sweep` for every goal and concatenate.
+    """Run :func:`sweep` for every goal and metamodel set and concatenate.
 
     Parameters
     ----------
     goals
         Goals to sweep; default all configured goals.
+    metamodels
+        Metamodel sets to sweep; default every set in ``metamodel.sets``.
     candidates
         MDA train sizes to validate; default ``mda_candidates`` from config.
     variables
@@ -1097,12 +1126,14 @@ def sweep_all(
     frames = [
         sweep(
             goal,
+            metamodel=metamodel,
             candidates=candidates,
             variables=variables,
             pca_variance=pca_variance,
             save=save,
         )
         for goal in active
+        for metamodel in metamodels or mm.SETS
     ]
     return pd.concat(frames, ignore_index=True)
 
@@ -1648,7 +1679,7 @@ SWEEP_BY = ("bulk", "source", "group", "label", "buoy")
 
 
 def load_sweep_metrics(goal: str | int) -> pd.DataFrame:
-    """Load ``validation_metrics.csv`` written by :func:`sweep`.
+    """Load the ``validation_metrics.csv`` of every metamodel set of one goal.
 
     Parameters
     ----------
@@ -1663,12 +1694,13 @@ def load_sweep_metrics(goal: str | int) -> pd.DataFrame:
     Raises
     ------
     FileNotFoundError
-        If :func:`sweep` has not been run (and saved) for this goal.
+        If :func:`sweep` has not been run (and saved) for any set of this goal.
     """
-    path = validation_metrics_path(goal)
-    if not path.exists():
-        raise FileNotFoundError(f"No sweep metrics at {path}. Run sweep() first.")
-    df = pd.read_csv(path)
+    paths = [validation_metrics_path(goal, s) for s in mm.SETS]
+    frames = [pd.read_csv(p) for p in paths if p.exists()]
+    if not frames:
+        raise FileNotFoundError(f"No sweep metrics for goal {goal}. Run sweep() first.")
+    df = pd.concat(frames, ignore_index=True)
     df["goal"] = df["goal"].astype(str)
     return df
 
@@ -1723,7 +1755,7 @@ def aggregate_sweep(
 
     ``by`` options:
 
-    - ``bulk`` — n-weighted mean over all groups
+    - ``bulk`` — n-weighted mean over all groups of each metamodel set
     - ``source`` — per ``site_source`` (isobath / mesh / buoy)
     - ``group`` — per validation group (``5m``, ``10m``, ``Apia``, buoy id, …)
     - ``label`` — per ``site_label``
@@ -1745,7 +1777,7 @@ def aggregate_sweep(
     -------
     pandas.DataFrame
         For ``group``/``buoy``, the filtered rows unchanged; otherwise one
-        pooled row per ``(goal, mda_candidate, ..., variable)`` group
+        pooled row per ``(goal, metamodel, mda_candidate, ..., variable)`` group
         with one column per :data:`SWEEP_STATS` entry plus ``n`` (see
         :func:`_weighted_stats`).
 
@@ -1765,12 +1797,14 @@ def aggregate_sweep(
         out = df.copy()
         if by == "buoy":
             out = out[out["site_source"] == "buoy"]
-        return out.sort_values(["goal", "group", "variable", "mda_candidate"])
+        return out.sort_values(
+            ["goal", "metamodel", "group", "variable", "mda_candidate"]
+        )
 
     key_cols = {
-        "bulk": ["goal", "mda_candidate", "variable"],
-        "source": ["goal", "mda_candidate", "site_source", "variable"],
-        "label": ["goal", "mda_candidate", "site_label", "variable"],
+        "bulk": ["goal", "metamodel", "mda_candidate", "variable"],
+        "source": ["goal", "metamodel", "mda_candidate", "site_source", "variable"],
+        "label": ["goal", "metamodel", "mda_candidate", "site_label", "variable"],
     }[by]
 
     rows: list[dict[str, Any]] = []
@@ -1806,11 +1840,15 @@ def _sweep_series_key(row: pd.Series, by: str) -> str:
     return str(row["group"])
 
 
-def _sweep_line_label(row: pd.Series, by: str, *, multi_goal: bool) -> str:
-    """Legend label for one sweep line, prefixing the goal id when several goals are plotted."""
-    if by == "bulk":
-        return f"goal {row['goal']}" if multi_goal else "all sites"
-    name = _sweep_series_key(row, by)
+def _sweep_line_label(
+    row: pd.Series, by: str, *, multi_goal: bool, multi_set: bool
+) -> str:
+    """Legend label for one sweep line, naming the goal / set when several are plotted."""
+    name = str(row["metamodel"]) if by == "bulk" else _sweep_series_key(row, by)
+    if by == "bulk" and not multi_set:
+        name = "all sites"
+    elif by != "bulk" and multi_set:
+        name = f"{name} [{row['metamodel']}]"
     return f"{name} (goal {row['goal']})" if multi_goal else name
 
 
@@ -1861,6 +1899,7 @@ def plot_sweep(
         raise ValueError("No sweep data to plot after filtering.")
 
     multi_goal = agg["goal"].nunique() > 1
+    multi_set = agg["metamodel"].nunique() > 1
     stats = [s for s in SWEEP_STATS if s in agg and agg[s].notna().any()]
     nrows, ncols = len(stats), len(vars_)
     if figsize is None:
@@ -1874,12 +1913,12 @@ def plot_sweep(
     elif ncols == 1:
         axes = axes.reshape(-1, 1)
 
-    series_cols = {
-        "bulk": ["goal"],
-        "source": ["goal", "site_source"],
-        "label": ["goal", "site_label"],
-        "group": ["goal", "group", "site_source"],
-        "buoy": ["goal", "group"],
+    series_cols = ["goal", "metamodel"] + {
+        "bulk": [],
+        "source": ["site_source"],
+        "label": ["site_label"],
+        "group": ["group", "site_source"],
+        "buoy": ["group"],
     }[by]
 
     for i, stat in enumerate(stats):
@@ -1889,9 +1928,15 @@ def plot_sweep(
             for key, grp in sub.groupby(series_cols, sort=False):
                 grp = grp.sort_values("mda_candidate")
                 row0 = grp.iloc[0]
-                label = _sweep_line_label(row0, by, multi_goal=multi_goal)
+                label = _sweep_line_label(
+                    row0, by, multi_goal=multi_goal, multi_set=multi_set
+                )
                 source = str(row0.get("site_source", ""))
-                color = _sweep_line_color(_sweep_series_key(row0, by), source)
+                color = (
+                    None  # default colour cycle: one colour per goal / set
+                    if by == "bulk" and (multi_goal or multi_set)
+                    else _sweep_line_color(_sweep_series_key(row0, by), source)
+                )
                 ax.plot(
                     grp["mda_candidate"],
                     grp[stat],

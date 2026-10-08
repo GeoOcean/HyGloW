@@ -89,6 +89,28 @@ class TestValidationHelpers(unittest.TestCase):
         self.assertTrue(np.isnan(out["rrmse"]))  # older CSV without the column
         self.assertEqual(out["n"], 4)
 
+    def test_aggregate_sweep_keeps_sets_apart(self) -> None:
+        metrics = pd.DataFrame(
+            {
+                "goal": ["1"] * 4,
+                "metamodel": ["buoys", "buoys", "isobaths", "isobaths"],
+                "mda_candidate": [100] * 4,
+                "group": ["buoy_A", "buoy_B", "5m", "10m"],
+                "site_source": ["buoy", "buoy", "isobath", "isobath"],
+                "variable": ["hs"] * 4,
+                "n": [10] * 4,
+                "bias": [0.1, 0.3, 0.0, 0.0],
+                "rmse": [0.1, 0.3, 0.2, 0.2],
+                "rrmse": [0.1] * 4,
+                "r2": [0.9] * 4,
+            }
+        )
+        out = val.aggregate_sweep(metrics, by="bulk", variables=["hs"])
+        self.assertEqual(sorted(out["metamodel"]), ["buoys", "isobaths"])
+        self.assertAlmostEqual(
+            float(out.loc[out["metamodel"] == "buoys", "bias"].iloc[0]), 0.2
+        )
+
     def test_haversine_matches_known_distance(self) -> None:
         # one degree of latitude ~ 111.19 km on the 6371 km sphere
         self.assertAlmostEqual(val._haversine_m(0.0, 0.0, 0.0, 1.0) / 1e3, 111.19, 1)

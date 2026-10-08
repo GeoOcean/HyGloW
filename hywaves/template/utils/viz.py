@@ -33,6 +33,7 @@ from bluemath_tk.core.plotting.base_plotting import (
     DefaultStaticPlotting,
     decimate_raster,
 )
+from bluemath_tk.waves.hywaves.output_points import smooth_raster
 from bluemath_tk.wrappers.snapwave import BOUNDARY_VARS
 from bluemath_tk.wrappers.snapwave.snapwave_plots import CasePlotStyle, plot_case
 from cartopy.mpl.geoaxes import GeoAxes
@@ -42,7 +43,7 @@ from matplotlib.gridspec import GridSpec
 from matplotlib.patches import Wedge
 from shapely.geometry import MultiPolygon, Polygon
 
-from utils.config import PATHS, display_title, resolve
+from utils.config import OUTPUT_SITES_CONFIG, PATHS, display_title, resolve
 
 FIGSIZE = (9, 7)
 TOPOBATHY_VMIN, TOPOBATHY_VMAX = -200, 0
@@ -122,6 +123,20 @@ def _aoi() -> gpd.GeoDataFrame:
     return gpd.read_file(resolve(PATHS["aoi_file"]))
 
 
+@lru_cache(maxsize=1)
+def _isobath_raster():
+    """Topobathy for isobath lines: smoothed like the output sites, if configured.
+
+    Uses the largest ``smooth_m`` of ``simulations.output_sites_config.isobaths``
+    so the drawn contours are the ones the isobath sites sit on.
+    """
+    widths = [s.get("smooth_m") or 0 for s in OUTPUT_SITES_CONFIG.get("isobaths", [])]
+    smooth_m = max(widths, default=0)
+    if not smooth_m:
+        return _topobathy()
+    return smooth_raster(_topobathy(), float(smooth_m))
+
+
 def _isobath_contour_colors() -> list[str]:
     return [ISOBATH_COLORS[f"{abs(level)}m"] for level in ISOBATH_CONTOUR_LEVELS]
 
@@ -129,12 +144,13 @@ def _isobath_contour_colors() -> list[str]:
 def _plot_isobaths(ax: Axes) -> None:
     """Draw labelled isobath contour lines over the topobathy raster.
 
-    Each level also gets a legend entry, picked up by whichever
-    ``ax.legend()`` call the caller makes afterwards.
+    Contours of :func:`_isobath_raster` (smoothed like the output sites). Each
+    level also gets a legend entry, picked up by whichever ``ax.legend()``
+    call the caller makes afterwards.
     """
     _STATIC.plot_isodepths(
         ax,
-        _topobathy(),
+        _isobath_raster(),
         ISOBATH_CONTOUR_LEVELS,
         legend=True,
         colors=_isobath_contour_colors(),
@@ -1288,6 +1304,7 @@ def plot_metamodel_configuration(
     output_sites_df: pd.DataFrame,
     bounds: dict[str, list[float]] | None = None,
     num_samples_per_goal: int | None = None,
+    max_steepness: float | None = None,
     mesh_file: str | None = None,
     enclosure_buffer_m: float | None = None,
     sector_radius_deg: float = 0.35,
@@ -1309,8 +1326,9 @@ def plot_metamodel_configuration(
         Case geometry and goal configuration (see
         :class:`utils.simulation.SnapWaveCaseSetup`).
     cases_df
-        LHS cases table with ``goal``, ``tp``, ``dir``, ``spr``, ``wl`` columns.
-    bounds, num_samples_per_goal, mesh_file, enclosure_buffer_m
+        Metamodel cases with ``goal``, ``hs``, ``tp``, ``dir``, ``spr``, ``wl``
+        columns (LHS samples kept by the steepness filter).
+    bounds, num_samples_per_goal, max_steepness, mesh_file, enclosure_buffer_m
         Optional metadata surfaced in the text summary panel only.
     sector_radius_deg, arrow_scale_deg, max_arrows_per_goal
         Map styling controls for sectors and direction arrows.
@@ -1328,7 +1346,7 @@ def plot_metamodel_configuration(
     KeyError
         If *cases_df* is missing a required column.
     """
-    required = {"goal", "tp", "dir", "spr", "wl"}
+    required = {"goal", "hs", "tp", "dir", "spr", "wl"}
     missing = required - set(cases_df.columns)
     if missing:
         raise KeyError(f"cases_df missing columns: {sorted(missing)}")
@@ -1364,7 +1382,8 @@ def plot_metamodel_configuration(
         "",
         f"Goals            : {n_goals}",
         f"Total cases      : {n_cases}",
-        f"Samples / goal   : {num_samples_per_goal or (n_cases // n_goals if n_goals else 0)}",
+        f"LHS / goal       : {num_samples_per_goal or '-'}",
+        f"Kept / goal      : {n_cases // n_goals if n_goals else 0} (mean)",
         f"Output sites     : {len(output_sites_df)}",
     ]
     if enclosure_buffer_m is not None:
@@ -1376,11 +1395,14 @@ def plot_metamodel_configuration(
             [
                 "",
                 "Global bounds (dir from goal sectors):",
+                f"  hs  : {bounds['hs']}",
                 f"  tp  : {bounds['tp']}",
                 f"  spr : {bounds['spr']}",
                 f"  wl  : {bounds['wl']}",
             ]
         )
+    if max_steepness is not None:
+        lines.append(f"Max steepness    : {max_steepness:g} (hs / L0)")
     lines.extend(["", "Goal sectors [left, right] (nautical):"])
     for goal_key in sorted(goals_config, key=int):
         ang = goals_config[goal_key]["angles"]

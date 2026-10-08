@@ -81,6 +81,21 @@ def _cmd_publish(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_snapshot(args: argparse.Namespace) -> int:
+    """Handle ``hywaves snapshot``: freeze the current portal under a tag."""
+    from .snapshot import SnapshotError, snapshot_case
+
+    try:
+        target = snapshot_case(args.case_dir, args.tag, note=args.note)
+    except SnapshotError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    print(f"Snapshot written: {target}")
+    print(f"Next: commit it with `git add {target.parent.name}/{target.name}`")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """Entry point for ``python -m hywaves`` — parses argv and dispatches to a subcommand."""
     parser = argparse.ArgumentParser(
@@ -171,6 +186,22 @@ def main(argv: list[str] | None = None) -> int:
         help="Downscale published PNGs to this longest side in pixels (default: 2400)",
     )
     p_publish.set_defaults(func=_cmd_publish)
+
+    p_snapshot = sub.add_parser(
+        "snapshot",
+        help="Freeze {Case}/portal/ as {Case}/portal_<tag>/",
+        description=(
+            "Copy the published portal bundle (built book included) to "
+            "{Case}/portal_<tag>/ so this version stays browsable in the GUI "
+            "after the case is re-run and re-published. See CONTRACT.md §6."
+        ),
+    )
+    p_snapshot.add_argument("case_dir", help="Path to the case folder")
+    p_snapshot.add_argument("tag", help="Version name: lowercase letters, digits, '-' (e.g. hs1)")
+    p_snapshot.add_argument(
+        "--note", default="", help="What this version is (shown in the GUI dropdown)"
+    )
+    p_snapshot.set_defaults(func=_cmd_snapshot)
 
     args = parser.parse_args(argv)
     return args.func(args)

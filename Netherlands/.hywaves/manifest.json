@@ -1,7 +1,7 @@
 {
-  "hywaves_version": "0.8.0",
+  "hywaves_version": "0.10.0",
   "schema_version": 1,
-  "source": "hywaves-template@0.8.0",
+  "source": "hywaves-template@0.10.0",
   "created": "2026-09-22T07:06:18+00:00",
   "notebooks": [
     "01_Generate_tiff_from_GEBCO.ipynb",
@@ -20,18 +20,18 @@
   ],
   "engine_files": {
     "utils/__init__.py": "e67e21b00a58c9bd83407d426a468e1ff02a1f52888d47a4488e8cd97fb3361b",
-    "utils/config.py": "7fad2efb5516a22ada55dcd39b9f6592dd3798e99582d8771fb9bbf88cd2eb4c",
-    "utils/geometry.py": "eb7421c799e3bc7db2e12da285081e3d605f681b7740c9fa2d02900e65992524",
+    "utils/config.py": "6fb49c612fcb7a5ce51512e29320a16ed0bccaea01018fffc2b504ceb78e5d56",
+    "utils/geometry.py": "cf4ee5e0fc22836ff7c263f4b8af1a7125cdbcf962c2b05f88cfc7409feffd32",
     "utils/onshore_sites.py": "ac0fe1cf8c9d6bf27db8a75427fdce7b29f2b4dc6eb2a8b9cee5bad3951951b1",
-    "utils/simulation.py": "9077be164e5a2ebacac5e7e3fbf85a885ccbbd5c0ecffdfc974ffb1acf52d681",
-    "utils/validation.py": "fecf2599fcda4217e33cd9488cf1572ff7685d77c58a1c8ed4eb2a050d441123",
-    "utils/viz.py": "c511498ca2c24c5463fd8d2482a0f227ad99fd98ce78bf925557d9558cd704bb",
+    "utils/simulation.py": "4cb7eb0c44f89137c2ced9cba6bec686a6eeddcbad894bce29e5433dd0deb63e",
+    "utils/validation.py": "4ec8e7e6acda92e33a9dd4146f2605db85cb01bd5b5f0860481f97cbaf90f093",
+    "utils/viz.py": "3c96a88b50cfa6d3912df542659e9fba4def4cd69738f1328f79efc1def0a37a",
     "tests/test_geometry.py": "bb971347a47121f0c890388b322b9fe9132e4df0a60397737a5475ca9e0b0e78",
     "tests/test_logging_config.py": "b4c558ed4eed2eb07d824dc0b321afe33d3735c4c9235d101edc76881e170744",
-    "tests/test_metamodel_helpers.py": "53a8bdfd4db8f0aaf7259df3698de3f1bbb4a5948a6d1e36e9c1a1b4e50cbd0e",
+    "tests/test_metamodel_helpers.py": "4dc2b381d369b4b8923a1171e1126bf7cad4f7dc185c7927c13b1fe4d90f3f01",
     "tests/test_onshore_sites.py": "604cef1774032b497214439f64f3141fb0b5f0190342d6e587f009ee7cb2eecf",
-    "tests/test_simulation.py": "77a829c9a56d7851b6b37a4cd03a08a093a7257c57e7be7d5494439f855f3ae6",
-    "tests/test_validation_helpers.py": "df70278f84a90a2949954069d46ff9477164ad2c8fa45bad29fe34aa11e0d831"
+    "tests/test_simulation.py": "087f67229f77195571b3bbde41e8baa10557c027662c6266aeeee9ca5895d3b0",
+    "tests/test_validation_helpers.py": "4bf54e6f3490af972a9faf34c47d945c8a0e600a23c0b8e586438fca5d83e4a1"
   },
-  "updated": "2026-10-07T09:09:36+00:00"
+  "updated": "2026-10-07T18:34:07+00:00"
 }

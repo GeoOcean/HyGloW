@@ -15,6 +15,7 @@ from .loaders import (
     available_gui_figures,
     book_available,
     case_mda_candidate,
+    case_options,
     catalog_by_continent,
     load_all_metrics,
     load_aoi,
@@ -619,7 +620,7 @@ def register_callbacks(app):
         catalog = load_catalog()
         continent = load_case(case_id).get("continent")
         cases = catalog_by_continent(catalog).get(continent, catalog)
-        return [{"label": c.get("case_dir", c["id"]), "value": c["id"]} for c in cases]
+        return case_options(cases)
 
     @app.callback(
         Output("welcome-modal", "is_open"),

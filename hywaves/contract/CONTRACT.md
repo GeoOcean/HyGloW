@@ -65,14 +65,17 @@ A GeoJSON `FeatureCollection` of `Point` features. Each feature's
 
 ### 4. Validation outputs
 
-`outputs/goal_*/validation_metrics.csv` — one per goal, produced by the
-case's holdout validation. Required columns (extra columns are fine):
+`outputs/goal_*/<set>/validation_metrics.csv` — one per goal and metamodel
+set, produced by the case's holdout validation. Required columns (extra
+columns are fine):
 
 ```text
-goal, mda_candidate, group, variable, n, bias, rmse, r2
+goal, metamodel, mda_candidate, group, variable, n, bias, rmse, r2
 ```
 
 - `goal` — goal id matching the goals JSON.
+- `metamodel` — metamodel set (a key of `metamodel.sets`, e.g. `buoys`,
+  `isobaths`; any single label for an emulator without sets).
 - `mda_candidate` — training-set size (or emulator size parameter).
 - `group` — site group label (e.g. `10m`, `Apia`, `buoy`).
 - `variable` — one of the case's validated variables (e.g. `hs`, `tp`).
@@ -96,8 +99,9 @@ optional, similarly-shaped outputs — a case without them still validates and
 publishes, that tab in the portal just shows a "run this notebook" message:
 
 - `outputs/metamodel_validation/*.csv` — domain-wide linear-summation-vs-dynamic
-  comparison (no `goal` column; one reconstructed period per file). Same
-  required columns as §4 minus `goal`, plus `period`.
+  comparison (no `goal` column; one reconstructed period and metamodel set per
+  file, `linear_summation_<set>_<period>.csv`). Same required columns as §4
+  minus `goal`, plus `period`.
 - `outputs/buoy_validation/*_summary_*.csv` — buoy-vs-model comparison, one
   row per `(buoy, model, variable)`; same columns as §4 plus `model` and
   `period`, with `group` naming the buoy. A matching
@@ -136,9 +140,9 @@ scientific stack.
 | `goals.json`                                      | `simulations.goals_file` (§2), as is                                       |
 | `observations.json`                               | `onshore_waves` (§3), as is                                                |
 | `aoi.geojson`                                     | `paths.aoi_file` shapefile → GeoJSON `FeatureCollection` (Polygon/MultiPolygon, EPSG:4326) |
-| `isobaths.json`                                   | `paths.topobathy_file` raster, contoured at each `simulations.output_sites_config.isobaths[].level` → `[{"name", "level", "segments": [[[lon, lat], …], …]}]` |
+| `isobaths.json`                                   | `paths.topobathy_file` raster, contoured at each `simulations.output_sites_config.isobaths[].level` (after that entry's `smooth_m` / `min_length_m`, as for the output sites) → `[{"name", "level", "segments": [[[lon, lat], …], …]}]` |
 | `output_sites.json`                               | first `output_sites_*.nc` under `simulations.metamodel_cases` (or, if that path isn't reachable, a same-named folder inside the case), buoy sites dropped → `{"lon": […], "lat": […], "source": […], "label": […]}` |
-| `validation_metrics.csv`                          | every `outputs/goal_*/validation_metrics.csv` (§4), merged — each row keeps its `goal` |
+| `validation_metrics.csv`                          | every `outputs/goal_*/*/validation_metrics.csv` (§4), merged — each row keeps its `goal` and `metamodel` |
 | `metamodel_validation/*.csv`                      | `outputs/metamodel_validation/*.csv` (§5), as is                           |
 | `buoy_validation/*_summary_*.csv`                 | `outputs/buoy_validation/*_summary_*.csv` (§5), as is                      |
 | `buoy_validation/figures/*.png`                   | `outputs/buoy_validation/figures/*.png` (§5), downscaled                   |
@@ -171,22 +175,33 @@ appeared or disappeared since the last publish — re-run `publish`.
 (a built static site, tens of MB — deploy it separately) and the transient
 `portal.tmp/` / `portal.old/`.
 
+**Snapshots.** `python -m hywaves snapshot {Case}/ <tag> --note "…"` copies
+the current `portal/` (book included) to `{Case}/portal_<tag>/` — `<tag>` is
+lowercase letters, digits and `-` — and adds `snapshot: {tag, note, created}`
+to that copy's `manifest.json`. Snapshots are frozen versions of a case (e.g.
+before re-running it with a new metamodel): never re-published, not checked
+for staleness, committed like `portal/` (their `book/` git-ignored). The
+reference GUI lists them as versions of the case.
+
 ---
 
 ## Level 2 — Engine contract (`metamodel` section present)
 
 | Key                                                     | Rule                                                                                                            |
 | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `sets`                                                  | non-empty dict; each value `{"sites": selector}` — `null` (all sites), a site group / umbrella / id, or a list   |
 | `mda_candidates`                                        | non-empty list of positive ints (last = biggest)                                                                |
-| `mda_inputs`                                            | non-empty list of strings                                                                                       |
+| `mda_inputs`                                            | non-empty list of strings (`hs`, `tp`, `dir`, `spr`, `wl`)                                                      |
 | `mda_directional_variables`                             | list, subset of `mda_inputs`                                                                                    |
 | `vars_to_predict`                                       | non-empty dict; each value `"raw"` or a dict with `vars_to_stack` (non-empty list) and `pca_variance` in (0, 1] |
-| `site_filter`                                           | dict; keys end with `_max` or `_min`                                                                            |
+| `site_filter`                                           | dict; keys `{var}_max`, `{var}_min` or `{var}_ratio_max` (`var / {var}_forcing`)                                 |
 | `pca_preprocessing`                                     | optional dict of dicts                                                                                          |
 | `validation.metrics_variables`                          | non-empty list, subset of `vars_to_predict`                                                                     |
 | `reconstruction.variables`                              | non-empty dict; keys subset of `vars_to_predict`; values valid wavespectra stats                                |
 | `reconstruction.save_spectra`                           | bool, required                                                                                                  |
-| `paths.pca_dir` / `paths.gp_dir`                        | template strings                                                                                                |
+| `paths.pca_dir` / `paths.gp_dir`                        | template strings with `{goal}`, `{metamodel}` and `{mda_candidate}`                                             |
+| `simulations.bounds`                                    | `[low, high]` for every non-directional `mda_inputs` entry                                                      |
+| `simulations.max_steepness`                             | positive number; LHS samples with `hs / L0` above it are dropped                                                |
 | `simulations.metamodel_templates` / `dynamic_templates` | folders should exist                                                                                            |
 
 The wavespectra-stats check is skipped (with a note) when `wavespectra` is
@@ -198,6 +213,22 @@ not importable — the validator itself never requires third-party packages.
 
 Every change to this document is recorded here.
 
+- **2026-10** (hywaves 0.10.0): Hs is a metamodel input. SnapWave metamodel
+  cases sample `hs` too (`simulations.bounds.hs`; the `hs.txt` template writes
+  `{{ hs }}` at `active_node`), samples steeper than
+  `simulations.max_steepness` are dropped, and the metamodel predicts absolute
+  nearshore Hs (no more unit-Hs transfer coefficient). `metamodel.sets` defines
+  metamodel sets — PCA + GP models on a subset of the output sites, sharing
+  the SnapWave cases and MDA of each goal. Holdout metrics move to
+  `outputs/goal_*/<set>/validation_metrics.csv` with a required `metamodel`
+  column (§4); `paths.pca_dir` / `gp_dir` take `{metamodel}`; `site_filter`
+  accepts `{var}_ratio_max`. Portal snapshots (§6): `hywaves snapshot` freezes
+  `portal/` as `portal_<tag>/`, shown as case versions in the GUI.
+- **2026-10** (hywaves 0.9.0): isobath output sites are placed on a smoothed
+  bathymetry: each `simulations.output_sites_config.isobaths` entry takes
+  `smooth_m` (Gaussian width, m), `min_length_m` (drop shorter contour pieces)
+  and `spacing_m` (metres between sites along the contour), replacing the
+  degree-based `spacing`. `isobaths.json` follows the same smoothing.
 - **2026-10** (hywaves 0.8.0): SnapWave cases are driven by
   `bluemath_tk.wrappers.snapwave`. The case templates (`templates-metamodel/`,
   `templates-dynamic/`) keep the same SnapWave settings but use its context

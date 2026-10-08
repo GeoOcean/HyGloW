@@ -220,6 +220,7 @@ Netherlands/inputs/Observations/raw/
 # the built book is deployed by hand, and the .tmp/.old dirs are transient.
 **/book/
 */portal/book/
+*/portal_*/book/
 */portal.tmp/
 */portal.old/
 

@@ -8,6 +8,8 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from unittest import mock
+
 from utils import metamodel as mm
 
 
@@ -18,17 +20,40 @@ class TestMetamodelHelpers(unittest.TestCase):
             mm._consolidated_pca_sites(kept, ["dir_u", "dir_v"]), ["b", "c"]
         )
 
-    def test_detect_removed_sites_hs_max(self) -> None:
+    def test_detect_removed_sites(self) -> None:
+        """A site far above the case Hs (numerical anomaly) is removed."""
         cases = xr.Dataset(
             {
-                "hs": (("case_num", "sites"), np.array([[1.0, 11.0], [2.0, 3.0]])),
+                "hs": (("case_num", "sites"), np.array([[1.0, 40.0], [3.0, 3.0]])),
                 "tp": (("case_num", "sites"), np.array([[5.0, 5.0], [5.0, 5.0]])),
+                "hs_forcing": (("case_num",), np.array([1.0, 4.0])),
             },
             coords={"case_num": [0, 1], "sites": ["ok", "bad"]},
         )
-        removed = mm.detect_removed_sites(cases)
-        self.assertIn("bad", removed)
-        self.assertNotIn("ok", removed)
+        with mock.patch.dict(mm.SITE_FILTER, {"hs_ratio_max": 3.0}, clear=True):
+            removed = mm.detect_removed_sites(cases)
+        self.assertEqual(removed, ["bad"])
+
+    def test_set_sites(self) -> None:
+        """A set's selector picks its sites; unknown sets are rejected."""
+        cases = xr.Dataset(
+            coords={
+                "sites": ["iso_a", "iso_b", "buoy_X"],
+                "site_source": ("sites", ["isobath", "isobath", "buoy"]),
+                "site_label": ("sites", ["5m", "10m", "X"]),
+            }
+        )
+        sets = {"buoys": {"sites": "buoy"}, "all": {"sites": None}}
+        with mock.patch.dict(mm.SETS, sets, clear=True):
+            self.assertEqual(mm.set_sites(cases, "buoys"), ["buoy_X"])
+            self.assertEqual(len(mm.set_sites(cases, "all")), 3)
+            with self.assertRaises(ValueError):
+                mm.set_sites(cases, "nope")
+
+    def test_paths_include_set(self) -> None:
+        set_name = next(iter(mm.SETS))
+        path = mm.gp_model_path(3, set_name, 450)
+        self.assertEqual(path.parts[-4:], ("goal_03", set_name, "gp_450", "gp_model.pkl"))
 
     def test_pca_preprocessing_from_config(self) -> None:
         replace, drop = mm._pca_preprocessing()

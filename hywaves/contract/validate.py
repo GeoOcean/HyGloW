@@ -27,6 +27,7 @@ from typing import Any
 
 REQUIRED_METRICS_COLUMNS = {
     "goal",
+    "metamodel",
     "mda_candidate",
     "group",
     "variable",
@@ -268,16 +269,19 @@ def _check_offshore(config: dict, report: _Report) -> None:
 
 
 def _check_outputs(case_dir: Path, report: _Report) -> None:
-    """Check ``outputs/goal_*/validation_metrics.csv`` files have the required columns.
+    """Check ``outputs/goal_*/*/validation_metrics.csv`` files have the required columns.
 
     In ``--publish`` mode, also warns if no portal figures exist under
     ``outputs/gui_figures/``.
     """
-    metrics_files = sorted((case_dir / "outputs").glob("goal_*/validation_metrics.csv"))
+    metrics_files = sorted(
+        (case_dir / "outputs").glob("goal_*/*/validation_metrics.csv")
+    )
     if not metrics_files:
         report.gap(
             "outputs.metrics",
-            "no outputs/goal_*/validation_metrics.csv yet — run the holdout validation sweep",
+            "no outputs/goal_*/<set>/validation_metrics.csv yet — run the holdout "
+            "validation sweep",
         )
     for path in metrics_files:
         try:
@@ -288,9 +292,10 @@ def _check_outputs(case_dir: Path, report: _Report) -> None:
             continue
         missing = REQUIRED_METRICS_COLUMNS - set(header)
         if missing:
+            rel = path.relative_to(case_dir / "outputs").as_posix()
             report.error(
                 "outputs.metrics",
-                f"{path.parent.name}/{path.name} missing required columns: {sorted(missing)}",
+                f"{rel} missing required columns: {sorted(missing)}",
             )
     if metrics_files:
         report.info(
@@ -491,7 +496,28 @@ def _check_engine(case_dir: Path, config: dict, report: _Report) -> None:
             if not (key.endswith("_max") or key.endswith("_min")):
                 report.error(
                     "engine.site_filter",
-                    f"site_filter key {key!r} must end with '_max' or '_min'",
+                    f"site_filter key {key!r} must end with '_max', '_ratio_max' "
+                    "or '_min'",
+                )
+
+    sets = mm.get("sets")
+    if not isinstance(sets, dict) or not sets:
+        report.error(
+            "engine.sets",
+            'metamodel.sets must be a non-empty dict (name → {"sites": selector})',
+        )
+    else:
+        for name, spec in sets.items():
+            valid = (
+                isinstance(spec, dict)
+                and "sites" in spec
+                and (spec["sites"] is None or isinstance(spec["sites"], (str, list)))
+            )
+            if not valid:
+                report.error(
+                    "engine.sets",
+                    f"metamodel.sets[{name!r}] must be a dict with 'sites' "
+                    "(null, a string or a list)",
                 )
 
     metrics = mm.get("validation", {}).get("metrics_variables")
@@ -555,8 +581,30 @@ def _check_engine(case_dir: Path, config: dict, report: _Report) -> None:
             report.error(
                 "engine.paths", f"metamodel.paths.{key} must be a template string"
             )
+        elif "{metamodel}" not in paths[key]:
+            report.error(
+                "engine.paths",
+                f"metamodel.paths.{key} must contain '{{metamodel}}' (the set name)",
+            )
 
     sim = config.get("simulations", {})
+    bounds = sim.get("bounds", {})
+    for name in inputs:
+        if isinstance(directional, list) and name in directional:
+            continue  # sampled within each goal's sector
+        pair = bounds.get(name) if isinstance(bounds, dict) else None
+        if not (
+            isinstance(pair, list) and len(pair) == 2 and all(_is_number(v) for v in pair)
+        ):
+            report.error(
+                "engine.bounds",
+                f"simulations.bounds.{name} must be a [low, high] pair (mda input)",
+            )
+    steepness = sim.get("max_steepness")
+    if not _is_number(steepness) or float(steepness) <= 0:
+        report.error(
+            "engine.max_steepness", "simulations.max_steepness must be a positive number"
+        )
     for key in ("metamodel_templates", "dynamic_templates"):
         folder = sim.get(key)
         if isinstance(folder, str) and folder and not (case_dir / folder).is_dir():

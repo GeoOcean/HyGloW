@@ -5,7 +5,8 @@ SLURM arrays, postprocessing, case plots) are :mod:`bluemath_tk.wrappers.snapwav
 notebooks use them directly. This module turns the case JSON into their inputs:
 
 - :func:`generate_cases` — Latin Hypercube per goal within its sector
-  (``simulations.bounds``, ``num_samples_per_goal``);
+  (``simulations.bounds``, ``num_samples_per_goal``), keeping plausible sea
+  states (``simulations.max_steepness``);
 - :func:`templates_dir` — ``simulations.metamodel_templates`` /
   ``dynamic_templates``;
 - :class:`SnapWaveCaseSetup` — goals as boundary nodes (goal id = 1-based
@@ -35,6 +36,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 from bluemath_tk.datamining.lhs import LHS
+from bluemath_tk.waves.steepness import filter_by_steepness
 from bluemath_tk.wrappers.snapwave import build_enclosure_polygon
 from matplotlib.figure import Figure
 from shapely.geometry import Polygon
@@ -43,8 +45,18 @@ from utils import viz
 from utils.config import PATHS, SIMULATIONS, goals_for_snapwave, load_goals, resolve
 from utils.geometry import compute_output_sites
 
+#: Metamodel LHS parameters, stored as ``{name}_forcing`` on postprocessed output.
+FORCING_VARS = ("hs", "tp", "dir", "spr", "wl")
+
+
 def generate_cases(goals: Mapping[str, Mapping]) -> pd.DataFrame:
-    """Generate Latin Hypercube cases for each metamodel goal.
+    """Generate the metamodel cases of each goal: LHS, then plausible sea states.
+
+    ``num_samples_per_goal`` Latin Hypercube samples of ``hs``, ``tp``,
+    ``dir``, ``spr`` and ``wl`` within ``simulations.bounds`` are drawn per
+    goal; samples steeper than ``simulations.max_steepness`` (``hs / L0``, see
+    :func:`bluemath_tk.waves.steepness.filter_by_steepness`) are dropped, so
+    each goal keeps fewer cases than requested.
 
     Offshore wave direction ``dir`` is sampled in nautical degrees (wave-from,
     clockwise from North) within each goal's ``angles`` sector. Bounds are
@@ -59,30 +71,27 @@ def generate_cases(goals: Mapping[str, Mapping]) -> pd.DataFrame:
     Returns
     -------
     pandas.DataFrame
-        Columns ``goal``, ``active_node``, ``tp``, ``dir``, ``spr``, ``wl``
-        with one row per LHS sample (``num_samples_per_goal`` per goal).
-        ``active_node`` (= goal id) is the 1-based SnapWave boundary node with
-        unit Hs (see :mod:`utils.simulation`). ``dir`` is in
+        Columns ``goal``, ``active_node``, ``hs``, ``tp``, ``dir``, ``spr``,
+        ``wl``, one row per kept sample. ``active_node`` (= goal id) is the
+        1-based SnapWave boundary node where ``hs`` is applied. ``dir`` is in
         ``[0, 360)`` after normalization.
     """
     bounds = SIMULATIONS["bounds"]
     n = SIMULATIONS["num_samples_per_goal"]
-    tp_lo, tp_hi = bounds["tp"]
-    spr_lo, spr_hi = bounds["spr"]
-    wl_lo, wl_hi = bounds["wl"]
+    names = list(FORCING_VARS)
 
     frames: list[pd.DataFrame] = []
     for _goal_id, goal in goals.items():
-        ang_lo, ang_hi = goal["angles"]
-        lhs = LHS(num_dimensions=4)
-        lhs_df = lhs.generate(
-            dimensions_names=["tp", "dir", "spr", "wl"],
-            lower_bounds=[tp_lo, ang_lo, spr_lo, wl_lo],
-            upper_bounds=[tp_hi, ang_hi, spr_hi, wl_hi],
+        sampled = {**bounds, "dir": goal["angles"]}
+        lhs_df = LHS(num_dimensions=len(names)).generate(
+            dimensions_names=names,
+            lower_bounds=[sampled[v][0] for v in names],
+            upper_bounds=[sampled[v][1] for v in names],
             num_samples=n,
         )
         lhs_df["dir"] = np.mod(lhs_df["dir"], 360.0)
-        frames.append(lhs_df)
+        lhs_df = filter_by_steepness(lhs_df, SIMULATIONS["max_steepness"])
+        frames.append(lhs_df.reset_index(drop=True))
 
     cases = (
         pd.concat(frames, keys=list(goals.keys()))
@@ -103,9 +112,6 @@ SITE_COORDS = {
     "site_longitude": "lon",
     "site_latitude": "lat",
 }
-
-#: Metamodel LHS parameters stored as ``{name}_forcing`` on postprocessed output.
-FORCING_VARS = ("tp", "dir", "spr", "wl")
 
 #: Observation file (``obsfile``); SnapWave writes its ``.nc`` sibling.
 SITES_FILENAME = "output_sites.txt"
@@ -251,6 +257,7 @@ class SnapWaveCaseSetup:
                 cases_df=cases_df,
                 bounds=SIMULATIONS.get("bounds"),
                 num_samples_per_goal=SIMULATIONS.get("num_samples_per_goal"),
+                max_steepness=SIMULATIONS.get("max_steepness"),
                 mesh_file=self.mesh_file,
                 enclosure_buffer_m=self.enclosure_buffer_m,
                 title="Metamodel pre-run diagnostic",

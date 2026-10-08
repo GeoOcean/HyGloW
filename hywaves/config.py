@@ -135,8 +135,8 @@ class CaseConfig:
         return self.case_dir / "outputs"
 
     def goal_metrics_files(self) -> list[Path]:
-        """All ``outputs/goal_*/validation_metrics.csv`` files."""
-        return sorted(self.outputs_dir.glob("goal_*/validation_metrics.csv"))
+        """All ``outputs/goal_*/<set>/validation_metrics.csv`` files."""
+        return sorted(self.outputs_dir.glob("goal_*/*/validation_metrics.csv"))
 
     def figure_files(self) -> list[Path]:
         """Showcase figures published to the GUI portal."""
