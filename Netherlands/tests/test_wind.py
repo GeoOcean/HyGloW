@@ -1,0 +1,111 @@
+"""Unit tests for ``utils.wind`` (training design, pairs, K fit) without model runs."""
+
+from __future__ import annotations
+
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+import numpy as np
+import pandas as pd
+import xarray as xr
+
+from utils import wind
+
+GOALS = {"1": {"angles": [250, 340]}, "2": {"angles": [270, 360]}}
+BOUNDS = {"hs": [0.05, 8.0], "tp": [2, 15], "spr": [5, 45], "wl": [-1, 1]}
+SITES = ["iso_10m_0", "iso_20m_0", "buoy_A"]
+
+
+def _patches(tmp: str):
+    sim = {
+        "bounds": BOUNDS,
+        "max_steepness": 0.06,
+        "model": "snapwave",
+        "snapwave": {"grid_file": "mesh.nc", "wind_cases": str(Path(tmp) / "cases")},
+    }
+    return (
+        mock.patch.dict(wind.SIMULATIONS, sim),
+        mock.patch.dict(wind.METAMODEL, {"wind_correction": {"num_cases": 12}}),
+        mock.patch.object(wind, "output_dir", lambda: Path(tmp)),
+    )
+
+
+class TestWindCases(unittest.TestCase):
+    def test_design_is_wind_sea_with_wind(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            p1, p2, p3 = _patches(tmp)
+            with p1, p2, p3:
+                cases = wind.generate_wind_cases(GOALS)
+        self.assertEqual(len(cases), 12)
+        self.assertTrue((cases["ws_weight"] >= wind.MIN_TRAINING_WEIGHT).all())
+        steep = cases["hs"] / (9.81 * cases["tp"] ** 2 / (2 * np.pi))
+        self.assertLessEqual(float(steep.max()), 0.06)
+        self.assertTrue(cases["u10"].between(3.0, 35.0).all())
+        self.assertTrue(cases["dir"].between(250, 360).all())
+        angle = np.mod(cases["u10dir"] - cases["dir"] + 180, 360) - 180
+        np.testing.assert_allclose(angle, cases["wind_wave_angle"], atol=1e-6)
+
+    def test_case_parameters(self) -> None:
+        cases = pd.DataFrame(
+            {"hs": [2.0, 3.0], "tp": [6.0, 7.0], "dir": [300.0, 310.0], "spr": [30.0, 30.0],
+             "wl": [0.1, 0.2], "u10": [14.0, 18.0], "u10dir": [290.0, 320.0]}
+        )
+        with_wind = wind.case_parameters(cases, 3, with_wind=True)
+        without = wind.case_parameters(cases, 3, with_wind=False)
+        self.assertEqual(with_wind["tref"], ["20000101 000000", "20000101 010000"])
+        self.assertEqual(with_wind["hs_nodes"][1], [3.0, 3.0, 3.0])
+        self.assertEqual(with_wind["u10"], [14.0, 18.0])
+        self.assertEqual(without["u10"], [0.0, 0.0])
+        self.assertEqual(without["hs_nodes"], with_wind["hs_nodes"])
+
+
+class TestFitWindCorrection(unittest.TestCase):
+    def test_pairs_fit_and_scores(self) -> None:
+        rng = np.random.default_rng(1)
+        n_cases = 40
+        cases = pd.DataFrame(
+            {"hs": rng.uniform(1, 5, n_cases), "tp": 7.0, "dir": 300.0, "spr": 30.0, "wl": 0.0,
+             "u10": rng.uniform(8, 25, n_cases), "u10dir": rng.uniform(250, 350, n_cases),
+             "wind_wave_angle": rng.uniform(-60, 60, n_cases), "ws_weight": rng.uniform(0.5, 1, n_cases)}
+        )
+        hs0 = cases["hs"].to_numpy()[:, None] * np.array([[0.6, 0.8, 0.9]])
+        k = 1 + 0.4 * np.exp(-9.81 * hs0 / cases["u10"].to_numpy()[:, None] ** 2 * 5)
+        with tempfile.TemporaryDirectory() as tmp:
+            p1, p2, p3 = _patches(tmp)
+            with p1, p2, p3:
+                root = wind.wind_cases_dir(True).parent
+                root.mkdir(parents=True)
+                cases.to_csv(root / "wind_cases.csv", index=False)
+                time = pd.date_range("2000-01-01", periods=n_cases, freq="h")
+                for with_wind, values in ((False, hs0), (True, hs0 * k)):
+                    xr.Dataset(
+                        {"hs": (("time", "sites"), values)},
+                        coords={"time": time, "sites": SITES, "site_label": ("sites", ["10m", "20m", "A"])},
+                    ).to_netcdf(wind.postprocessed_path(with_wind))
+                dirs = np.arange(0.0, 360.0, 5.0)
+                xr.Dataset(
+                    {
+                        "fetch": (("sites", "dir"), np.full((3, 72), 4e4)),
+                        "fetch_eff": (("sites", "dir"), np.full((3, 72), 4e4)),
+                        "mean_depth": (("sites", "dir"), np.full((3, 72), 25.0)),
+                        "site_depth": ("sites", [10.0, 20.0, 15.0]),
+                    },
+                    coords={"sites": SITES, "dir": dirs},
+                ).to_netcdf(wind.fetch_table_path())
+
+                pairs = wind.training_pairs()
+                self.assertEqual(len(pairs), n_cases * 3)
+                self.assertEqual(float(pairs["fetch"].iloc[0]), 4e4)
+                correction, scores = wind.fit_wind_correction(test_fraction=0.25)
+                self.assertTrue(wind.correction_path().is_file())
+                loaded = wind.load_wind_correction()
+                self.assertEqual(loaded.n_samples, correction.n_samples)
+
+        rmse = scores.pivot_table(index="group", columns="estimate", values="rmse")
+        self.assertTrue((rmse["wind correction"] < rmse["no correction"]).all())
+
+
+if __name__ == "__main__":
+    unittest.main()

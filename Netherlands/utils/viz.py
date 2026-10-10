@@ -22,6 +22,7 @@ from typing import Any
 import cartopy.crs as ccrs
 import geopandas as gpd
 import matplotlib.colors as mcolors
+import matplotlib.dates as mdates
 import matplotlib.patheffects as pe
 import matplotlib.pyplot as plt
 import numpy as np
@@ -1324,7 +1325,7 @@ def plot_metamodel_configuration(
     ----------
     aoi_gdf, enclosure_polygon, goals_config, output_sites_df
         Case geometry and goal configuration (see
-        :class:`utils.simulation.SnapWaveCaseSetup`).
+        :class:`utils.simulation.HyWavesWrapperSetup`).
     cases_df
         Metamodel cases with ``goal``, ``hs``, ``tp``, ``dir``, ``spr``, ``wl``
         columns (LHS samples kept by the steepness filter).
@@ -1464,10 +1465,14 @@ def plot_dynamic_configuration(
     show_satellite: bool = False,
     satellite_source: str = SATELLITE_SOURCE,
     maps_to_save: int | None = None,
+    wind: xr.Dataset | None = None,
+    water_level: xr.DataArray | None = None,
+    wind_name: str | None = None,
+    water_level_name: str | None = None,
     title: str = "Dynamic pre-run diagnostic",
 ) -> Figure:
     """
-    Multi-panel diagnostic before building or running dynamic SnapWave cases.
+    Multi-panel diagnostic before building or running dynamic cases.
 
     Shows propagation sectors from the goals JSON, observed bulk forcing ranges
     from offshore reanalysis (``hs``, ``tp``, ``dir``, ``spr``), and highlights
@@ -1479,13 +1484,18 @@ def plot_dynamic_configuration(
     ----------
     aoi_gdf, enclosure_polygon, goals_config, output_sites_df
         Case geometry and goal configuration (see
-        :class:`utils.simulation.SnapWaveCaseSetup`).
+        :class:`utils.simulation.HyWavesWrapperSetup`).
     offshore
         Processed offshore dataset with dims ``(time, goal)`` and bulk
         variables ``hs``, ``tp``, ``dir``, ``spr`` (see
         :func:`bluemath_tk.wrappers.snapwave.boundary_time_series`).
     offshore_name, mesh_file, enclosure_buffer_m, maps_to_save
         Optional metadata surfaced in the text summary panel only.
+    wind, water_level, wind_name, water_level_name
+        Optional met-ocean forcing of the cases (``u10``/``v10`` on
+        ``(time, latitude, longitude)``; water level on ``(time, goal)``),
+        summarised in the text panel (coverage of the case times, speed
+        percentiles, level range). See :func:`plot_dynamic_forcing` for maps.
     sector_radius_deg, arrow_scale_deg, max_arrows_per_goal
         Map styling controls for sectors and direction arrows.
     max_dir_marks
@@ -1563,9 +1573,9 @@ def plot_dynamic_configuration(
             f"  tp  : [{cases['tp'].min():.2f}, {cases['tp'].max():.2f}] s",
             f"  dir : [{cases['dir'].min():.1f}, {cases['dir'].max():.1f}]°",
             f"  spr : [{cases['spr'].min():.1f}, {cases['spr'].max():.1f}]°",
-            "",
-            "Per goal — sector vs observed dir (nautical):",
         ]
+        + _forcing_summary_lines(time_vals, wind, water_level, wind_name, water_level_name)
+        + ["", "Per goal — sector vs observed dir (nautical):"]
     )
     for goal_key in sorted(goals_config, key=int):
         ang = goals_config[goal_key]["angles"]
@@ -1698,23 +1708,251 @@ def _plot(
     show: bool,
     **kwargs,
 ) -> Figure:
-    """Shared body of :func:`plot_metamodel_case` / :func:`plot_dynamic_case`."""
+    """Shared body of :func:`plot_metamodel_case` / :func:`plot_dynamic_case`.
+
+    SWAN case folders (an ``INPUT`` file) go to
+    :func:`bluemath_tk.wrappers.swan.swan_plots.plot_case` (outputs at the
+    sites only: SWAN writes no mesh map here), SnapWave ones to
+    :func:`bluemath_tk.wrappers.snapwave.snapwave_plots.plot_case`.
+    """
     name = Path(case_dir).name
+    swan = (Path(case_dir) / "INPUT").is_file()
     if title is None:
         goal = infer_goal_from_path(case_dir) if mode == "metamodel" else None
         label = f" · G{goal}" if goal is not None else ""
-        title = display_title(f"SnapWave {mode}{label} · case {name}")
-    fig = plot_case(
-        case_dir,
-        mode=mode,
-        title=title,
-        show_satellite=show_satellite,
-        satellite_source=satellite_source,
-        background=_case_background(show_satellite, satellite_source),
-        **kwargs,
-    )
+        title = display_title(f"{'SWAN' if swan else 'SnapWave'} {mode}{label} · case {name}")
+    if swan:
+        from bluemath_tk.wrappers.swan.swan_plots import plot_case as plot_swan_case
+
+        fig = plot_swan_case(
+            case_dir,
+            mode=mode,
+            style=kwargs.get("style"),
+            title=title,
+            show_satellite=show_satellite,
+            satellite_source=satellite_source,
+        )
+    else:
+        fig = plot_case(
+            case_dir,
+            mode=mode,
+            title=title,
+            show_satellite=show_satellite,
+            satellite_source=satellite_source,
+            background=_case_background(show_satellite, satellite_source),
+            **kwargs,
+        )
     if show:
         plt.show()
+    return fig
+
+
+def _domain_mean_wind(wind: xr.Dataset) -> tuple[np.ndarray, np.ndarray]:
+    """Hourly domain-mean wind: speed (m/s) and nautical direction (deg, from)."""
+    from bluemath_tk.waves.wind import wind_speed_direction
+
+    u = wind["u10"].mean(["latitude", "longitude"]).values
+    v = wind["v10"].mean(["latitude", "longitude"]).values
+    return wind_speed_direction(u, v)
+
+
+def _forcing_summary_lines(
+    times: pd.DatetimeIndex | None,
+    wind: xr.Dataset | None,
+    water_level: xr.DataArray | None,
+    wind_name: str | None,
+    water_level_name: str | None,
+) -> list[str]:
+    """Text-panel lines on the wind and water level given to the dynamic cases."""
+    from bluemath_tk.waves.wind import wind_speed_direction
+
+    lines: list[str] = []
+    if wind is not None:
+        speed = wind_speed_direction(wind["u10"].values, wind["v10"].values)[0]
+        covered = ""
+        if times is not None and len(times):
+            wt = pd.DatetimeIndex(wind["time"].values)
+            inside = (times >= wt.min()) & (times <= wt.max())
+            covered = f", covers {inside.mean() * 100:.0f}% of case times"
+        p50, p95, top = np.nanpercentile(speed, [50, 95]).tolist() + [float(np.nanmax(speed))]
+        lines += [
+            "",
+            f"Wind              : {wind_name or 'u10/v10'}{covered}",
+            f"  u10 P50/P95/max : {p50:.1f} / {p95:.1f} / {top:.1f} m/s",
+            f"  u10 > 15 m/s    : {np.mean(speed > 15) * 100:.1f}% of grid-hours",
+        ]
+    if water_level is not None:
+        wl = water_level
+        if times is not None and "time" in wl.dims:
+            wl = wl.reindex(time=times)
+        missing = float(wl.isnull().all([d for d in wl.dims if d != "time"]).mean()) * 100
+        lines += [
+            "",
+            f"Water level       : {water_level_name or 'per goal'}"
+            + (f", missing {missing:.0f}% of case times (wl = 0)" if missing else ""),
+            f"  range           : [{float(wl.min()):.2f}, {float(wl.max()):.2f}] m",
+        ]
+    return lines
+
+
+def plot_dynamic_forcing(
+    *,
+    aoi_gdf: gpd.GeoDataFrame,
+    goals_config: dict[str, dict[str, Any]],
+    offshore: xr.Dataset,
+    wind: xr.Dataset | None = None,
+    water_level: xr.DataArray | None = None,
+    angle_range: tuple[float, float] | None = None,
+    wind_name: str | None = None,
+    water_level_name: str | None = None,
+    title: str = "Dynamic met-ocean forcing",
+) -> Figure:
+    """
+    Wind and water level given to the dynamic cases, next to the offshore waves.
+
+    Top: mean wind over the period (shading: mean speed; arrows: mean vector,
+    short where the direction keeps changing) and the wind at the storm hour
+    (highest goal-mean offshore Hs) with the goals' wave directions. Bottom:
+    wind rose of the domain-mean wind; wind-wave angle at the goals for hours
+    whose offshore sea is (partly) wind sea, with the wind correction's
+    training range shaded; water-level envelope over the goals.
+
+    Parameters
+    ----------
+    aoi_gdf, goals_config
+        Case geometry (see :class:`utils.simulation.HyWavesWrapperSetup`).
+    offshore
+        Offshore waves on ``(time, goal)`` (``hs``, ``tp``, ``dir``, ``spr``).
+    wind
+        ``u10``/``v10`` on ``(time, latitude, longitude)`` (e.g.
+        :func:`utils.config.open_wind`); None leaves the wind panels empty.
+    water_level
+        Water level on ``(time, goal)`` (e.g. :func:`utils.config.open_water_level`).
+    angle_range
+        Wind-wave angles (deg) the wind correction was trained on
+        (``metamodel.wind_correction.wind_wave_angle``).
+    wind_name, water_level_name
+        Source names for the titles.
+    title
+        Figure title.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
+    from bluemath_tk.core.plotting.wind import plot_wind_arrows, plot_wind_rose
+    from bluemath_tk.waves.wind import wind_sea_weight, wind_speed_direction
+
+    times = pd.DatetimeIndex(offshore["time"].values)
+    goal_ids = [int(g) for g in offshore["goal"].values]
+    goal_xy = np.array([[goals_config[str(g)]["lon"], goals_config[str(g)]["lat"]] for g in goal_ids])
+    storm = times[int(np.nanargmax(offshore["hs"].mean("goal").values))]
+
+    fig = plt.figure(figsize=(16, 10.5), constrained_layout=True)
+    gs = GridSpec(2, 6, figure=fig, height_ratios=[1.25, 1.0])
+    ax_mean = fig.add_subplot(gs[0, :3])
+    ax_storm = fig.add_subplot(gs[0, 3:])
+    ax_rose = fig.add_subplot(gs[1, :2], projection="polar")
+    ax_angle = fig.add_subplot(gs[1, 2:4])
+    ax_wl = fig.add_subplot(gs[1, 4:])
+    fig.suptitle(display_title(title), fontsize=14, fontweight="bold")
+
+    bounds = aoi_gdf.to_crs(4326).total_bounds
+    pad = 0.15
+    extent = (bounds[0] - pad, bounds[2] + pad, bounds[1] - pad, bounds[3] + pad)
+
+    def frame(ax: Axes, panel_title: str) -> None:
+        aoi_gdf.to_crs(4326).boundary.plot(ax=ax, color="black", lw=1.0, zorder=4)
+        ax.scatter(*goal_xy.T, s=25, c="white", edgecolors="black", zorder=7)
+        for g, (x, y) in zip(goal_ids, goal_xy):
+            ax.annotate(f"G{g}", (x, y), xytext=(3, 3), textcoords="offset points", fontsize=7, zorder=8)
+        ax.set_xlim(extent[0], extent[1])
+        ax.set_ylim(extent[2], extent[3])
+        ax.set_aspect("equal", adjustable="box")
+        ax.set_title(panel_title, fontsize=11)
+        ax.tick_params(labelsize=8)
+
+    if wind is not None:
+        wind = wind.sel(time=slice(times.min(), times.max()))
+        lon, lat = wind["longitude"].values, wind["latitude"].values
+        speed = np.hypot(wind["u10"], wind["v10"])
+        mean_speed = speed.mean("time").values
+        mean_u, mean_v = wind["u10"].mean("time").values, wind["v10"].mean("time").values
+        vmax = float(np.nanmax(speed.max("time").values))
+        mesh = ax_mean.pcolormesh(lon, lat, mean_speed, cmap="YlGnBu", vmin=0, vmax=max(vmax * 0.6, 1), shading="auto", zorder=1)
+        plt.colorbar(mesh, ax=ax_mean, fraction=0.03, label="mean u10 (m/s)")
+        lon2, lat2 = np.meshgrid(lon, lat)
+        s_mean, d_mean = wind_speed_direction(mean_u, mean_v)
+        plot_wind_arrows(ax_mean, lon2, lat2, s_mean, d_mean, max_arrows=400, key_speed=5.0, scale=80.0, width=0.003)
+        steadiness = float(np.nanmean(s_mean) / np.nanmean(mean_speed))
+        frame(ax_mean, f"Mean wind {times.min():%Y-%m} → {times.max():%Y-%m} "
+                       f"(arrows: mean vector; steadiness {steadiness:.2f})")
+
+        at = wind.sel(time=storm, method="nearest")
+        s_storm, d_storm = wind_speed_direction(at["u10"].values, at["v10"].values)
+        mesh = ax_storm.pcolormesh(lon, lat, s_storm, cmap="YlOrRd", vmin=0, vmax=max(vmax, 1), shading="auto", zorder=1)
+        plt.colorbar(mesh, ax=ax_storm, fraction=0.03, label="u10 (m/s)")
+        plot_wind_arrows(ax_storm, lon2, lat2, s_storm, d_storm, max_arrows=400, scale=280.0, width=0.003)
+        off = offshore.sel(time=storm)
+        for (x, y), h, d in zip(goal_xy, off["hs"].values, off["dir"].values):
+            th = np.deg2rad(d)
+            ax_storm.annotate("", xy=(x, y), xytext=(x + 0.25 * np.sin(th), y + 0.25 * np.cos(th)),
+                              arrowprops=dict(arrowstyle="-|>", color="#08306b", lw=2, mutation_scale=14), zorder=8)
+        frame(ax_storm, f"Storm hour {storm:%Y-%m-%d %H:%M} (max goal-mean Hs "
+                        f"{float(off['hs'].mean()):.1f} m; blue = wave dir)")
+
+        dm_speed, dm_dir = _domain_mean_wind(wind)
+        plot_wind_rose(ax_rose, dm_speed, dm_dir)
+        ax_rose.set_title(f"Domain-mean wind ({wind_name or 'u10'})", fontsize=11, pad=12)
+        ax_rose.legend(fontsize=7, loc="upper left", bbox_to_anchor=(1.02, 1.0), frameon=False)
+
+        at_goals = wind.interp(
+            latitude=xr.DataArray(goal_xy[:, 1], dims="goal"),
+            longitude=xr.DataArray(goal_xy[:, 0], dims="goal"),
+        ).reindex(time=times, method="nearest", tolerance=pd.Timedelta("1h"))
+        w_speed, w_dir = wind_speed_direction(at_goals["u10"].values, at_goals["v10"].values)
+        weight = wind_sea_weight(offshore["hs"].values, offshore["tp"].values, offshore["spr"].values)
+        angle = np.mod(w_dir - offshore["dir"].values + 180.0, 360.0) - 180.0
+        sel = (weight > 0) & np.isfinite(angle) & (w_speed > 1)
+        ax_angle.hist(angle[sel], bins=np.arange(-180, 181, 10), color="#4c72b0", edgecolor="white")
+        if angle_range is not None:
+            ax_angle.axvspan(*angle_range, color="#55a868", alpha=0.18, label="wind-correction training range")
+            outside = np.mean((angle[sel] < angle_range[0]) | (angle[sel] > angle_range[1])) * 100 if sel.any() else 0
+            ax_angle.legend(fontsize=8, loc="upper left")
+            ax_angle.set_title(f"Wind − wave direction, wind-sea hours ({outside:.0f}% outside)", fontsize=11)
+        else:
+            ax_angle.set_title("Wind − wave direction, wind-sea hours", fontsize=11)
+        ax_angle.set_xlabel("angle (deg; + = wind clockwise of waves)")
+        ax_angle.set_ylabel("goal-hours")
+        ax_angle.set_xlim(-180, 180)
+    else:
+        for ax in (ax_mean, ax_storm, ax_angle):
+            ax.text(0.5, 0.5, "no wind forcing", ha="center", va="center", transform=ax.transAxes)
+            ax.set_axis_off()
+        ax_rose.set_axis_off()
+
+    if water_level is not None:
+        wl = water_level.sel(goal=goal_ids).reindex(time=times).load()
+        lo, hi, mid = wl.min("goal"), wl.max("goal"), wl.mean("goal")
+        ax_wl.fill_between(times, lo, hi, color="#9ecae1", label="goal range", lw=0)
+        ax_wl.plot(times, mid, color="#08519c", lw=0.6, label="goal mean")
+        missing = wl.isnull().all("goal").values
+        if missing.any():
+            edges = np.flatnonzero(np.diff(np.r_[0, missing.astype(int), 0]))
+            for k, (a, b) in enumerate(zip(edges[::2], edges[1::2])):
+                ax_wl.axvspan(times[a], times[b - 1], color="#d62728", alpha=0.12,
+                              label="no data (wl = 0)" if k == 0 else None)
+        ax_wl.set_title(f"Water level ({water_level_name or 'per goal'})", fontsize=11)
+        ax_wl.set_ylabel("m")
+        ax_wl.legend(fontsize=8, loc="upper right")
+        locator = mdates.AutoDateLocator(maxticks=6)
+        ax_wl.xaxis.set_major_locator(locator)
+        ax_wl.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
+        ax_wl.tick_params(axis="x", labelsize=8)
+    else:
+        ax_wl.text(0.5, 0.5, "no water-level forcing", ha="center", va="center", transform=ax_wl.transAxes)
+        ax_wl.set_axis_off()
+
     return fig
 
 
@@ -1731,7 +1969,7 @@ def plot_metamodel_case(
     show: bool = True,
 ) -> Figure:
     """
-    Plot a finished metamodel SnapWave case from its folder.
+    Plot a finished metamodel case (SnapWave or SWAN) from its folder.
 
     Full-width domain map (mesh or base map, with the active boundary node
     and its direction arrow) on top; 2x2 output-site panels for
@@ -1788,7 +2026,8 @@ def plot_dynamic_case(
     show: bool = True,
 ) -> Figure:
     """
-    Plot a finished dynamic SnapWave case from its folder.
+    Plot a finished dynamic case (SnapWave or SWAN) from its folder; its wind
+    (field or uniform) is drawn on the domain map.
 
     Full-width domain map (mesh or base map, with boundary nodes coloured/
     sized by forcing ``hs`` and a direction arrow per active node) on top;
@@ -1844,6 +2083,7 @@ __all__ = [
     "plot_dynamic_case",
     "plot_dynamic_configuration",
     "plot_dynamic_configuration_map",
+    "plot_dynamic_forcing",
     "plot_land",
     "plot_metamodel_case",
     "plot_metamodel_configuration",

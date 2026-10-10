@@ -1,32 +1,32 @@
-"""SnapWave cases of a HyGloW case: LHS sampling and the case setup.
+"""Numerical cases of a HyGloW case: LHS sampling and the wrapper setup.
 
-The SnapWave wrappers (case building, templates rendering, launchers and
-SLURM arrays, postprocessing, case plots) are :mod:`bluemath_tk.wrappers.snapwave`;
-notebooks use them directly. This module turns the case JSON into their inputs:
+The cases run with SnapWave or SWAN (``simulations.model``); their wrappers
+(case building, templates rendering, SLURM arrays, postprocessing) live in
+:mod:`bluemath_tk.wrappers.snapwave` and :mod:`bluemath_tk.wrappers.swan`.
+Both write the same per-goal output (``output_sites_{goal}.nc`` on
+``(case_num, sites)``), so everything downstream is model-agnostic. This
+module turns the case JSON into their inputs:
 
 - :func:`generate_cases` — Latin Hypercube per goal within its sector
   (``simulations.bounds``, ``num_samples_per_goal``), keeping plausible sea
   states (``simulations.max_steepness``);
-- :func:`templates_dir` — ``simulations.metamodel_templates`` /
-  ``dynamic_templates``;
-- :class:`SnapWaveCaseSetup` — goals as boundary nodes (goal id = 1-based
-  ``active_node``), the AoI enclosure, and the output sites labelled with the
-  case site metadata (``sites``, ``site_source``, ...).
+- :func:`templates_dir`, :func:`cases_dir`, :func:`grid_file`,
+  :func:`slurm_kwargs` — the ``simulations.<model>`` block;
+- :class:`HyWavesWrapperSetup` — goals as boundary nodes (goal id = 1-based
+  ``active_node``), the AoI enclosure, the output sites labelled with the case
+  site metadata (``sites``, ``site_source``, ...), and the model's wrappers.
 
 Typical use (``05_Metamodel_Cases_Generation.ipynb``)::
 
-    setup = sim.SnapWaveCaseSetup.from_case(goals)
-    wrapper = SnapWaveMetaModelWrapper(
-        templates_dir=sim.templates_dir("metamodel"),
-        metamodel_parameters=sim.generate_cases(goals).to_dict(orient="list"),
-        fixed_parameters={"gridfile": str(mesh_file)},
-        output_dir=str(cases_dir),
-        **setup.metamodel_kwargs(),
-    )
+    setup = sim.HyWavesWrapperSetup.from_case(goals)
+    wrapper = setup.metamodel_wrapper(sim.generate_cases(goals))
+    wrapper.build_cases(...)
+    wrapper.run_cases_slurm(**sim.slurm_kwargs())
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
@@ -37,16 +37,49 @@ import pandas as pd
 import xarray as xr
 from bluemath_tk.datamining.lhs import LHS
 from bluemath_tk.waves.steepness import filter_by_steepness
-from bluemath_tk.wrappers.snapwave import build_enclosure_polygon
+from bluemath_tk.wrappers.snapwave import (
+    BOUNDARY_VARS,
+    SnapWaveDynamicModelWrapper,
+    SnapWaveMetaModelWrapper,
+    boundary_time_series,
+    build_enclosure_polygon,
+)
+from bluemath_tk.wrappers.swan.swan_wrapper import (
+    SwanDynamicModelWrapper,
+    SwanMetaModelWrapper,
+)
 from matplotlib.figure import Figure
 from shapely.geometry import Polygon
 
 from utils import viz
-from utils.config import PATHS, SIMULATIONS, goals_for_snapwave, load_goals, resolve
+from utils.config import (
+    PATHS,
+    SIMULATIONS,
+    goals_for_snapwave,
+    load_goals,
+    model_config,
+    open_water_level,
+    resolve,
+    simulation_model,
+)
 from utils.geometry import compute_output_sites
 
 #: Metamodel LHS parameters, stored as ``{name}_forcing`` on postprocessed output.
 FORCING_VARS = ("hs", "tp", "dir", "spr", "wl")
+
+#: Wrapper classes per model and kind of case.
+WRAPPERS = {
+    "snapwave": {
+        "metamodel": SnapWaveMetaModelWrapper,
+        "dynamic": SnapWaveDynamicModelWrapper,
+    },
+    "swan": {"metamodel": SwanMetaModelWrapper, "dynamic": SwanDynamicModelWrapper},
+}
+
+#: Case parameters only SnapWave reads (mesh map output); dropped for SWAN.
+SNAPWAVE_ONLY_PARAMETERS = ("save_map",)
+
+CASE_KINDS = ("metamodel", "dynamic")
 
 
 def generate_cases(goals: Mapping[str, Mapping]) -> pd.DataFrame:
@@ -73,7 +106,7 @@ def generate_cases(goals: Mapping[str, Mapping]) -> pd.DataFrame:
     pandas.DataFrame
         Columns ``goal``, ``active_node``, ``hs``, ``tp``, ``dir``, ``spr``,
         ``wl``, one row per kept sample. ``active_node`` (= goal id) is the
-        1-based SnapWave boundary node where ``hs`` is applied. ``dir`` is in
+        1-based boundary node where ``hs`` is applied. ``dir`` is in
         ``[0, 360)`` after normalization.
     """
     bounds = SIMULATIONS["bounds"]
@@ -113,46 +146,169 @@ SITE_COORDS = {
     "site_latitude": "lat",
 }
 
-#: Observation file (``obsfile``); SnapWave writes its ``.nc`` sibling.
+#: Output-points file written into every case (SnapWave ``obsfile``, SWAN ``POINTS``).
 SITES_FILENAME = "output_sites.txt"
 
 DEFAULT_ENCLOSURE_BUFFER_M = 10_000.0
 
 
-def templates_dir(kind: str) -> str:
-    """
-    SnapWave templates folder for ``"metamodel"`` or ``"dynamic"`` cases.
+def _check_kind(kind: str) -> str:
+    if kind not in CASE_KINDS:
+        raise ValueError(f"kind must be one of {CASE_KINDS}, got {kind!r}")
+    return kind
 
-    From the case JSON: ``simulations.metamodel_templates`` /
-    ``simulations.dynamic_templates`` (``templates-metamodel/`` and
-    ``templates-dynamic/`` in a scaffolded case). They receive the context of
-    :mod:`bluemath_tk.wrappers.snapwave`: ``n_nodes``, ``active_node``,
-    ``hs_nodes``, ``tp_nodes``, ``dir_nodes``, ``spr_nodes``, ``tref``, ...
+
+def templates_dir(kind: str, model: str | None = None) -> str:
+    """
+    Templates folder of the model for ``"metamodel"`` or ``"dynamic"`` cases.
+
+    From ``simulations.<model>.metamodel_templates`` / ``dynamic_templates``.
+    SnapWave templates receive the context of
+    :class:`bluemath_tk.wrappers.snapwave.SnapWaveModelWrapper` (``n_nodes``,
+    ``active_node``, ``hs_nodes``, ...); SWAN's ``INPUT`` the context of
+    :class:`bluemath_tk.wrappers.swan.swan_wrapper.SwanBoundaryModelWrapper`
+    (``boundary_side``, ``boundary_par``, ``points_file``, ...).
 
     Parameters
     ----------
     kind
         ``"metamodel"`` or ``"dynamic"``.
+    model
+        Model name; default ``simulations.model``.
 
     Returns
     -------
     str
         Templates folder.
     """
-    if kind not in ("metamodel", "dynamic"):
-        raise ValueError(f"kind must be 'metamodel' or 'dynamic', got {kind!r}")
-    return str(resolve(SIMULATIONS[f"{kind}_templates"]))
+    return str(resolve(model_config(model)[f"{_check_kind(kind)}_templates"]))
+
+
+def cases_dir(kind: str, model: str | None = None) -> Path:
+    """
+    Cases folder of the model (``simulations.<model>.metamodel_cases`` / ``dynamic_cases``).
+
+    Parameters
+    ----------
+    kind
+        ``"metamodel"`` or ``"dynamic"``.
+    model
+        Model name; default ``simulations.model``.
+
+    Returns
+    -------
+    Path
+        Cases folder.
+    """
+    return resolve(model_config(model)[f"{_check_kind(kind)}_cases"])
+
+
+def grid_file(model: str | None = None) -> Path:
+    """
+    Computational grid of the model (``simulations.<model>.grid_file``).
+
+    SnapWave reads a UGRID NetCDF mesh (``gridfile``); SWAN an ADCIRC grid
+    with counterclockwise triangles, linked as ``fort.14`` into each case.
+
+    Parameters
+    ----------
+    model
+        Model name; default ``simulations.model``.
+
+    Returns
+    -------
+    Path
+        Grid file.
+    """
+    return resolve(model_config(model)["grid_file"])
+
+
+def slurm_kwargs(model: str | None = None, **overrides: Any) -> dict[str, Any]:
+    """
+    Keyword arguments for the wrapper's ``run_cases_slurm`` / ``write_slurm_array``.
+
+    From ``simulations.<model>.slurm`` (e.g. ``cpus_per_task`` and ``mem`` for
+    SnapWave, ``mem`` and ``extra_sbatch`` for SWAN, ``setup`` for the module
+    lines), updated with *overrides*.
+
+    Parameters
+    ----------
+    model
+        Model name; default ``simulations.model``.
+    **overrides
+        Values replacing the configured ones (e.g. ``max_parallel=200``).
+
+    Returns
+    -------
+    dict
+        Keyword arguments.
+    """
+    return {**model_config(model).get("slurm", {}), **overrides}
+
+
+def _forcing_name(kind: str) -> str | None:
+    """``forcing.<kind>.name`` of the case JSON, if any."""
+    from utils.config import FORCING
+
+    return (FORCING.get(kind) or {}).get("name")
+
+
+def dynamic_parameters(
+    offshore: xr.Dataset, *, water_level: bool = True
+) -> dict[str, list]:
+    """
+    Per-time-step boundary forcing of every goal, for the dynamic wrappers.
+
+    Parameters
+    ----------
+    offshore
+        Offshore hindcast at the goals on ``(time, goal)`` (``hs``, ``tp``,
+        ``dir``, ``spr``), already selected on the period.
+    water_level
+        Add ``wl_nodes`` from ``forcing.water_level`` (0 where it has no
+        value). False leaves the templates' water level at 0.
+
+    Returns
+    -------
+    dict[str, list]
+        ``tref`` and ``{var}_nodes`` lists (see
+        :func:`bluemath_tk.wrappers.snapwave.boundary_time_series`).
+    """
+    forcing = offshore[list(BOUNDARY_VARS)]
+    variables = BOUNDARY_VARS
+    if water_level:
+        wl = open_water_level().sel(goal=offshore["goal"].values)
+        wl = wl.reindex(time=offshore["time"].values).load()
+        missing = int(wl.isnull().any("goal").sum())
+        if missing:
+            logging.getLogger("hywaves.forcing").warning(
+                "no water level for %d of %d time steps (set to 0)",
+                missing,
+                wl.sizes["time"],
+            )
+        forcing = forcing.assign(wl=wl.fillna(0.0).drop_vars(
+            [c for c in wl.coords if c not in ("time", "goal")]
+        ))
+        variables = (*BOUNDARY_VARS, "wl")
+    return boundary_time_series(forcing, node_dim="goal", variables=variables)
 
 
 @dataclass
-class SnapWaveCaseSetup:
-    """Case geometry for SnapWave: AoI enclosure, goal nodes, output sites."""
+class HyWavesWrapperSetup:
+    """Case geometry for the numerical cases: AoI, enclosure, goal nodes, output sites.
+
+    The same geometry serves SnapWave and SWAN: goals are the boundary nodes
+    (in goal-id order), the output sites the observation points. SnapWave
+    also needs the enclosure (which mesh edge nodes are open boundary); SWAN
+    finds its open boundary in the grid file.
+    """
 
     aoi_gdf: gpd.GeoDataFrame
     enclosure_polygon: Polygon
     enclosure_buffer_m: float
     goals_config: dict[str, dict[str, Any]]
     output_sites_df: pd.DataFrame
+    model: str = "snapwave"
     mesh_file: str | None = None
 
     @classmethod
@@ -160,9 +316,10 @@ class SnapWaveCaseSetup:
         cls,
         goals: dict[str, dict[str, Any]] | None = None,
         *,
+        model: str | None = None,
         enclosure_buffer_m: float | None = None,
         output_sites_df: pd.DataFrame | None = None,
-    ) -> SnapWaveCaseSetup:
+    ) -> HyWavesWrapperSetup:
         """
         Build the setup from the case config (AoI, goals, mesh, output sites).
 
@@ -170,6 +327,8 @@ class SnapWaveCaseSetup:
         ----------
         goals
             Goals mapping (default :func:`utils.config.load_goals`).
+        model
+            ``"snapwave"`` or ``"swan"`` (default ``simulations.model``).
         enclosure_buffer_m
             Outward AoI buffer in metres (default
             ``simulations.enclosure_buffer_m``, else 10 km).
@@ -179,7 +338,7 @@ class SnapWaveCaseSetup:
 
         Returns
         -------
-        SnapWaveCaseSetup
+        HyWavesWrapperSetup
         """
         goals_config = goals_for_snapwave(goals or load_goals())
         ids = [int(k) for k in goals_config]
@@ -202,24 +361,35 @@ class SnapWaveCaseSetup:
             enclosure_buffer_m=float(enclosure_buffer_m),
             goals_config=goals_config,
             output_sites_df=output_sites_df.reset_index(drop=True),
+            model=simulation_model(model),
             mesh_file=str(resolve(mesh)) if mesh else None,
         )
 
     @property
     def boundary_nodes(self) -> list[tuple[float, float]]:
-        """Goal ``(lon, lat)`` in goal-id order — the SnapWave boundary nodes."""
+        """Goal ``(lon, lat)`` in goal-id order — the boundary nodes."""
         return [(g["lon"], g["lat"]) for g in self.goals_config.values()]
 
     def wrapper_kwargs(self) -> dict[str, Any]:
-        """Geometry and output-labelling arguments for any bluemath SnapWave wrapper."""
-        return {
+        """Geometry and output-labelling arguments for the model's wrappers."""
+        common = {
             "boundary_nodes": self.boundary_nodes,
-            "enclosure_polygon": self.enclosure_polygon,
             "output_points": self.output_sites_df,
-            "obs_filename": SITES_FILENAME,
-            "his_filename": str(Path(SITES_FILENAME).with_suffix(".nc")),
             "point_dim": "sites",
             "point_coords": SITE_COORDS,
+        }
+        if self.model == "swan":
+            return {
+                **common,
+                "grid_file": str(grid_file(self.model)),
+                "points_filename": SITES_FILENAME,
+                "table_filename": str(Path(SITES_FILENAME).with_suffix(".tab")),
+            }
+        return {
+            **common,
+            "enclosure_polygon": self.enclosure_polygon,
+            "obs_filename": SITES_FILENAME,
+            "his_filename": str(Path(SITES_FILENAME).with_suffix(".nc")),
         }
 
     def metamodel_kwargs(self) -> dict[str, Any]:
@@ -234,6 +404,92 @@ class SnapWaveCaseSetup:
             "split_by": "goal",
             "split_filename": Path(SITES_FILENAME).stem + "_{}.nc",
         }
+
+    def fixed_parameters(self) -> dict[str, Any]:
+        """Parameters shared by every case: SnapWave's ``gridfile`` (SWAN links its grid)."""
+        if self.model == "snapwave":
+            return {"gridfile": str(grid_file(self.model))}
+        return {}
+
+    def _wrapper(
+        self,
+        kind: str,
+        parameters: pd.DataFrame | Mapping[str, list],
+        output_dir: str | Path | None,
+        templates: str | Path | None,
+        **kwargs: Any,
+    ) -> Any:
+        if isinstance(parameters, pd.DataFrame):
+            parameters = parameters.to_dict(orient="list")
+        parameters = dict(parameters)
+        if self.model != "snapwave":
+            for name in SNAPWAVE_ONLY_PARAMETERS:
+                parameters.pop(name, None)
+        geometry = (
+            self.metamodel_kwargs() if kind == "metamodel" else self.wrapper_kwargs()
+        )
+        return WRAPPERS[self.model][kind](
+            templates_dir=str(templates or templates_dir(kind, self.model)),
+            metamodel_parameters=parameters,
+            fixed_parameters=self.fixed_parameters(),
+            output_dir=str(output_dir or cases_dir(kind, self.model)),
+            **{**geometry, **kwargs},
+        )
+
+    def metamodel_wrapper(
+        self,
+        cases: pd.DataFrame | Mapping[str, list],
+        *,
+        output_dir: str | Path | None = None,
+        templates: str | Path | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        """
+        The model's metamodel wrapper for *cases* (e.g. :func:`generate_cases`).
+
+        Parameters
+        ----------
+        cases
+            One row (or list entry) per case: ``goal``, ``active_node``, ``hs``,
+            ``tp``, ``dir``, ``spr``, ``wl`` (and SnapWave's ``save_map``).
+        output_dir, templates
+            Override ``simulations.<model>.metamodel_cases`` / ``metamodel_templates``.
+        **kwargs
+            Further wrapper arguments (e.g. ``debug=False``).
+
+        Returns
+        -------
+        SnapWaveMetaModelWrapper or SwanMetaModelWrapper
+        """
+        return self._wrapper("metamodel", cases, output_dir, templates, **kwargs)
+
+    def dynamic_wrapper(
+        self,
+        parameters: pd.DataFrame | Mapping[str, list],
+        *,
+        output_dir: str | Path | None = None,
+        templates: str | Path | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        """
+        The model's dynamic wrapper: one case per time step, every goal forced.
+
+        Parameters
+        ----------
+        parameters
+            Per-case ``tref`` and per-node ``hs_nodes``, ``tp_nodes``, ... (see
+            :func:`dynamic_parameters`); optional uniform ``u10`` / ``u10dir``.
+        output_dir, templates
+            Override ``simulations.<model>.dynamic_cases`` / ``dynamic_templates``.
+        **kwargs
+            Further wrapper arguments, e.g. ``wind=open_wind(period)`` (see
+            :func:`utils.config.open_wind`): the field at each case time.
+
+        Returns
+        -------
+        SnapWaveDynamicModelWrapper or SwanDynamicModelWrapper
+        """
+        return self._wrapper("dynamic", parameters, output_dir, templates, **kwargs)
 
     # ------------------------------------------------------------------
     # Pre-run diagnostics (HyGloW goal/sector plots, utils.viz)
@@ -258,9 +514,9 @@ class SnapWaveCaseSetup:
                 bounds=SIMULATIONS.get("bounds"),
                 num_samples_per_goal=SIMULATIONS.get("num_samples_per_goal"),
                 max_steepness=SIMULATIONS.get("max_steepness"),
-                mesh_file=self.mesh_file,
+                mesh_file=str(grid_file(self.model)),
                 enclosure_buffer_m=self.enclosure_buffer_m,
-                title="Metamodel pre-run diagnostic",
+                title=f"Metamodel pre-run diagnostic ({self.model})",
                 **kwargs,
             )
         )
@@ -280,20 +536,58 @@ class SnapWaveCaseSetup:
         *,
         offshore_name: str | None = None,
         save_map: list[bool] | None = None,
+        wind: xr.Dataset | None = None,
+        water_level: xr.DataArray | None = None,
         **kwargs: Any,
     ) -> Figure:
-        """Dynamic pre-run diagnostic (see :func:`utils.viz.plot_dynamic_configuration`)."""
+        """Dynamic pre-run diagnostic (see :func:`utils.viz.plot_dynamic_configuration`).
+
+        *wind* and *water_level* (as given to the cases) add their coverage
+        and ranges to the summary; see :meth:`plot_dynamic_forcing` for maps.
+        """
         return viz.plot_dynamic_configuration(
             **self._plot_common(
                 aoi_gdf=self.aoi_gdf,
                 offshore=offshore,
                 offshore_name=offshore_name,
-                mesh_file=self.mesh_file,
+                mesh_file=str(grid_file(self.model)),
                 enclosure_buffer_m=self.enclosure_buffer_m,
-                title="Dynamic pre-run diagnostic",
+                title=f"Dynamic pre-run diagnostic ({self.model})",
                 maps_to_save=int(sum(save_map)) if save_map else None,
+                wind=wind,
+                water_level=water_level,
+                wind_name=_forcing_name("wind"),
+                water_level_name=_forcing_name("water_level"),
                 **kwargs,
             )
+        )
+
+    def plot_dynamic_forcing(
+        self,
+        offshore: xr.Dataset,
+        *,
+        wind: xr.Dataset | None = None,
+        water_level: xr.DataArray | None = None,
+        **kwargs: Any,
+    ) -> Figure:
+        """Wind and water level of the dynamic cases (see :func:`utils.viz.plot_dynamic_forcing`).
+
+        The wind-wave angle panel shades the wind correction's training range
+        (``metamodel.wind_correction.wind_wave_angle``).
+        """
+        from utils.wind import config as wind_config
+
+        return viz.plot_dynamic_forcing(
+            aoi_gdf=self.aoi_gdf,
+            goals_config=self.goals_config,
+            offshore=offshore,
+            wind=wind,
+            water_level=water_level,
+            angle_range=tuple(wind_config()["wind_wave_angle"]),
+            wind_name=_forcing_name("wind"),
+            water_level_name=_forcing_name("water_level"),
+            title=f"Dynamic met-ocean forcing ({self.model})",
+            **kwargs,
         )
 
     def plot_dynamic_configuration_map(
@@ -307,11 +601,17 @@ class SnapWaveCaseSetup:
 
 
 __all__ = [
+    "CASE_KINDS",
     "DEFAULT_ENCLOSURE_BUFFER_M",
     "FORCING_VARS",
+    "HyWavesWrapperSetup",
     "SITES_FILENAME",
     "SITE_COORDS",
-    "SnapWaveCaseSetup",
+    "WRAPPERS",
+    "cases_dir",
+    "dynamic_parameters",
     "generate_cases",
+    "grid_file",
+    "slurm_kwargs",
     "templates_dir",
 ]

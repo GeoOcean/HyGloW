@@ -8,7 +8,7 @@ package — ``bluemesh2d`` and the rest of the scientific stack are regular
 environment dependencies, see a case's own README.
 """
 
-__version__ = "0.10.0"
+__version__ = "0.11.0"
 
 # Format version of the internal .hywaves/manifest.json bookkeeping file
 # (written by `start`/`update`, never hand-edited). Case config JSON has no

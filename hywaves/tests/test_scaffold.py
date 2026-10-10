@@ -31,8 +31,9 @@ class TestStartCase(unittest.TestCase):
         self.assertEqual(target, self.dest / "MyCase")
         self.assertTrue((target / "utils").is_dir())
         self.assertTrue((target / "tests").is_dir())
-        self.assertTrue((target / "templates-metamodel").is_dir())
-        self.assertTrue((target / "templates-dynamic").is_dir())
+        for model in ("snapwave", "swan"):
+            for kind in ("metamodel", "dynamic"):
+                self.assertTrue((target / f"templates-{model}-{kind}").is_dir())
         self.assertTrue((target / "MyCase.json").is_file())
         self.assertTrue((target / "README.md").is_file())
         self.assertTrue((target / ".hywaves" / "manifest.json").is_file())

@@ -12,7 +12,7 @@ The contract has **two levels**:
   validates at Level 1 can be published in the portal, regardless of which
   wave model or emulator produced the numbers.
 - **Level 2 — Engine contract (conditional).** Applies only to cases that use
-  the vendored HyGloW engine (SnapWave + MDA→PCA→GPR metamodel), i.e. whose
+  the vendored HyGloW engine (SnapWave or SWAN + MDA→PCA→GPR metamodel), i.e. whose
   config contains a `metamodel` section.
 
 Run the validator (stdlib-only, copy it anywhere):
@@ -84,7 +84,7 @@ goal, metamodel, mda_candidate, group, variable, n, bias, rmse, r2
 Metrics follow `bluemath_tk.core.metrics`: computed as
 `metric(reference, estimate)`, with `bias = mean(estimate − reference)`
 (positive = overestimation) and `r2` normalised by the reference variance.
-The reference is what is trusted (SnapWave in the holdout, dynamic SnapWave
+The reference is what is trusted (the model runs in the holdout, the dynamic runs
 for linear summation, the buoy for buoy validation). Cases may add optional
 columns such as `rrmse` (RMSE / mean of the reference), `si` (Mentaschi et
 al. 2013 scatter index) and `r` (Pearson); they are `NaN` for directional
@@ -141,7 +141,7 @@ scientific stack.
 | `observations.json`                               | `onshore_waves` (§3), as is                                                |
 | `aoi.geojson`                                     | `paths.aoi_file` shapefile → GeoJSON `FeatureCollection` (Polygon/MultiPolygon, EPSG:4326) |
 | `isobaths.json`                                   | `paths.topobathy_file` raster, contoured at each `simulations.output_sites_config.isobaths[].level` (after that entry's `smooth_m` / `min_length_m`, as for the output sites) → `[{"name", "level", "segments": [[[lon, lat], …], …]}]` |
-| `output_sites.json`                               | first `output_sites_*.nc` under `simulations.metamodel_cases` (or, if that path isn't reachable, a same-named folder inside the case), buoy sites dropped → `{"lon": […], "lat": […], "source": […], "label": […]}` |
+| `output_sites.json`                               | first `output_sites_*.nc` under `simulations.<model>.metamodel_cases` (or, if that path isn't reachable, a same-named folder inside the case), buoy sites dropped → `{"lon": […], "lat": […], "source": […], "label": […]}` |
 | `validation_metrics.csv`                          | every `outputs/goal_*/*/validation_metrics.csv` (§4), merged — each row keeps its `goal` and `metamodel` |
 | `metamodel_validation/*.csv`                      | `outputs/metamodel_validation/*.csv` (§5), as is                           |
 | `buoy_validation/*_summary_*.csv`                 | `outputs/buoy_validation/*_summary_*.csv` (§5), as is                      |
@@ -161,6 +161,7 @@ scientific stack.
   publish never leaves a partial or stale `portal/`.
 
 **`manifest.json`** — `schema` (currently `1`), `hywaves_version`, `case`,
+`model` (`simulations.model`: the numerical model behind the results),
 `published_at` (UTC ISO-8601), `max_image_px`, `book` (bool), `skipped`
 (`{layer: reason}`), `files` (`{path: {size, sha256}}`, excluding `book/`),
 `sources` (`{case-relative path: {size, mtime_ns, sha256}}` of every input
@@ -202,7 +203,11 @@ reference GUI lists them as versions of the case.
 | `paths.pca_dir` / `paths.gp_dir`                        | template strings with `{goal}`, `{metamodel}` and `{mda_candidate}`                                             |
 | `simulations.bounds`                                    | `[low, high]` for every non-directional `mda_inputs` entry                                                      |
 | `simulations.max_steepness`                             | positive number; LHS samples with `hs / L0` above it are dropped                                                |
-| `simulations.metamodel_templates` / `dynamic_templates` | folders should exist                                                                                            |
+| `simulations.model`                                     | `"snapwave"` or `"swan"`, with a `simulations.<model>` block                                                   |
+| `simulations.<model>`                                   | `grid_file`, `metamodel_templates`, `dynamic_templates`, `metamodel_cases`, `dynamic_cases` (paths; templates folders and grid should exist), optional `wind_cases` (training pairs of the wind correction) and `slurm` dict |
+| `wind_correction` (optional)                            | dict; `wind` `"inferred"` or `"forcing"` (needs `forcing.wind`); `added_tp` `"wind_sea"` or `"growth"`; ranges (`speed_ratio`, `wind_wave_angle`, `u10_range`, `steepness_range`, `spr_range`) increasing pairs |
+| `forcing.wind` / `forcing.water_level` (optional)       | `{name, data_path}` (water level: optional `variable`, default `waterlevel`); data should exist — warning      |
+| `vars_to_predict.tp` with SWAN                          | should be a PCA target, not `"raw"` (SWAN changes Tp nearshore) — warning                                       |
 
 The wavespectra-stats check is skipped (with a note) when `wavespectra` is
 not importable — the validator itself never requires third-party packages.
@@ -213,6 +218,28 @@ not importable — the validator itself never requires third-party packages.
 
 Every change to this document is recorded here.
 
+- **2026-10** (hywaves 0.11.0): the numerical cases run with SnapWave or SWAN.
+  `simulations.model` chooses the model, and a `simulations.<model>` block
+  holds its `grid_file` (SnapWave: UGRID `.nc`; SWAN: ADCIRC `.grd` with
+  counterclockwise triangles), `metamodel_templates` / `dynamic_templates`,
+  `metamodel_cases` / `dynamic_cases` and optional `slurm` options, replacing
+  the flat `simulations.metamodel_templates` / `dynamic_templates` /
+  `metamodel_cases` / `dynamic_cases`. Scaffolded template folders are
+  `templates-{snapwave,swan}-{metamodel,dynamic}/`. Both models write the same
+  `output_sites_{goal}.nc`; the fitted artefacts record the model in
+  `outputs/goal_*/split.json` (`model`) and refuse to mix with the other one.
+  The portal `manifest.json` records `model`. New optional `forcing` block:
+  `forcing.wind` (10 m `u10`/`v10` on `(time, latitude, longitude)`, e.g.
+  ERA5) and `forcing.water_level` (on `(time, goal)`, e.g. CODEC) feed the
+  dynamic runs; `reconstruct(wl="forcing")` uses the water-level series at
+  each goal instead of a constant. Optional `metamodel.wind_correction`: the
+  metamodel cases stay without wind, and the reconstruction adds the local
+  wind sea before the spectral sum — `K = Hs(with wind) / Hs(without wind)`
+  from a model fitted on full-domain training pairs
+  (`simulations.<model>.wind_cases`), the fetch per site and direction, and
+  the wind (`"inferred"` from the wind-sea contributions, or `"forcing"`).
+  Artefacts in `outputs/wind/` (`fetch_table_{model}.nc`,
+  `wind_correction_{model}.pkl`); reconstructions gain `wind_k`.
 - **2026-10** (hywaves 0.10.0): Hs is a metamodel input. SnapWave metamodel
   cases sample `hs` too (`simulations.bounds.hs`; the `hs.txt` template writes
   `{{ hs }}` at `active_node`), samples steeper than

@@ -16,7 +16,7 @@ so a deployment needs the bundles alone — a few MB per case:
 | `goals.json`, `observations.json`                 | goal and buoy markers                                       | `simulations.goals_file`, `onshore_waves`                      |
 | `aoi.geojson`                                     | AoI outline (case map + landing map)                        | `paths.aoi_file` shapefile                                     |
 | `isobaths.json`                                   | depth-contour lines                                         | `paths.topobathy_file` raster, contoured at publish            |
-| `output_sites.json`                               | isobath/mesh output-site dots                               | first `output_sites_*.nc` under `simulations.metamodel_cases` (or a same-named folder in the case) |
+| `output_sites.json`                               | isobath/mesh output-site dots                               | first `output_sites_*.nc` under `simulations.<model>.metamodel_cases` (or a same-named folder in the case) |
 | `validation_metrics.csv`                          | **Goals Validation** tab                                    | every `outputs/goal_*/<set>/validation_metrics.csv` (notebook 06)    |
 | `metamodel_validation/*.csv`                      | **Metamodel Validation** tab                                | notebook 09's save-metrics cell                                |
 | `buoy_validation/*_summary_*.csv`, `…/figures/*.png` | **Buoy Validation** tab + buoy-click popups              | notebooks 10a/10b's save cells                                 |

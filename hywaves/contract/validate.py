@@ -43,6 +43,19 @@ REQUIRED_METRICS_COLUMNS = {
 # but its r2 should be recomputed.
 CONVENTION_MARKER_COLUMN = "rrmse"
 
+# Numerical models (``simulations.model``) and the keys of their
+# ``simulations.<model>`` block (since hywaves 0.11.0).
+SIMULATION_MODELS = ("snapwave", "swan")
+# Optional met-ocean forcing of the dynamic runs / reconstruction (``forcing``).
+FORCING_KINDS = ("wind", "water_level")
+MODEL_BLOCK_KEYS = (
+    "grid_file",
+    "metamodel_templates",
+    "dynamic_templates",
+    "metamodel_cases",
+    "dynamic_cases",
+)
+
 ERROR = "ERROR"
 WARN = "WARN"
 INFO = "INFO"
@@ -587,6 +600,51 @@ def _check_engine(case_dir: Path, config: dict, report: _Report) -> None:
                 f"metamodel.paths.{key} must contain '{{metamodel}}' (the set name)",
             )
 
+    wind = mm.get("wind_correction")
+    if wind is not None:
+        if not isinstance(wind, dict):
+            report.error("engine.wind_correction", "metamodel.wind_correction must be a dict")
+        else:
+            if wind.get("wind", "inferred") not in ("inferred", "forcing"):
+                report.error(
+                    "engine.wind_correction",
+                    "metamodel.wind_correction.wind must be 'inferred' or 'forcing'",
+                )
+            elif wind.get("wind") == "forcing" and "wind" not in config.get("forcing", {}):
+                report.error(
+                    "engine.wind_correction",
+                    "metamodel.wind_correction.wind = 'forcing' needs forcing.wind",
+                )
+            if wind.get("added_tp", "wind_sea") not in ("wind_sea", "growth"):
+                report.error(
+                    "engine.wind_correction",
+                    "metamodel.wind_correction.added_tp must be 'wind_sea' or 'growth'",
+                )
+            for key in ("speed_ratio", "wind_wave_angle", "u10_range", "steepness_range", "spr_range"):
+                pair = wind.get(key)
+                if pair is not None and not (
+                    isinstance(pair, list) and len(pair) == 2
+                    and all(_is_number(v) for v in pair) and pair[0] < pair[1]
+                ):
+                    report.error(
+                        "engine.wind_correction",
+                        f"metamodel.wind_correction.{key} must be an increasing [low, high] pair",
+                    )
+
+    forcing = config.get("forcing", {})
+    if not isinstance(forcing, dict):
+        report.error("engine.forcing", "forcing must be a dict")
+        forcing = {}
+    for kind, spec in forcing.items():
+        if kind not in FORCING_KINDS:
+            report.warn("engine.forcing", f"unknown forcing.{kind} (expected {list(FORCING_KINDS)})")
+            continue
+        path = spec.get("data_path") if isinstance(spec, dict) else None
+        if not isinstance(path, str) or not path:
+            report.error("engine.forcing", f"forcing.{kind}.data_path must be a path")
+        elif not (case_dir / path).exists():
+            report.warn("engine.forcing", f"forcing.{kind}.data_path missing: {path}")
+
     sim = config.get("simulations", {})
     bounds = sim.get("bounds", {})
     for name in inputs:
@@ -605,12 +663,37 @@ def _check_engine(case_dir: Path, config: dict, report: _Report) -> None:
         report.error(
             "engine.max_steepness", "simulations.max_steepness must be a positive number"
         )
+    model = sim.get("model")
+    if model not in SIMULATION_MODELS:
+        report.error(
+            "engine.model",
+            f"simulations.model must be one of {list(SIMULATION_MODELS)}, got {model!r}",
+        )
+        return
+    block = sim.get(model)
+    if not isinstance(block, dict):
+        report.error("engine.model", f"simulations.{model} block is missing")
+        return
+    for key in MODEL_BLOCK_KEYS:
+        if not isinstance(block.get(key), str) or not block[key]:
+            report.error("engine.model", f"simulations.{model}.{key} must be a path")
     for key in ("metamodel_templates", "dynamic_templates"):
-        folder = sim.get(key)
+        folder = block.get(key)
         if isinstance(folder, str) and folder and not (case_dir / folder).is_dir():
             report.warn(
-                "engine.templates", f"simulations.{key} folder missing: {folder}"
+                "engine.templates", f"simulations.{model}.{key} folder missing: {folder}"
             )
+    grid = block.get("grid_file")
+    if isinstance(grid, str) and grid and not (case_dir / grid).is_file():
+        report.warn("engine.grid", f"simulations.{model}.grid_file missing: {grid}")
+    if not isinstance(block.get("slurm", {}), dict):
+        report.error("engine.model", f"simulations.{model}.slurm must be a dict")
+    if model == "swan" and isinstance(vars_, dict) and vars_.get("tp") == "raw":
+        report.warn(
+            "engine.tp_raw",
+            "SWAN changes Tp nearshore: predict it (vars_to_predict.tp as a PCA "
+            "target) instead of passing the offshore Tp through ('raw')",
+        )
 
 
 # ----------------------------------------------------------------------

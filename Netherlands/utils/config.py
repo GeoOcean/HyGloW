@@ -3,7 +3,7 @@
 Reads ``<CaseDir>/<CaseDir>.json`` once at import time into module-level
 globals (:data:`PATHS`, :data:`OFFSHORE_WAVES`, :data:`ONSHORE_WAVES`,
 :data:`OUTPUT_SITES`, :data:`SIMULATIONS`, :data:`OUTPUT_SITES_CONFIG`,
-:data:`METAMODEL`); call :func:`reload` to re-read after editing the file.
+:data:`METAMODEL`, :data:`FORCING`); call :func:`reload` to re-read after editing the file.
 Also provides case-relative path resolution (:func:`resolve`), goals-file
 and offshore-waves accessors, metamodel config validation
 (:func:`validate_metamodel_config`), and notebook logging setup
@@ -19,6 +19,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
 import xarray as xr
 
 _HYWAVES_LOGGERS = ("hywaves.metamodel", "hywaves.validation")
@@ -64,7 +65,7 @@ def _load() -> dict[str, Any]:
 def _refresh_sections(config: dict[str, Any]) -> None:
     """Refresh module-level section shortcuts from *config*."""
     global PATHS, OFFSHORE_WAVES, ONSHORE_WAVES
-    global OUTPUT_SITES, SIMULATIONS, OUTPUT_SITES_CONFIG, METAMODEL
+    global OUTPUT_SITES, SIMULATIONS, OUTPUT_SITES_CONFIG, METAMODEL, FORCING
 
     PATHS = config["paths"]
     OFFSHORE_WAVES = config.get("offshore_waves", [])
@@ -73,6 +74,7 @@ def _refresh_sections(config: dict[str, Any]) -> None:
     SIMULATIONS = config.get("simulations", {})
     OUTPUT_SITES_CONFIG = SIMULATIONS.get("output_sites_config", {})
     METAMODEL = config.get("metamodel", {})
+    FORCING = config.get("forcing", {})
 
 
 CONFIG = _load()
@@ -83,6 +85,7 @@ OUTPUT_SITES: dict[str, Any]
 SIMULATIONS: dict[str, Any]
 OUTPUT_SITES_CONFIG: dict[str, Any]
 METAMODEL: dict[str, Any]
+FORCING: dict[str, Any]
 _refresh_sections(CONFIG)
 
 
@@ -171,6 +174,63 @@ def goals_for_snapwave(
         }
         for key, goal in goals.items()
     }
+
+
+#: Numerical models a case can run its SnapWave-like cases with (``simulations.model``).
+SIMULATION_MODELS = ("snapwave", "swan")
+
+
+def simulation_model(model: str | None = None) -> str:
+    """
+    Numerical model of the case cases: *model*, else ``simulations.model``.
+
+    Parameters
+    ----------
+    model
+        Explicit model name (checked), or None for the case JSON choice.
+
+    Returns
+    -------
+    str
+        One of :data:`SIMULATION_MODELS`.
+
+    Raises
+    ------
+    ValueError
+        If the model is unknown or ``simulations.model`` is missing.
+    """
+    name = model if model is not None else SIMULATIONS.get("model")
+    if name not in SIMULATION_MODELS:
+        raise ValueError(
+            f"simulations.model must be one of {SIMULATION_MODELS}, got {name!r}"
+        )
+    return name
+
+
+def model_config(model: str | None = None) -> dict[str, Any]:
+    """
+    The ``simulations.<model>`` block: grid, templates, cases folders, SLURM.
+
+    Parameters
+    ----------
+    model
+        Model name; default ``simulations.model``.
+
+    Returns
+    -------
+    dict
+        ``grid_file``, ``metamodel_templates``, ``dynamic_templates``,
+        ``metamodel_cases``, ``dynamic_cases`` and optional ``slurm``.
+
+    Raises
+    ------
+    KeyError
+        If the case JSON has no block for the model.
+    """
+    name = simulation_model(model)
+    if name not in SIMULATIONS:
+        raise KeyError(f"simulations.{name} is not configured in the case JSON")
+    return SIMULATIONS[name]
 
 
 def mda_max_points() -> int:
@@ -283,6 +343,83 @@ def open_offshore_waves(
     if not path:
         raise ValueError(f"offshore wave {spec.get('name')!r} has no data_path")
     return xr.open_zarr(resolve(path))
+
+
+def _forcing_entry(kind: str) -> dict[str, Any]:
+    """The ``forcing.<kind>`` block, with its ``data_path``."""
+    spec = FORCING.get(kind)
+    if not isinstance(spec, dict) or not spec.get("data_path"):
+        raise KeyError(f"forcing.{kind}.data_path is not configured in the case JSON")
+    return spec
+
+
+def open_wind(time: str | slice | None = None) -> xr.Dataset:
+    """
+    Open the 10 m wind of ``forcing.wind`` (e.g. ERA5) over the case area.
+
+    Parameters
+    ----------
+    time
+        Optional time selection (cover the cases' times with a margin: the
+        wrappers interpolate linearly in time).
+
+    Returns
+    -------
+    xarray.Dataset
+        ``u10`` and ``v10`` (m/s) on ``(time, latitude, longitude)``,
+        latitude increasing.
+    """
+    spec = _forcing_entry("wind")
+    ds = xr.open_zarr(resolve(spec["data_path"]))
+    if "valid_time" in ds.dims:
+        ds = ds.rename(valid_time="time")
+    ds = ds[["u10", "v10"]].sortby("latitude")
+    return ds if time is None else ds.sel(time=time)
+
+
+def open_water_level() -> xr.DataArray:
+    """
+    Open the water level of ``forcing.water_level`` (e.g. CODEC) at the goals.
+
+    Returns
+    -------
+    xarray.DataArray
+        Water level (m) on ``(time, goal)``, named ``wl``; the variable is
+        ``forcing.water_level.variable`` (default ``"waterlevel"``).
+    """
+    spec = _forcing_entry("water_level")
+    ds = xr.open_zarr(resolve(spec["data_path"]))
+    return ds[spec.get("variable", "waterlevel")].rename("wl")
+
+
+def goal_water_level(goal: str | int, times: Any) -> pd.Series:
+    """
+    Water level at one goal on *times*; 0 where the series has no value.
+
+    Parameters
+    ----------
+    goal
+        Goal id.
+    times
+        Times to return (e.g. an offshore forcing index).
+
+    Returns
+    -------
+    pandas.Series
+        Water level (m) indexed by *times*.
+    """
+    index = pd.DatetimeIndex(times)
+    wl = open_water_level().sel(goal=int(goal)).reindex(time=index).load()
+    series = pd.Series(wl.values, index=index, name="wl")
+    missing = int(series.isna().sum())
+    if missing:
+        logging.getLogger("hywaves.forcing").warning(
+            "Goal %s: no water level for %d of %d time steps (set to 0)",
+            goal,
+            missing,
+            len(series),
+        )
+    return series.fillna(0.0)
 
 
 def validate_metamodel_config(config: dict[str, Any] | None = None) -> None:
@@ -642,6 +779,7 @@ __all__ = [
     "CASE_CONFIG_PATH",
     "CASE_DIR",
     "CONFIG",
+    "FORCING",
     "METAMODEL",
     "OFFSHORE_WAVES",
     "ONSHORE_WAVES",
@@ -649,18 +787,24 @@ __all__ = [
     "OUTPUT_SITES_CONFIG",
     "PATHS",
     "SIMULATIONS",
+    "SIMULATION_MODELS",
     "case_description",
     "case_name",
     "configure_notebook_logging",
     "display_title",
     "forcing_columns",
     "get_offshore_wave",
+    "goal_water_level",
     "goals_for_snapwave",
     "load_goals",
     "mda_max_points",
+    "model_config",
     "offshore_catalog_key",
     "open_offshore_waves",
+    "open_water_level",
+    "open_wind",
     "reload",
     "resolve",
+    "simulation_model",
     "validate_metamodel_config",
 ]

@@ -3,8 +3,7 @@
     "description": "Base case where everything started with Johan and Dano",
     "paths": {
         "aoi_file": "inputs/AoI_Polygons/Netherlands_AoI.shp",
-        "topobathy_file": "inputs/GRID/UGdcsm-fm_100m2coast3d_v3_era5bnd_net.tiff",
-        "mesh_file": "inputs/GRID/UGdcsm-fm_100m2coast3d_v3_era5bnd_net.nc"
+        "topobathy_file": "inputs/GRID/UGdcsm-fm_100m2coast3d_v3_era5bnd_net.tiff"
     },
     "onshore_waves": "inputs/Observations/Netherlands_observations.json",
     "offshore_waves": [
@@ -13,12 +12,47 @@
             "data_path": "inputs/WHACS/processed/Netherlands_WHACS_goal.zarr"
         }
     ],
+    "forcing": {
+        "wind": {
+            "name": "ERA5",
+            "data_path": "inputs/ERA5/raw/Netherlands_wind.zarr"
+        },
+        "water_level": {
+            "name": "CODEC",
+            "data_path": "inputs/CODEC/processed/Netherlands_CODEC_goal.zarr",
+            "variable": "waterlevel"
+        }
+    },
     "simulations": {
         "goals_file": "inputs/Goals/Netherlands_Goals.json",
-        "metamodel_templates": "templates-metamodel",
-        "dynamic_templates": "templates-dynamic",
-        "metamodel_cases": "SnapWave_CASES_Metamodel",
-        "dynamic_cases": "SnapWave_CASES_Dynamic",
+        "model": "snapwave",
+        "snapwave": {
+            "grid_file": "inputs/GRID/Netherlands_mesh.nc",
+            "metamodel_templates": "templates-snapwave-metamodel",
+            "dynamic_templates": "templates-snapwave-dynamic",
+            "metamodel_cases": "SnapWave_CASES_Metamodel",
+            "dynamic_cases": "SnapWave_CASES_Dynamic",
+            "wind_cases": "SnapWave_CASES_Wind",
+            "slurm": {
+                "cpus_per_task": 2,
+                "mem": "4gb",
+                "setup": "module use /nfs/software/geocean/modulefiles\nmodule load snapwave/b663c81-wind1"
+            }
+        },
+        "swan": {
+            "grid_file": "inputs/GRID/Netherlands_mesh.grd",
+            "metamodel_templates": "templates-swan-metamodel",
+            "dynamic_templates": "templates-swan-dynamic",
+            "metamodel_cases": "SWAN_CASES_Metamodel",
+            "dynamic_cases": "SWAN_CASES_Dynamic",
+            "wind_cases": "SWAN_CASES_Wind",
+            "slurm": {
+                "mem": "4gb",
+                "extra_sbatch": [
+                    "--time=02:00:00"
+                ]
+            }
+        },
         "num_samples_per_goal": 1000,
         "max_steepness": 0.06,
         "bounds": {
@@ -80,9 +114,9 @@
         "mda_candidates": [
             50,
             100,
-            150,
-            250,
-            450
+            200,
+            350,
+            550
         ],
         "mda_inputs": [
             "hs",
@@ -150,6 +184,34 @@
                 "spr": "dspr"
             },
             "save_spectra": true
+        },
+        "wind_correction": {
+            "enabled": false,
+            "wind": "forcing",
+            "num_cases": 100,
+            "speed_ratio": [
+                0.8,
+                2.0
+            ],
+            "wind_wave_angle": [
+                -60.0,
+                60.0
+            ],
+            "u10_range": [
+                3.0,
+                35.0
+            ],
+            "steepness_range": [
+                0.02,
+                0.03
+            ],
+            "spr_range": [
+                20.0,
+                25.0
+            ],
+            "speed_factor": 1.0,
+            "added_spr": 30.0,
+            "added_tp": "wind_sea"
         },
         "paths": {
             "pca_dir": "outputs/{goal}/{metamodel}/pca_{mda_candidate}",

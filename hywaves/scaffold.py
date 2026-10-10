@@ -2,7 +2,7 @@
 
 ``python -m hywaves start --name Cantabria`` creates a case from the built-in
 template (``hywaves/template/``): vendored engine code (``utils/``),
-case-agnostic pipeline notebooks, SnapWave templates, tests, and a fresh
+case-agnostic pipeline notebooks, SnapWave and SWAN templates, tests, and a fresh
 config skeleton. The result runs anywhere — laptop or HPC — as long as the
 scientific stack (``bluemath_tk``, ``bluemesh2d``, ``wavespectra``, ...) is
 in your environment; see the generated ``README.md`` for the exact list.
@@ -33,8 +33,14 @@ TEMPLATE_DIR = Path(__file__).resolve().parent / "template"
 # pymesh2d/ from before bluemesh2d became a regular environment dependency —
 # see the generated README.md's Dependencies section).
 ENGINE_DIRS = ("utils", "bluemesh2d", "pymesh2d")
-SUPPORT_DIRS = ("tests", "templates-metamodel", "templates-dynamic")
-# Hashed in the manifest and kept in sync by `hywaves update`. SnapWave
+SUPPORT_DIRS = (
+    "tests",
+    "templates-snapwave-metamodel",
+    "templates-snapwave-dynamic",
+    "templates-swan-metamodel",
+    "templates-swan-dynamic",
+)
+# Hashed in the manifest and kept in sync by `hywaves update`. Model
 # templates and notebooks are user-owned after scaffolding — never synced.
 SYNCED_DIRS = ENGINE_DIRS + ("tests",)
 INPUT_SUBDIRS = ("AoI_Polygons", "GEBCO", "GRID", "Goals", "Observations", "WHACS")

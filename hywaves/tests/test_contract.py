@@ -237,6 +237,29 @@ class TestValidateCase(unittest.TestCase):
         self.assertFalse(any("bounds.dir" in m or "bounds.tp" in m for m in messages))
 
 
+    def test_engine_checks_model_block(self) -> None:
+        metamodel = {
+            "mda_candidates": [50],
+            "mda_inputs": ["hs", "tp", "dir"],
+            "mda_directional_variables": ["dir"],
+            "vars_to_predict": {"hs": {"vars_to_stack": ["hs"], "pca_variance": 0.99}, "tp": "raw"},
+        }
+        config = _minimal_config(metamodel=metamodel)
+        config["simulations"].update({"model": "xbeach"})
+        self._write_config(config)
+        messages = [f.message for f in _errors(validate_case(self.case_dir))]
+        self.assertTrue(any("simulations.model must be one of" in m for m in messages))
+
+        config["simulations"].update(
+            {"model": "swan", "swan": {"grid_file": "mesh.grd", "metamodel_templates": "t"}}
+        )
+        self._write_config(config)
+        findings = validate_case(self.case_dir)
+        messages = [f.message for f in _errors(findings)]
+        self.assertTrue(any("simulations.swan.dynamic_cases" in m for m in messages))
+        self.assertFalse(any("simulations.swan.grid_file must" in m for m in messages))
+        self.assertIn("engine.tp_raw", {f.code for f in findings})
+
 class TestFindCaseConfig(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()

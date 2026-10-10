@@ -1,0 +1,28 @@
+$ HyWaves metamodel case (stationary): Hs at one goal, 0 at the others,
+$ interpolated linearly along the open boundary (SWAN BOUNDSPEC VARIABLE PAR).
+$ Physics kept close to SnapWave (no wind, depth-induced breaking, bottom
+$ friction); SWAN also resolves frequency (Tp changes) and triads. Whitecapping
+$ stays on (SWAN default); add OFF WCAP to switch it off.
+PROJECT 'HyWaves' '{{ "%04d" % case_num }}'
+MODE STATIONARY TWODIMENSIONAL
+COORDINATES SPHERICAL CCM
+SET LEVEL={{ wl }} DEPMIN=0.1 NAUTICAL
+$
+CGRID UNSTRUCTURED CIRCLE 36 0.03 1.0 36
+READGRID UNSTRUCTURED ADCIRC
+$
+BOUND SHAPE JONSWAP 3.3 PEAK DSPR DEGREES
+BOUNDSPEC SIDE {{ boundary_side }} VARIABLE PAR &
+{% for row in boundary_par %}    {{ row }}{% if not loop.last %} &{% endif %}
+{% endfor %}$
+OFF QUAD
+BREAKING CONSTANT 1.0 0.73
+FRICTION JONSWAP CONSTANT 0.038
+TRIAD
+NUMERIC STOPC 0.005 0.01 0.005 99.5 STATIONARY 50
+$
+POINTS 'sites' FILE '{{ points_file }}'
+TABLE 'sites' NOHEAD '{{ table_file }}' {{ table_quantities }}
+$
+COMPUTE
+STOP

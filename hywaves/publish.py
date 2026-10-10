@@ -282,11 +282,13 @@ def _publish_output_sites(bundle: _Bundle, config: dict) -> None:
     (``{"lon": [...], "lat": [...], "source": [...], "label": [...]}``) —
     thousands of sites, so no per-row key repetition.
     """
-    rel = config.get("simulations", {}).get("metamodel_cases")
+    sim = config.get("simulations", {})
+    model = sim.get("model")
+    rel = (sim.get(model) or {}).get("metamodel_cases") if model else None
     if not isinstance(rel, str) or not rel:
-        raise LayerSkipped("simulations.metamodel_cases is not declared")
+        raise LayerSkipped(f"simulations.{model}.metamodel_cases is not declared")
     # The declared folder first; failing that, a same-named folder inside the
-    # case — for when the SnapWave runs live elsewhere (e.g. an HPC scratch
+    # case — for when the model runs live elsewhere (e.g. an HPC scratch
     # path in the config) and only the output_sites_*.nc were copied locally.
     candidates = [bundle.case_path(rel), bundle.case_dir / Path(rel).name]
     nc_files = next(
@@ -510,6 +512,7 @@ def publish_case(
             "schema": MANIFEST_SCHEMA,
             "hywaves_version": __version__,
             "case": config.get("name", case_dir.name),
+            "model": config.get("simulations", {}).get("model"),
             "published_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "max_image_px": max_image_px,
             "book": result.book,
