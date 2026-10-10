@@ -50,12 +50,14 @@ from wavespectra.construct import STATS as WAVESPECTRA_STATS
 
 from utils.config import (
     METAMODEL,
-    SIMULATIONS,
     forcing_columns,
     load_goals,
+    goal_water_level,
     mda_max_points,
+    model_config,
     open_offshore_waves,
     resolve,
+    simulation_model,
     validate_metamodel_config,
 )
 from utils.geometry import SITE_META, resolve_sites
@@ -76,6 +78,11 @@ for _handler in logger.handlers:
         _hywaves_logger.addHandler(_handler)
 
 PcaVariance = hw.PcaVariance
+
+#: ``wl`` of :func:`reconstruct` and friends: a constant (m), or this string for
+#: the ``forcing.water_level`` series at each goal.
+WL_FROM_FORCING = "forcing"
+WaterLevel = float | str
 
 # case config → metamodel (single source; do not duplicate in other modules)
 VARS = METAMODEL["vars_to_predict"]
@@ -387,7 +394,7 @@ def goal_output_dir(goal: str | int) -> Path:
 
 
 def cases_path(goal: str | int) -> Path:
-    """Return the SnapWave LHS NetCDF path for one goal.
+    """Return the metamodel cases NetCDF path for one goal (active model).
 
     Parameters
     ----------
@@ -397,9 +404,9 @@ def cases_path(goal: str | int) -> Path:
     Returns
     -------
     Path
-        Path to ``output_sites_{goal}.nc``.
+        ``output_sites_{goal}.nc`` in ``simulations.<model>.metamodel_cases``.
     """
-    return resolve(SIMULATIONS["metamodel_cases"]) / f"output_sites_{int(goal)}.nc"
+    return resolve(model_config()["metamodel_cases"]) / f"output_sites_{int(goal)}.nc"
 
 
 def mda_path(goal: str | int) -> Path:
@@ -631,6 +638,31 @@ def _write_split_dict(goal: str | int, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
+
+
+def check_artefacts_model(goal: str | int) -> None:
+    """Refuse a goal's fitted artefacts when another model produced its cases.
+
+    ``split.json`` records ``simulations.model`` at MDA fit time (artefacts
+    written before it did were all SnapWave).
+
+    Parameters
+    ----------
+    goal
+        Goal id from the case goals JSON.
+
+    Raises
+    ------
+    ValueError
+        If the artefacts were fitted on a different model's cases.
+    """
+    fitted = _read_split_dict(goal).get("model", "snapwave")
+    if fitted != simulation_model():
+        raise ValueError(
+            f"Goal {goal}: outputs in {goal_output_dir(goal)} were fitted on "
+            f"{fitted} cases but simulations.model is {simulation_model()!r}. "
+            "Move them aside (snapshot the portal first) or switch the model back."
+        )
 
 
 def load_fit_summary(
@@ -925,6 +957,7 @@ def load_models(
         If any pickle is missing.
     """
     require_models(goal, metamodel, n, pca_variance=pca_variance)
+    check_artefacts_model(goal)
     pcas = {
         name: load_model(pca_model_path(goal, metamodel, n, name, var))
         for name, var, _ in _pca_variables(pca_variance)
@@ -1027,6 +1060,7 @@ def _fit_mda(
                 f"{sorted(missing)} (fitted on an older configuration). "
                 "Re-fit with force_retrain=True (or remove outputs/goal_*)."
             )
+        check_artefacts_model(goal)
         train_idx, test_idx = load_split(goal)
         logger.info(
             "Goal %s: loaded MDA (%d train, %d test)",
@@ -1066,6 +1100,7 @@ def _fit_mda(
     with split_file.open("w", encoding="utf-8") as f:
         json.dump(
             {
+                "model": simulation_model(),
                 "train_idx": train_idx.tolist(),
                 "test_idx": test_idx.tolist(),
                 "num_centers": num_centers,
@@ -1498,13 +1533,21 @@ def _offshore_forcing(
     goal: str | int,
     *,
     partition: int,
-    wl: float = 0.0,
+    wl: WaterLevel = 0.0,
 ) -> pd.DataFrame:
     """MDA forcing (``hs``, ``tp``, ``dir``, ``spr``, ``wl``) of one goal and partition.
 
-    See :func:`bluemath_tk.waves.hywaves.metamodel.goal_forcing`.
+    ``wl`` is a constant (m) or ``"forcing"``: the ``forcing.water_level``
+    series at the goal (see :func:`utils.config.goal_water_level`). See
+    :func:`bluemath_tk.waves.hywaves.metamodel.goal_forcing`.
     """
-    return hw.goal_forcing(offshore.sel(goal=int(goal)), partition, wl)
+    if not isinstance(wl, str):
+        return hw.goal_forcing(offshore.sel(goal=int(goal)), partition, wl)
+    if wl != WL_FROM_FORCING:
+        raise ValueError(f"wl must be a number or {WL_FROM_FORCING!r}, got {wl!r}")
+    df = hw.goal_forcing(offshore.sel(goal=int(goal)), partition)
+    df["wl"] = goal_water_level(goal, df.index).to_numpy()
+    return df
 
 
 def _predict_offshore(
@@ -1515,10 +1558,11 @@ def _predict_offshore(
     *,
     metamodel: str,
     partition: int,
-    wl: float = 0.0,
+    wl: WaterLevel = 0.0,
     pca_variance: PcaVariance = None,
     models: dict[str, Any] | None = None,
     device: str | None = None,
+    wind_sea: bool = False,
 ) -> xr.Dataset | None:
     """Predict nearshore bulk parameters for one goal, partition and time slice.
 
@@ -1537,13 +1581,18 @@ def _predict_offshore(
     partition
         WHACS partition id (bulk ``-1`` or spectral ``0``–``3``).
     wl
-        Constant water level passed to MDA forcing (m).
+        Water level (m) for the MDA forcing, or ``"forcing"`` for the
+        ``forcing.water_level`` series at each goal.
     pca_variance
         PCA variance override; must match fitted models.
     models
         Pre-loaded model dict from :func:`load_models`; loaded if omitted.
     device
         Optional PyTorch device for GP inference when models are loaded here.
+    wind_sea
+        Also return, from the offshore forcing, the wind-sea weight
+        ``ws_weight`` and the inferred wind ``u10`` / ``u10dir`` on ``time``
+        (for the wind correction, see :mod:`utils.wind`).
 
     Returns
     -------
@@ -1556,7 +1605,7 @@ def _predict_offshore(
     if not valid.any():
         return None
 
-    return predict(
+    pred = predict(
         goal,
         n,
         forcing_df.loc[valid],
@@ -1567,6 +1616,21 @@ def _predict_offshore(
         row_dim="time",
         device=device,
     )
+    if not wind_sea:
+        return pred
+
+    from bluemath_tk.waves.hywaves.wind_correction import offshore_wind_sea
+
+    from utils.wind import config as wind_config
+
+    cfg = wind_config()
+    ws = offshore_wind_sea(
+        forcing_df.loc[valid],
+        steepness_range=tuple(cfg["steepness_range"]),
+        spr_range=tuple(cfg["spr_range"]),
+        speed_factor=float(cfg["speed_factor"]),
+    )
+    return pred.assign({name: ("time", ws[name].to_numpy()) for name in ws})
 
 
 def _wavespectra_sum(
@@ -1601,10 +1665,12 @@ def _sum_chunks(
     save_spectra: bool,
     workers: int,
     load: bool = True,
+    wind_correction: Mapping[str, Any] | None = None,
 ) -> tuple[xr.Dataset, xr.Dataset | None]:
     """Site-batched summation within this host's memory budget, optionally parallel.
 
-    See :func:`bluemath_tk.waves.hywaves.reconstruction.sum_partition_spectra_batched`.
+    See :func:`bluemath_tk.waves.hywaves.reconstruction.sum_partition_spectra_batched`;
+    *wind_correction* is :func:`utils.wind.reconstruction_inputs`.
     """
     return hwr.sum_partition_spectra_batched(
         chunks,
@@ -1617,6 +1683,7 @@ def _sum_chunks(
         workers=workers,
         load=load,
         log_file=str(resolve("logs/metamodel.log")),
+        wind_correction=wind_correction,
     )
 
 
@@ -1719,6 +1786,19 @@ def _goals_label(goals: Iterable[str | int] | None) -> str:
     return "-".join(str(goal) for goal in _goals(goals))
 
 
+def _wind_label() -> str:
+    """Cache-label token of the wind correction (model and wind source)."""
+    from utils.wind import config as wind_config
+
+    cfg = wind_config()
+    return f"wind-{simulation_model()}-{cfg['wind']}-{cfg['added_tp']}__"
+
+
+def _wl_label(wl: WaterLevel) -> str:
+    """Cache-label token for a constant water level or the forcing series."""
+    return wl if isinstance(wl, str) else f"{wl:g}"
+
+
 def _sanitize_cache_stem(stem: str, *, max_len: int = 220) -> str:
     """Sanitize and optionally truncate a cache filename stem.
 
@@ -1770,14 +1850,15 @@ def reconstruction_cache_path(
     spectral: bool,
     offshore_name: str,
     goals: Iterable[str | int] | None,
-    wl: float,
+    wl: WaterLevel,
     site_ids: list[str],
     pca_variance: PcaVariance,
     variables: Mapping[str, str] | None = None,
+    wind_correction: bool = False,
 ) -> Path:
     """Build the NetCDF cache path for one reconstruction request.
 
-    The filename encodes offshore source, metamodel set, MDA size, spectral
+    The filename encodes the numerical model, offshore source, metamodel set, MDA size, spectral
     mode, goals, water level, resolved site list, output variable mapping, PCA
     settings, metamodel config fingerprint (``site_filter`` +
     ``pca_preprocessing``), and time span.
@@ -1797,7 +1878,8 @@ def reconstruction_cache_path(
     goals
         Goals included in reconstruction.
     wl
-        Constant water level (m).
+        Water level (m) for the MDA forcing, or ``"forcing"`` for the
+        ``forcing.water_level`` series at each goal.
     site_ids
         Resolved nearshore site labels.
     pca_variance
@@ -1805,6 +1887,9 @@ def reconstruction_cache_path(
     variables
         HyGloW name → wavespectra stat mapping. When omitted, uses the case JSON
         ``metamodel.reconstruction.variables``.
+    wind_correction
+        Whether the local wind sea is added (labelled with the model and the
+        wind source, see :mod:`utils.wind`).
 
     Returns
     -------
@@ -1813,10 +1898,12 @@ def reconstruction_cache_path(
     """
     var_map = _reconstruction_variables(override=variables)
     stem = (
-        "reconstruct-v7__"  # v7: hs as a metamodel input, metamodel sets
-        f"reconstruct__offshore-{offshore_name}__set-{metamodel}__n-{n}__"
+        "reconstruct-v8__"  # v8: model in the key (v7: hs input, metamodel sets)
+        f"reconstruct__model-{simulation_model()}__"
+        f"offshore-{offshore_name}__set-{metamodel}__n-{n}__"
         f"{'spectral' if spectral else 'bulk'}__"
-        f"goals-{_goals_label(goals)}__wl-{wl:g}__"
+        f"goals-{_goals_label(goals)}__wl-{_wl_label(wl)}__"
+        f"{_wind_label() if wind_correction else ''}"
         f"sites-{'-'.join(sorted(site_ids))}__"
         f"vars-{_variables_label(var_map)}__"
         f"pca-{_pca_variance_label(pca_variance)}__"
@@ -1834,11 +1921,12 @@ def load_reconstruction_spectra(
     spectral: bool,
     offshore_name: str,
     goals: Iterable[str | int] | None = None,
-    wl: float = 0.0,
+    wl: WaterLevel = 0.0,
     site_ids: list[str],
     pca_variance: PcaVariance,
     variables: Mapping[str, str] | None = None,
     load: bool = True,
+    wind_correction: bool | None = None,
 ) -> xr.Dataset | None:
     """Load cached summed spectra written when ``save_spectra`` was enabled.
 
@@ -1857,7 +1945,8 @@ def load_reconstruction_spectra(
     goals
         Goals included in reconstruction.
     wl
-        Constant water level (m).
+        Water level (m) for the MDA forcing, or ``"forcing"`` for the
+        ``forcing.water_level`` series at each goal.
     site_ids
         Resolved nearshore site labels.
     pca_variance
@@ -1867,6 +1956,8 @@ def load_reconstruction_spectra(
         omitted, uses ``metamodel.reconstruction.variables``.
     load
         Eager-load arrays into memory.
+    wind_correction
+        Same as :func:`reconstruct` (default ``metamodel.wind_correction.enabled``).
 
     Returns
     -------
@@ -1885,10 +1976,20 @@ def load_reconstruction_spectra(
         site_ids=site_ids,
         pca_variance=pca_variance,
         variables=variables,
+        wind_correction=_wind_correction_on(wind_correction),
     )
     return _load_reconstruction_cache(
         reconstruction_spectra_cache_path(bulk_path), load=load
     )
+
+
+def _wind_correction_on(wind_correction: bool | None) -> bool:
+    """*wind_correction*, or ``metamodel.wind_correction.enabled`` when None."""
+    if wind_correction is not None:
+        return bool(wind_correction)
+    from utils.wind import enabled
+
+    return enabled()
 
 
 def _load_reconstruction_cache(path: Path, *, load: bool) -> xr.Dataset | None:
@@ -1969,7 +2070,7 @@ def _reconstruct_period(
     spectral: bool = True,
     offshore_name: str = "WHACS",
     pca_variance: PcaVariance = None,
-    wl: float = 0.0,
+    wl: WaterLevel = 0.0,
     load: bool = True,
     models_by_goal: dict[str, dict[str, Any]] | None = None,
     cache_path: Path | None = None,
@@ -1979,6 +2080,7 @@ def _reconstruct_period(
     save_spectra: bool | None = None,
     variables: Mapping[str, str] | None = None,
     workers: int = 1,
+    wind_correction: bool = False,
 ) -> xr.Dataset:
     """Reconstruct one offshore time slice already selected with ``.sel(time=...)``.
 
@@ -2003,7 +2105,8 @@ def _reconstruct_period(
     pca_variance
         PCA variance override used for prediction.
     wl
-        Constant water level passed to MDA forcing (m).
+        Water level (m) for the MDA forcing, or ``"forcing"`` for the
+        ``forcing.water_level`` series at each goal.
     load
         Eager-load the output dataset.
     models_by_goal
@@ -2028,6 +2131,8 @@ def _reconstruct_period(
         step (see :func:`_sum_chunks`). ``1`` (default) runs in this
         process. Only that pure-CPU step is parallelized; the goal loop above
         it (GP inference, often on GPU) is not.
+    wind_correction
+        Add the local wind sea (see :mod:`utils.wind`).
 
     Returns
     -------
@@ -2051,6 +2156,7 @@ def _reconstruct_period(
             site_ids=site_ids,
             pca_variance=pca_variance,
             variables=variables,
+            wind_correction=wind_correction,
         )
     variable_map = _reconstruction_variables(override=variables)
     save_spectra = _reconstruction_save_spectra(override=save_spectra)
@@ -2100,6 +2206,7 @@ def _reconstruct_period(
                     pca_variance=pca_variance,
                     models=goal_models,
                     device=device,
+                    wind_sea=wind_correction,
                 )
                 if pred is None:
                     logger.debug(
@@ -2135,6 +2242,7 @@ def _reconstruct_period(
         save_spectra=save_spectra,
         workers=workers,
         load=load,
+        wind_correction=_wind_inputs(wind_correction, offshore, site_ids),
     )
 
     if use_cache:
@@ -2154,6 +2262,17 @@ def _reconstruct_period(
     return result
 
 
+def _wind_inputs(
+    wind_correction: bool, offshore: xr.Dataset, site_ids: list[str]
+) -> dict[str, Any] | None:
+    """:func:`utils.wind.reconstruction_inputs` when the correction is on."""
+    if not wind_correction:
+        return None
+    from utils.wind import reconstruction_inputs
+
+    return reconstruction_inputs(offshore["time"].values, site_ids)
+
+
 def _reconstruct_periods_batch(
     offshore_store: xr.Dataset,
     periods: list[str],
@@ -2164,13 +2283,14 @@ def _reconstruct_periods_batch(
     site_ids: list[str],
     spectral: bool,
     pca_variance: PcaVariance,
-    wl: float,
+    wl: WaterLevel,
     cache_kw: Mapping[str, Any],
     use_cache: bool = True,
     device: str | None = None,
     save_spectra: bool | None = None,
     variables: Mapping[str, str] | None = None,
     workers: int = 1,
+    wind_correction: bool = False,
 ) -> dict[str, xr.Dataset]:
     """Reconstruct several uncached months in one GP prediction pass per goal.
 
@@ -2204,8 +2324,8 @@ def _reconstruct_periods_batch(
         Shared kwargs for :func:`reconstruction_cache_path` (built once by
         the caller, so every month's cache path matches what a normal
         single-month :func:`_reconstruct_period` call would have produced).
-    workers
-        Same as :func:`_reconstruct_period`'s ``workers``.
+    workers, wind_correction
+        Same as :func:`_reconstruct_period`.
 
     Returns
     -------
@@ -2260,6 +2380,7 @@ def _reconstruct_periods_batch(
                     pca_variance=pca_variance,
                     models=goal_models,
                     device=device,
+                    wind_sea=wind_correction,
                 )
                 if pred is None:
                     continue
@@ -2289,6 +2410,7 @@ def _reconstruct_periods_batch(
         save_spectra=save_spec,
         workers=workers,
         load=True,
+        wind_correction=_wind_inputs(wind_correction, combined_offshore, site_ids),
     )
 
     out: dict[str, xr.Dataset] = {}
@@ -2323,7 +2445,7 @@ def reconstruct(
     spectral: bool = True,
     offshore_name: str = "WHACS",
     goals: Iterable[str | int] | None = None,
-    wl: float = 0.0,
+    wl: WaterLevel = 0.0,
     sites: str | Iterable[str] | None = None,
     pca_variance: PcaVariance = None,
     load: bool = True,
@@ -2333,6 +2455,7 @@ def reconstruct(
     save_spectra: bool | None = None,
     variables: Mapping[str, str] | None = None,
     workers: int = 1,
+    wind_correction: bool | None = None,
 ) -> xr.Dataset:
     """Reconstruct nearshore waves from offshore hindcast forcing.
 
@@ -2359,7 +2482,8 @@ def reconstruct(
     goals
         Goals to include; default all configured goals.
     wl
-        Constant water level for MDA forcing (m).
+        Water level (m) for the MDA forcing, or ``"forcing"`` for the
+        ``forcing.water_level`` series at each goal.
     sites
         Site selector within the set; see :func:`resolve_sites`.
     pca_variance
@@ -2396,6 +2520,11 @@ def reconstruct(
         ``WAVESPECTRA_MEMORY_BUDGET_BYTES``, so total memory stays roughly
         constant as ``workers`` grows, but CPU/core usage scales with it —
         e.g. ``workers=os.cpu_count() // 2`` to leave half the machine free.
+    wind_correction
+        Add the local wind sea before the spectral sum (see :mod:`utils.wind`;
+        needs the fetch table and the fitted correction). Default
+        ``metamodel.wind_correction.enabled``. The output then also has
+        ``wind_k`` (``K``, 1 where nothing was added).
 
     Returns
     -------
@@ -2420,6 +2549,7 @@ def reconstruct(
         )
 
     active = _goals(goals)
+    wind_correction = _wind_correction_on(wind_correction)
     validate_metamodel_config()
     require_models_all(metamodel, n, active, pca_variance=pca_variance)
 
@@ -2439,6 +2569,7 @@ def reconstruct(
         site_ids=site_ids,
         pca_variance=pca_variance,
         variables=variable_map,
+        wind_correction=wind_correction,
     )
     full_cache_path = reconstruction_cache_path(time, **cache_kw)
     save_spec = _reconstruction_save_spectra(override=save_spectra)
@@ -2470,6 +2601,7 @@ def reconstruct(
         save_spectra=save_spectra,
         variables=variable_map,
         workers=workers,
+        wind_correction=wind_correction,
     )
 
     if len(periods) == 1:
@@ -2549,6 +2681,7 @@ def reconstruct(
                     save_spectra=save_spectra,
                     variables=variable_map,
                     workers=workers,
+                    wind_correction=wind_correction,
                 )
             )
 
@@ -2599,6 +2732,8 @@ __all__ = [
     "SITE_META",
     "SPECTRAL_PARTITIONS",
     "VARS",
+    "WL_FROM_FORCING",
+    "check_artefacts_model",
     "common_model_sites",
     "fit",
     "fit_all",

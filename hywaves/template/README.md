@@ -1,7 +1,8 @@
 # __CASE_NAME__ — HyGloW hybrid wave downscaling case
 
 Scaffolded with `python -m hywaves start`. This folder is **self-contained**:
-the engine code (`utils/`), the pipeline notebooks, SnapWave templates, and
+the engine code (`utils/`), the pipeline notebooks, SnapWave and SWAN
+templates, and
 tests are all vendored here — it runs on any machine (laptop or HPC) without
 installing the `hywaves` package itself.
 
@@ -11,15 +12,18 @@ Run notebooks with `__CASE_NAME__/` as the working directory.
 ## 0. Install dependencies
 
 - The following scientific stack is expected to already be in your (conda)
-  environment: `bluemath_tk`, `bluemesh2d`, `wavespectra`, `xarray`,
-  `geopandas`, `rioxarray`, `pandas`, `scipy`, `matplotlib`.
-- [**SnapWave**](https://github.com/danoroelvink/snapwave/) — the nearshore
-  propagation model that actually runs each case. It's an external binary:
-  clone that repo and compile it yourself (see its README for build
-  instructions). You don't need it for notebooks 01–04, but you do from
-  05 onward. Notebooks 05/08 run it as `snapwave` from your PATH
-  (`launcher="default"`), or on the GeoOcean cluster as a SLURM job array
-  with `wrapper.run_cases_slurm()` (loads the `snapwave` module for you).
+  environment: `bluemesh2d`, `wavespectra`, `xarray`, `geopandas`,
+  `rioxarray`, `pandas`, `scipy`, `matplotlib`, and `bluemath_tk` from its
+  `develop` branch (`pip install "git+https://github.com/GeoOcean/BlueMath_tk.git@develop"`).
+- The nearshore propagation model that actually runs each case, chosen with
+  `simulations.model`: [**SnapWave**](https://github.com/danoroelvink/snapwave/)
+  (`"snapwave"`, UGRID `.nc` mesh) or **SWAN** (`"swan"`, ADCIRC `.grd` grid
+  with counterclockwise triangles). Both are external binaries. You don't need
+  them for notebooks 01–04, but you do from 05 onward. Notebooks run them from
+  your PATH (`launcher="default"`), or on the GeoOcean cluster as SLURM job
+  arrays with `wrapper.run_cases_slurm(**sim.slurm_kwargs())` (module and
+  resources from `simulations.<model>.slurm`). Runs with wind need SnapWave's
+  wind-fixed build (`snapwave/b663c81-wind1`, the template default).
 
 ## Getting started
 
@@ -29,7 +33,12 @@ Run notebooks with `__CASE_NAME__/` as the working directory.
    `num_samples_per_goal` cases), `output_sites_config` isobaths (`smooth_m`,
    `min_length_m`, `spacing_m` in metres), and the `metamodel` settings for
    your region — `sets` fits one PCA + GP per group of output sites (e.g.
-   `buoys`, `isobaths`) on the same SnapWave cases.
+   `buoys`, `isobaths`) on the same model cases. `simulations.model` picks
+   SnapWave or SWAN and `simulations.<model>` its grid, templates
+   (`templates-<model>-metamodel/`, `templates-<model>-dynamic/`), cases
+   folders and SLURM options; with SWAN, predict `tp` (a PCA target) instead
+   of `"raw"`. Optional `forcing` (wind, e.g. ERA5; water level, e.g. CODEC)
+   feeds the dynamic runs and `reconstruct(wl="forcing")`.
 2. **Area of interest** — put your AoI shapefile in `inputs/AoI_Polygons/`.
 3. **Work through the notebooks in order:**
 
@@ -39,11 +48,12 @@ Run notebooks with `__CASE_NAME__/` as the working directory.
    | 02    | `02_Create_mesh_by_bluemesh2d.ipynb`           | Unstructured mesh              |
    | 03    | `03_Generate_Observations_Configuration.ipynb` | Buoy/site GeoJSON catalogue    |
    | 04    | `04_Select_Goals_by_Hindcasts.ipynb`           | Goal locations + sectors       |
-   | 05    | `05_Metamodel_Cases_Generation.ipynb`          | LHS SnapWave cases per goal    |
+   | 05    | `05_Metamodel_Cases_Generation.ipynb`          | LHS model cases per goal       |
+   | 05b   | `05b_Wind_Correction.ipynb`                    | Optional: wind correction (K)  |
    | 06    | `06_Validate_Metamodel.ipynb`                  | Fit + holdout validation       |
    | 07    | `07_Download_Process_WHACS.ipynb`              | Offshore hindcast zarr         |
    | 08    | `08_Dynamic_Cases_Generation.ipynb`            | Dynamic reference runs         |
-   | 09    | `09_Validate_Linear_Summation.ipynb`           | Metamodel vs dynamic SnapWave  |
+   | 09    | `09_Validate_Linear_Summation.ipynb`           | Metamodel vs dynamic runs      |
    | 10a   | `10a_Validate_Offshore_Buoys.ipynb`            | Offshore buoy validation       |
    | 10b   | `10b_Validate_Onshore_Buoys.ipynb`             | Onshore buoy validation        |
    | 11    | `11_Validate_Spectra.ipynb`                    | Buoy vs reconstructed spectra  |
@@ -77,13 +87,40 @@ Run notebooks with `__CASE_NAME__/` as the working directory.
    Re-run `publish` after re-running notebooks; `validate` warns
    (`portal.stale`) whenever the bundle has fallen behind.
 
+## Model, wind and water level
+
+- **SnapWave or SWAN** (both ready; the published reference results use
+  SnapWave). Set `simulations.model`; everything else (wrappers,
+  templates, grids, cases folders, case plots) follows from the
+  `simulations.<model>` block, through `utils.simulation.HyWavesWrapperSetup`.
+  Both models write the same `output_sites_{goal}.nc`, so 06 onward is the
+  same. SWAN changes Tp nearshore: predict it (`vars_to_predict.tp` as a PCA
+  target) instead of `"raw"`.
+- **Wind and water level (optional).** With `forcing.wind` and
+  `forcing.water_level` in the JSON, notebook 08 gives every hourly case the
+  wind field and the water level at the goals, and shows them first
+  (`setup.plot_dynamic_forcing`). `wind=None` in 08 runs without wind; then
+  write to a separate cases folder.
+- **Wind correction (optional, notebook 05b).** The metamodel cases have no
+  wind. 05b computes the fetch at every output site, runs ~100 full-domain
+  cases with and without wind, and fits the growth factor `K`;
+  `mm.reconstruct(..., wind_correction=True)` then adds the local wind sea.
+  In 09, compare like with like: without the correction against dynamic runs
+  without wind, with it against dynamic runs with wind. The method, its
+  assumptions and its results are explained in `hywaves/docs/wind_correction.md`
+  in the main HyGloW repository.
+- **Comparing models.** Run the pipeline with one model, `publish`, keep it
+  with `python -m hywaves snapshot __CASE_NAME__/ <tag>`, move `outputs/`
+  aside, switch `simulations.model` and run again. The GUI lists both
+  versions.
+
 ## Stuck, or want to see it done first?
 
-**NewSouthWales** (in the main HyGloW repository) is the most complete
-worked example — its README documents the full pipeline, the metamodel
-workflow, and the commit/re-run checklist in detail. **Samoa** shows another
-use case. Both are real, runnable cases you can read notebook-by-notebook
-alongside your own.
+**Netherlands** (in the main HyGloW repository) is the reference case on the
+current engine, including SWAN, wind and water level. **NewSouthWales** and
+**Samoa** are complete worked examples on an older engine; their READMEs
+document the metamodel workflow and the re-run checklist in detail. All are
+real, runnable cases you can read notebook-by-notebook alongside your own.
 
 ## For developers
 

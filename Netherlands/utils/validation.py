@@ -1502,9 +1502,9 @@ def plot_buoy_timeseries(
     fig, axes = plt.subplots(len(keys), 1, figsize=figsize, sharex=True)
     axes = np.atleast_1d(axes)
 
-    colors = {
-        name: _MODEL_COLORS.get(name, f"C{i}") for i, name in enumerate(estimates)
-    }
+    taken = {_MODEL_COLORS[name] for name in estimates if name in _MODEL_COLORS}
+    free = (f"C{i}" for i in range(20) if f"C{i}" not in taken)
+    colors = {name: _MODEL_COLORS.get(name) or next(free) for name in estimates}
     ref_site = reference.sel(sites=site)
     for ax, key in zip(axes, keys, strict=True):
         spec = PARAMETERS[key]

@@ -182,12 +182,15 @@ cython_debug/
 *.zarr
 *.tiff
 *.pkl
+*.grd
 
 # Data directories
 *logs/
 *cases/
 *CASES*/
 *outputs/
+Netherlands/SWAN_test/
+Netherlands/outputs_OLDESITO/
 
 # MacOS
 *.DS_Store

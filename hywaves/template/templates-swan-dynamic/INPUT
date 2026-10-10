@@ -1,0 +1,34 @@
+$ HyWaves dynamic reference: one stationary case per time step, the offshore
+$ hindcast at every goal, interpolated linearly along the open boundary.
+$ Physics as the metamodel cases (depth-induced breaking, bottom friction,
+$ triads; whitecapping on), plus wind generation (GEN3, quadruplets on) when
+$ the case has wind: a field (wind_file) or a uniform u10 / u10dir.
+PROJECT 'HyWaves' '{{ "%04d" % case_num }}'
+MODE STATIONARY TWODIMENSIONAL
+COORDINATES SPHERICAL CCM
+SET LEVEL={{ wl }} DEPMIN=0.1 NAUTICAL
+$
+CGRID UNSTRUCTURED CIRCLE 36 0.03 1.0 36
+READGRID UNSTRUCTURED ADCIRC
+{% set wind = (wind_file is defined) or (u10 is defined and u10) %}{% if wind_file is defined %}INPGRID WIND REGULAR {{ wind_grid }}
+READINP WIND 1 '{{ wind_file }}' 3 0 FREE
+{% elif wind %}WIND {{ u10 }} {{ u10dir }}
+{% endif %}$
+BOUND SHAPE JONSWAP 3.3 PEAK DSPR DEGREES
+BOUNDSPEC SIDE {{ boundary_side }} VARIABLE PAR &
+{% for row in boundary_par %}    {{ row }}{% if not loop.last %} &{% endif %}
+{% endfor %}$
+{% if wind %}GEN3
+{% else %}OFF QUAD
+{% endif %}BREAKING CONSTANT 1.0 0.73
+FRICTION JONSWAP CONSTANT 0.038
+TRIAD
+NUMERIC STOPC 0.005 0.01 0.005 99.5 STATIONARY 50
+$
+POINTS 'sites' FILE '{{ points_file }}'
+TABLE 'sites' NOHEAD '{{ table_file }}' {{ table_quantities }}
+$ 2D spectra at the sites (not used by the pipeline):
+$ SPECOUT 'sites' SPEC2D ABS 'output_sites.spc'
+$
+COMPUTE
+STOP

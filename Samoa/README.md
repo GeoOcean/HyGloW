@@ -1,5 +1,14 @@
 # Samoa — hybrid wave downscaling case
 
+> **Engine status (2026-10):** this case runs its vendored engine from
+> **hywaves 0.9.0** (SnapWave only, Hs not yet a metamodel input, old
+> `simulations` keys). Its notebooks and published results are consistent
+> with that version. Before re-running it on the current engine (0.11.0), run
+> `python -m hywaves update Samoa/` and migrate `Samoa.json` following the
+> [contract changelog](../hywaves/contract/CONTRACT.md#changelog) (0.10.0:
+> Hs input and metamodel sets; 0.11.0: `simulations.model` and per-model
+> blocks). [Netherlands](../Netherlands/README.md) shows the current layout.
+
 Samoa is a **hybrid downscaling** workflow for nearshore waves around the Samoan
 archipelago. SnapWave LHS simulations feed a **GPR metamodel** (MDA → PCA → GP)
 so full offshore hindcasts can be reconstructed without running the model at every

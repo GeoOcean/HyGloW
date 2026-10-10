@@ -261,7 +261,9 @@ class TestPublishMapLayers(_CaseFixture):
         cases = self.case_dir / "SnapWave_CASES_Metamodel"
         cases.mkdir()
         ds.to_netcdf(cases / "output_sites_1.nc")
-        self.config["simulations"]["metamodel_cases"] = "SnapWave_CASES_Metamodel"
+        self.config["simulations"].update(
+            model="snapwave", snapwave={"metamodel_cases": "SnapWave_CASES_Metamodel"}
+        )
         self._write_config()
 
         self._publish()
@@ -270,7 +272,9 @@ class TestPublishMapLayers(_CaseFixture):
         self.assertEqual(sites["lon"], [1.0, 2.0])
 
     def test_missing_declared_source_is_skipped_not_fatal(self) -> None:
-        self.config["simulations"]["metamodel_cases"] = "/definitely/not/here"
+        self.config["simulations"].update(
+            model="snapwave", snapwave={"metamodel_cases": "/definitely/not/here"}
+        )
         self._write_config()
         result = self._publish()
         self.assertIn("no output_sites_*.nc", result.skipped["output_sites"])
@@ -289,7 +293,9 @@ class TestPublishMapLayers(_CaseFixture):
             }
         ).to_netcdf(local / "output_sites_1.nc")
         # Declared path lives on another machine; only the .nc were copied here.
-        self.config["simulations"]["metamodel_cases"] = "/elsewhere/PubCase/SnapWave_CASES_Metamodel"
+        self.config["simulations"].update(
+            model="snapwave", snapwave={"metamodel_cases": "/elsewhere/PubCase/SnapWave_CASES_Metamodel"}
+        )
         self._write_config()
 
         result = self._publish()

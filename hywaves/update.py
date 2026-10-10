@@ -14,7 +14,8 @@ recorded in ``.hywaves/manifest.json``:
 
 Cases created before the manifest existed are handled conservatively:
 without a shipped-state record, every differing file counts as locally
-modified. Notebooks and SnapWave templates are user-owned and never synced.
+modified. Notebooks and model (SnapWave/SWAN) templates are user-owned and
+never synced.
 """
 
 from __future__ import annotations
