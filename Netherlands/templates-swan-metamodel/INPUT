@@ -1,5 +1,6 @@
 $ HyWaves metamodel case (stationary): Hs at one goal, 0 at the others,
-$ interpolated linearly along the open boundary (SWAN BOUNDSPEC VARIABLE PAR).
+$ SWAN interpolates the spectra (energy) linearly along the open boundary
+$ between the BOUNDSPEC VARIABLE PAR rows.
 $ Physics kept close to SnapWave (no wind, depth-induced breaking, bottom
 $ friction); SWAN also resolves frequency (Tp changes) and triads. Whitecapping
 $ stays on (SWAN default); add OFF WCAP to switch it off.

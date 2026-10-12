@@ -1,5 +1,6 @@
 $ HyWaves dynamic reference: one stationary case per time step, the offshore
-$ hindcast at every goal, interpolated linearly along the open boundary.
+$ hindcast at every goal; SWAN interpolates the spectra (energy) linearly
+$ along the open boundary between them.
 $ Physics as the metamodel cases (depth-induced breaking, bottom friction,
 $ triads; whitecapping on), plus wind generation (GEN3, quadruplets on) when
 $ the case has wind: a field (wind_file) or a uniform u10 / u10dir.

@@ -222,5 +222,19 @@ class TestMetamodelCases(unittest.TestCase):
                 self.assertEqual(set(sws.SITE_COORDS) - set(ds.coords), set())
 
 
+    def test_model_boundary(self) -> None:
+        """SnapWave maps show the enclosure, SWAN the grid's open boundary."""
+        boundary, label = _setup("snapwave").model_boundary
+        self.assertEqual(boundary.geom_type, "Polygon")
+        self.assertIn("enclosure", label)
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(
+            sws.SIMULATIONS, {**_models_config(tmp), "model": "swan"}
+        ):
+            _write_square_grid(Path(tmp) / "mesh.grd")
+            boundary, label = _setup("swan").model_boundary
+        self.assertEqual(boundary.geom_type, "LineString")
+        self.assertIn("SWAN", label)
+        np.testing.assert_allclose(np.asarray(boundary.coords)[:, 1], 1.0)
+
 if __name__ == "__main__":
     unittest.main()

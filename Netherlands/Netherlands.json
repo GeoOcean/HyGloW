@@ -25,7 +25,7 @@
     },
     "simulations": {
         "goals_file": "inputs/Goals/Netherlands_Goals.json",
-        "model": "snapwave",
+        "model": "swan",
         "snapwave": {
             "grid_file": "inputs/GRID/Netherlands_mesh.nc",
             "metamodel_templates": "templates-snapwave-metamodel",
@@ -135,7 +135,12 @@
                 ],
                 "pca_variance": 0.99
             },
-            "tp": "raw",
+            "tp": {
+                "vars_to_stack": [
+                    "tp"
+                ],
+                "pca_variance": 0.99
+            },
             "dir": {
                 "vars_to_stack": [
                     "dir_u",
@@ -152,17 +157,20 @@
         },
         "site_filter": {
             "hs_ratio_max": 3.0,
-            "tp_min": 0.5
+            "tp_min": 0.5,
+            "hs_nan_max": 0.01
         },
         "pca_preprocessing": {
             "nan_threshold_to_drop": {
                 "hs": 0.99,
+                "tp": 0.99,
                 "dir_u": 0.99,
                 "dir_v": 0.99,
                 "spr": 0.99
             },
             "value_to_replace_nans": {
                 "hs": 0.0,
+                "tp": 0.0,
                 "dir_u": 0.0,
                 "dir_v": 0.0,
                 "spr": 0.0
@@ -183,7 +191,7 @@
                 "dir": "dm",
                 "spr": "dspr"
             },
-            "save_spectra": true
+            "save_spectra": false
         },
         "wind_correction": {
             "enabled": false,

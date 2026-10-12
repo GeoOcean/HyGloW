@@ -94,7 +94,8 @@
         },
         "site_filter": {
             "hs_ratio_max": 3.0,
-            "tp_min": 0.5
+            "tp_min": 0.5,
+            "hs_nan_max": 0.01
         },
         "pca_preprocessing": {
             "nan_threshold_to_drop": {

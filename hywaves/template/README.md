@@ -38,7 +38,10 @@ Run notebooks with `__CASE_NAME__/` as the working directory.
    (`templates-<model>-metamodel/`, `templates-<model>-dynamic/`), cases
    folders and SLURM options; with SWAN, predict `tp` (a PCA target) instead
    of `"raw"`. Optional `forcing` (wind, e.g. ERA5; water level, e.g. CODEC)
-   feeds the dynamic runs and `reconstruct(wl="forcing")`.
+   feeds the dynamic runs and `reconstruct(wl="forcing")`. `site_filter`
+   decides which output sites are trained: keep `"hs_nan_max": 0.01` so sites
+   outside the mesh or often dry are removed (see the hywaves
+   `docs/site_filter.md`).
 2. **Area of interest** — put your AoI shapefile in `inputs/AoI_Polygons/`.
 3. **Work through the notebooks in order:**
 

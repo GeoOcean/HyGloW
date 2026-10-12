@@ -198,7 +198,7 @@ reference GUI lists them as versions of the case.
 | `mda_inputs`                                            | non-empty list of strings (`hs`, `tp`, `dir`, `spr`, `wl`)                                                      |
 | `mda_directional_variables`                             | list, subset of `mda_inputs`                                                                                    |
 | `vars_to_predict`                                       | non-empty dict; each value `"raw"` or a dict with `vars_to_stack` (non-empty list) and `pca_variance` in (0, 1] |
-| `site_filter`                                           | dict; keys `{var}_max`, `{var}_min` or `{var}_ratio_max` (`var / {var}_forcing`)                                 |
+| `site_filter`                                           | dict; keys `{var}_max`, `{var}_min`, `{var}_ratio_max` (`var / {var}_forcing`) or `{var}_nan_max` (fraction of cases, in [0, 1]); see `docs/site_filter.md` |
 | `pca_preprocessing`                                     | optional dict of dicts                                                                                          |
 | `validation.metrics_variables`                          | non-empty list, subset of `vars_to_predict`                                                                     |
 | `reconstruction.variables`                              | non-empty dict; keys subset of `vars_to_predict`; values valid wavespectra stats                                |
@@ -221,6 +221,16 @@ not importable — the validator itself never requires third-party packages.
 
 Every change to this document is recorded here.
 
+- **2026-10** (hywaves 0.12.0): dry and outside-grid output sites are handled
+  by the site filter instead of the PCA. When the cases are loaded, a site-case
+  with `hs` NaN or 0 becomes NaN in every field (SnapWave writes `hs = 0` with
+  placeholder `dir`, SWAN its exception value). `site_filter` accepts
+  `{var}_nan_max`, a fraction of cases: `"hs_nan_max": 0.01` removes sites
+  outside the grid or dry in more than 1 % of the cases (listed in
+  `split.json` `removed_sites`). The dry cases left are filled for training
+  (`hs = 0`, other fields = case forcing), so `pca_preprocessing` no longer
+  drops columns; the holdout reference keeps them NaN. Details in
+  `docs/site_filter.md`.
 - **2026-10** (hywaves 0.11.0): the numerical cases run with SnapWave or SWAN.
   `simulations.model` chooses the model, and a `simulations.<model>` block
   holds its `grid_file` (SnapWave: UGRID `.nc`; SWAN: ADCIRC `.grd` with

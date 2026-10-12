@@ -36,13 +36,14 @@ from bluemath_tk.core.plotting.base_plotting import (
 )
 from bluemath_tk.waves.hywaves.output_points import smooth_raster
 from bluemath_tk.wrappers.snapwave import BOUNDARY_VARS
-from bluemath_tk.wrappers.snapwave.snapwave_plots import CasePlotStyle, plot_case
+from bluemath_tk.core.plotting.cases import CasePlotStyle
+from bluemath_tk.wrappers.snapwave.snapwave_plots import plot_case
 from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.gridspec import GridSpec
 from matplotlib.patches import Wedge
-from shapely.geometry import MultiPolygon, Polygon
+from shapely.geometry.base import BaseGeometry
 
 from utils.config import OUTPUT_SITES_CONFIG, PATHS, display_title, resolve
 
@@ -1052,7 +1053,8 @@ def _place_goal_label(
 def _plot_configuration_map(
     ax_map: Axes,
     *,
-    enclosure_polygon: Polygon | MultiPolygon,
+    model_boundary: BaseGeometry,
+    model_boundary_label: str = "enclosure",
     goals_config: dict[str, dict[str, Any]],
     cases: pd.DataFrame,
     colors: dict[int, Any],
@@ -1065,14 +1067,25 @@ def _plot_configuration_map(
     show_satellite: bool = False,
     satellite_source: str = SATELLITE_SOURCE,
 ) -> None:
-    """Shared base map + enclosure + goal wedges/arrows + output sites for config diagnostics."""
-    # Axis limits end up fixed by the enclosure alone (below), so the
-    # satellite fetch — if requested — uses that same tight box rather than
-    # the whole-case AoI, or tiles come in at a zoom level too coarse for
+    """Shared base map + model boundary + goal wedges/arrows + output sites.
+
+    *model_boundary* is what the model forces: SnapWave's enclosure polygon
+    (its outline is drawn) or SWAN's open-boundary line from the grid file.
+    """
+    # Axis limits end up fixed by the model boundary, goals and sites (below),
+    # so the satellite fetch — if requested — uses that same tight box rather
+    # than the whole-case AoI, or tiles come in at a zoom level too coarse for
     # this close-up view.
-    enclosure_gdf = gpd.GeoDataFrame(geometry=[enclosure_polygon], crs="EPSG:4326")
-    minx, miny, maxx, maxy = enclosure_gdf.total_bounds
-    pad = 0.08
+    boundary_gdf = gpd.GeoDataFrame(geometry=[model_boundary], crs="EPSG:4326")
+    minx, miny, maxx, maxy = boundary_gdf.total_bounds
+    lons = [g["lon"] for g in goals_config.values()] + list(output_sites_df.get("lon", []))
+    lats = [g["lat"] for g in goals_config.values()] + list(output_sites_df.get("lat", []))
+    if lons:
+        minx, maxx = min(minx, min(lons)), max(maxx, max(lons))
+        miny, maxy = min(miny, min(lats)), max(maxy, max(lats))
+    # The enclosure is already buffered; around a bare boundary line leave
+    # room for the goal wedges.
+    pad = 0.08 if model_boundary.geom_type.endswith("Polygon") else 0.25
     satellite_area = (minx - pad, maxx + pad, miny - pad, maxy + pad)
 
     plot_base_map(
@@ -1083,15 +1096,16 @@ def _plot_configuration_map(
         satellite_source=satellite_source,
         satellite_area=satellite_area,
     )
-    enclosure_gdf.boundary.plot(
+    outline = boundary_gdf.boundary if model_boundary.geom_type.endswith("Polygon") else boundary_gdf
+    outline.plot(
         ax=ax_map,
         color="#d62728",
         linestyle="--",
         linewidth=1.4,
-        label="enclosure",
+        label=model_boundary_label,
     )
 
-    # Axis limits are fixed by the enclosure alone, so they can be set (and
+    # Axis limits are fixed by the model boundary, goals and sites, so they can be set (and
     # locked in with a draw) before the goal loop — label placement below
     # needs the real data<->pixel scale to measure text boxes accurately.
     ax_map.set_xlim(minx - pad, maxx + pad)
@@ -1187,7 +1201,8 @@ def _plot_configuration_map(
 
 def _configuration_map_figure(
     *,
-    enclosure_polygon: Polygon | MultiPolygon,
+    model_boundary: BaseGeometry,
+    model_boundary_label: str = "enclosure",
     goals_config: dict[str, dict[str, Any]],
     cases: pd.DataFrame,
     output_sites_df: pd.DataFrame,
@@ -1212,7 +1227,8 @@ def _configuration_map_figure(
     fig, ax = plt.subplots(figsize=figsize, subplot_kw=subplot_kw)
     _plot_configuration_map(
         ax,
-        enclosure_polygon=enclosure_polygon,
+        model_boundary=model_boundary,
+        model_boundary_label=model_boundary_label,
         goals_config=goals_config,
         cases=cases,
         colors=colors,
@@ -1231,7 +1247,8 @@ def _configuration_map_figure(
 
 def plot_metamodel_configuration_map(
     *,
-    enclosure_polygon: Polygon | MultiPolygon,
+    model_boundary: BaseGeometry,
+    model_boundary_label: str = "enclosure",
     goals_config: dict[str, dict[str, Any]],
     cases_df: pd.DataFrame,
     output_sites_df: pd.DataFrame,
@@ -1248,7 +1265,8 @@ def plot_metamodel_configuration_map(
     cases = cases_df.copy()
     cases["goal"] = cases["goal"].astype(int)
     return _configuration_map_figure(
-        enclosure_polygon=enclosure_polygon,
+        model_boundary=model_boundary,
+        model_boundary_label=model_boundary_label,
         goals_config=goals_config,
         cases=cases,
         output_sites_df=output_sites_df,
@@ -1265,7 +1283,8 @@ def plot_metamodel_configuration_map(
 
 def plot_dynamic_configuration_map(
     *,
-    enclosure_polygon: Polygon | MultiPolygon,
+    model_boundary: BaseGeometry,
+    model_boundary_label: str = "enclosure",
     goals_config: dict[str, dict[str, Any]],
     offshore: xr.Dataset,
     output_sites_df: pd.DataFrame,
@@ -1281,7 +1300,8 @@ def plot_dynamic_configuration_map(
     """Bigger, standalone map-only companion to :func:`plot_dynamic_configuration`."""
     cases = _offshore_bulk_long(offshore)
     return _configuration_map_figure(
-        enclosure_polygon=enclosure_polygon,
+        model_boundary=model_boundary,
+        model_boundary_label=model_boundary_label,
         goals_config=goals_config,
         cases=cases,
         output_sites_df=output_sites_df,
@@ -1299,7 +1319,8 @@ def plot_dynamic_configuration_map(
 def plot_metamodel_configuration(
     *,
     aoi_gdf: gpd.GeoDataFrame,
-    enclosure_polygon: Polygon | MultiPolygon,
+    model_boundary: BaseGeometry,
+    model_boundary_label: str = "enclosure",
     goals_config: dict[str, dict[str, Any]],
     cases_df: pd.DataFrame,
     output_sites_df: pd.DataFrame,
@@ -1323,7 +1344,7 @@ def plot_metamodel_configuration(
 
     Parameters
     ----------
-    aoi_gdf, enclosure_polygon, goals_config, output_sites_df
+    aoi_gdf, model_boundary, model_boundary_label, goals_config, output_sites_df
         Case geometry and goal configuration (see
         :class:`utils.simulation.HyWavesWrapperSetup`).
     cases_df
@@ -1360,7 +1381,8 @@ def plot_metamodel_configuration(
     )
     _plot_configuration_map(
         ax_map,
-        enclosure_polygon=enclosure_polygon,
+        model_boundary=model_boundary,
+        model_boundary_label=model_boundary_label,
         goals_config=goals_config,
         cases=cases,
         colors=colors,
@@ -1415,7 +1437,7 @@ def plot_metamodel_configuration(
             "Map legend:",
             "  shaded wedge = propagation sector",
             "  arrows = sampled wave-from directions",
-            "  dashed red = SnapWave enclosure",
+            f"  dashed red = {model_boundary_label}",
             "",
             "Bar panel:",
             "  light bar = allowed sector",
@@ -1450,7 +1472,8 @@ def plot_metamodel_configuration(
 def plot_dynamic_configuration(
     *,
     aoi_gdf: gpd.GeoDataFrame,
-    enclosure_polygon: Polygon | MultiPolygon,
+    model_boundary: BaseGeometry,
+    model_boundary_label: str = "enclosure",
     goals_config: dict[str, dict[str, Any]],
     offshore: xr.Dataset,
     output_sites_df: pd.DataFrame,
@@ -1482,7 +1505,7 @@ def plot_dynamic_configuration(
 
     Parameters
     ----------
-    aoi_gdf, enclosure_polygon, goals_config, output_sites_df
+    aoi_gdf, model_boundary, model_boundary_label, goals_config, output_sites_df
         Case geometry and goal configuration (see
         :class:`utils.simulation.HyWavesWrapperSetup`).
     offshore
@@ -1519,7 +1542,8 @@ def plot_dynamic_configuration(
     )
     _plot_configuration_map(
         ax_map,
-        enclosure_polygon=enclosure_polygon,
+        model_boundary=model_boundary,
+        model_boundary_label=model_boundary_label,
         goals_config=goals_config,
         cases=cases,
         colors=colors,
@@ -1604,7 +1628,7 @@ def plot_dynamic_configuration(
             "Map legend:",
             "  shaded wedge = propagation sector (goals JSON)",
             "  arrows = subsampled reanalysis wave-from directions",
-            "  dashed red = SnapWave enclosure",
+            f"  dashed red = {model_boundary_label}",
             "",
             "Bar panel:",
             "  light bar = allowed sector",

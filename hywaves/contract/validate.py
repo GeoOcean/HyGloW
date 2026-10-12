@@ -505,12 +505,21 @@ def _check_engine(case_dir: Path, config: dict, report: _Report) -> None:
     if not isinstance(site_filter, dict):
         report.error("engine.site_filter", "metamodel.site_filter must be a dict")
     else:
-        for key in site_filter:
+        for key, value in site_filter.items():
             if not (key.endswith("_max") or key.endswith("_min")):
                 report.error(
                     "engine.site_filter",
-                    f"site_filter key {key!r} must end with '_max', '_ratio_max' "
-                    "or '_min'",
+                    f"site_filter key {key!r} must end with '_max', '_ratio_max', "
+                    "'_nan_max' or '_min'",
+                )
+            elif key.endswith("_nan_max") and not (
+                isinstance(value, (int, float))
+                and not isinstance(value, bool)
+                and 0 <= float(value) <= 1
+            ):
+                report.error(
+                    "engine.site_filter",
+                    f"site_filter {key!r} is a fraction of cases, in [0, 1]",
                 )
 
     sets = mm.get("sets")

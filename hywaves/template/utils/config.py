@@ -485,11 +485,17 @@ def validate_metamodel_config(config: dict[str, Any] | None = None) -> None:
     site_filter = mm.get("site_filter", {})
     if not isinstance(site_filter, dict):
         raise TypeError("metamodel.site_filter must be a dict")
-    for key in site_filter:
+    for key, value in site_filter.items():
         if not (key.endswith("_max") or key.endswith("_min")):
             raise ValueError(
                 f"metamodel.site_filter key {key!r} must end with '_max', "
-                "'_ratio_max' or '_min'"
+                "'_ratio_max', '_nan_max' or '_min'"
+            )
+        if key.endswith("_nan_max") and not (
+            isinstance(value, (int, float)) and 0 <= float(value) <= 1
+        ):
+            raise ValueError(
+                f"metamodel.site_filter.{key} is a fraction of cases, in [0, 1]"
             )
 
     sets = mm.get("sets")

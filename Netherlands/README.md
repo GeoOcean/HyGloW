@@ -26,6 +26,10 @@ SnapWave in the Xaver pilot (`SWAN_test/`).
    sites on the smoothed 5/10/20 m isobaths), MDA picks the training cases
    (50, 100, 200, 350 or 550), PCA compresses the site fields and a GP maps
    the offshore sea state to them. The rest of the cases are the holdout.
+   Before that, the site filter removes 48 isobath sites (from hywaves
+   0.12.0): 39 outside the mesh (estuaries, harbours, Wadden inlets) and 9
+   that fall dry in more than 1 % of the cases (`"hs_nan_max": 0.01`); see
+   `hywaves/docs/site_filter.md`.
 3. Any offshore time series (WHACS, bulk or its 4 spectral partitions) is
    reconstructed by predicting every goal's contribution and **summing them
    as spectra**.

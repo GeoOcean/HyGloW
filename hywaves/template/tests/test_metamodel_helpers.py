@@ -10,6 +10,8 @@ import xarray as xr
 
 from unittest import mock
 
+from bluemath_tk.waves.hywaves import metamodel as hw
+
 from utils import metamodel as mm
 
 
@@ -33,6 +35,27 @@ class TestMetamodelHelpers(unittest.TestCase):
         with mock.patch.dict(mm.SITE_FILTER, {"hs_ratio_max": 3.0}, clear=True):
             removed = mm.detect_removed_sites(cases)
         self.assertEqual(removed, ["bad"])
+
+    def test_detect_removed_sites_dry(self) -> None:
+        """Sites dry (or outside the grid) in too many cases are removed."""
+        hs = np.array([[1.0, 0.0, np.nan], [2.0, 1.0, np.nan], [3.0, 2.0, np.nan]])
+        cases = xr.Dataset(
+            {
+                "hs": (("case_num", "sites"), hs),
+                "tp": (("case_num", "sites"), np.full((3, 3), 5.0)),
+                "hs_forcing": (("case_num",), np.array([2.0, 3.0, 4.0])),
+                "tp_forcing": (("case_num",), np.array([8.0, 9.0, 10.0])),
+            },
+            coords={"case_num": [0, 1, 2], "sites": ["wet", "dry_once", "outside"]},
+        )
+        masked = hw.mask_dry_sites(cases)
+        with mock.patch.dict(mm.SITE_FILTER, {"hs_nan_max": 0.5}, clear=True):
+            self.assertEqual(mm.detect_removed_sites(masked), ["outside"])
+        with mock.patch.dict(mm.SITE_FILTER, {"hs_nan_max": 0.0}, clear=True):
+            self.assertEqual(mm.detect_removed_sites(masked), ["dry_once", "outside"])
+        filled = hw.fill_dry_sites(mm.drop_sites(masked, ["outside"]))
+        self.assertEqual(float(filled.hs.sel(sites="dry_once")[0]), 0.0)
+        self.assertEqual(float(filled.tp.sel(sites="dry_once")[0]), 8.0)
 
     def test_set_sites(self) -> None:
         """A set's selector picks its sites; unknown sets are rejected."""
@@ -67,7 +90,10 @@ class TestMetamodelHelpers(unittest.TestCase):
         )
 
     def test_reconstruction_save_spectra_from_config(self) -> None:
-        self.assertTrue(mm._reconstruction_save_spectra())
+        self.assertEqual(
+            mm._reconstruction_save_spectra(),
+            bool(mm.METAMODEL["reconstruction"]["save_spectra"]),
+        )
 
     def test_pca_variance_label_includes_config_defaults(self) -> None:
         label = mm._pca_variance_label({"hs": 0.99, "dir": 0.99})

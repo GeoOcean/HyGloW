@@ -524,9 +524,12 @@ def set_sites(cases: xr.Dataset, metamodel: str) -> list[str]:
 
 
 def detect_removed_sites(cases: xr.Dataset) -> list[str]:
-    """Return site labels that fail ``METAMODEL.site_filter`` on SnapWave cases.
+    """Return site labels that fail ``METAMODEL.site_filter`` on the model cases.
 
-    See :func:`bluemath_tk.waves.hywaves.metamodel.detect_removed_sites`.
+    *cases* should come from ``load_cases_goal(goal, apply_site_filter=False)``
+    (dry site-cases already NaN), so ``hs_nan_max`` counts dry and
+    outside-grid points the same way for SnapWave and SWAN. See
+    :func:`bluemath_tk.waves.hywaves.metamodel.detect_removed_sites`.
     """
     return hw.detect_removed_sites(cases, SITE_FILTER)
 
@@ -555,8 +558,17 @@ def removed_sites(goal: str | int) -> list[str]:
         return list(json.load(f).get("removed_sites", []))
 
 
-def load_cases_goal(goal: str | int, *, apply_site_filter: bool = True) -> xr.Dataset:
-    """SnapWave LHS output for one goal, with ``dir_u``/``dir_v`` and optional site filter.
+def load_cases_goal(
+    goal: str | int, *, apply_site_filter: bool = True, fill_dry: bool = True
+) -> xr.Dataset:
+    """Model LHS output for one goal, dry-masked, with ``dir_u``/``dir_v``.
+
+    Dry or outside-grid site-cases (``hs`` NaN or 0) are first set to NaN in
+    every field (:func:`bluemath_tk.waves.hywaves.metamodel.mask_dry_sites`),
+    so SnapWave and SWAN look the same. With the site filter, the sites in
+    ``split.json`` ``removed_sites`` are dropped and the dry cases left are
+    filled for training (``hs = 0``, other fields = case forcing; see
+    :func:`bluemath_tk.waves.hywaves.metamodel.fill_dry_sites`).
 
     Parameters
     ----------
@@ -564,6 +576,10 @@ def load_cases_goal(goal: str | int, *, apply_site_filter: bool = True) -> xr.Da
         Goal id (as in the case goals JSON).
     apply_site_filter
         If ``True``, drop sites listed in ``split.json`` ``removed_sites``.
+    fill_dry
+        With *apply_site_filter*, fill the remaining dry cases (training). Use
+        ``False`` for a holdout reference: dry cases stay NaN and the metrics
+        skip them.
 
     Returns
     -------
@@ -571,10 +587,12 @@ def load_cases_goal(goal: str | int, *, apply_site_filter: bool = True) -> xr.Da
         Dimensions ``(case_num, sites)``; variables ``hs``, ``tp``, ``dir``, …
     """
     with xr.open_dataset(cases_path(goal)) as ds:
-        out = hw.add_direction_components(ds).load()
+        out = hw.mask_dry_sites(ds.load())
     if apply_site_filter:
         out = drop_sites(out, removed_sites(goal))
-    return out
+        if fill_dry:
+            out = hw.fill_dry_sites(out)
+    return hw.add_direction_components(out)
 
 
 def forcing_dataframe(cases: xr.Dataset) -> pd.DataFrame:

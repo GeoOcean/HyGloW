@@ -237,6 +237,19 @@ class TestValidateCase(unittest.TestCase):
         self.assertFalse(any("bounds.dir" in m or "bounds.tp" in m for m in messages))
 
 
+    def test_engine_checks_site_filter(self) -> None:
+        metamodel = {
+            "site_filter": {"hs_ratio_max": 3.0, "hs_nan_max": 1.5, "tp_below": 1},
+        }
+        self._write_config(_minimal_config(metamodel=metamodel))
+        messages = [
+            f.message for f in _errors(validate_case(self.case_dir))
+            if f.code == "engine.site_filter"
+        ]
+        self.assertTrue(any("'hs_nan_max' is a fraction" in m for m in messages))
+        self.assertTrue(any("'tp_below' must end with" in m for m in messages))
+        self.assertFalse(any("hs_ratio_max" in m for m in messages))
+
     def test_engine_checks_model_block(self) -> None:
         metamodel = {
             "mda_candidates": [50],

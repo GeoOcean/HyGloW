@@ -867,9 +867,10 @@ def _holdout_pair(
     models: dict[str, Any] | None = None,
     pca_variance: mm.PcaVariance = None,
 ) -> tuple[xr.Dataset, xr.Dataset, int]:
-    """SnapWave reference and metamodel estimate on MDA test cases.
+    """Model reference and metamodel estimate on MDA test cases.
 
     Returns reference, estimate (both ``case_num`` × ``sites``), and test count.
+    Dry reference cases stay NaN, so the metrics skip them.
     """
     if context is None:
         context = mm.load_context(goal)
@@ -879,7 +880,7 @@ def _holdout_pair(
             goal, metamodel, mda_candidate, pca_variance=pca_variance
         )
 
-    cases = mm.load_cases_goal(goal)
+    cases = mm.load_cases_goal(goal, fill_dry=False)
     cases = cases.sel(sites=mm.set_sites(cases, metamodel))
     idx = np.asarray(test_idx, dtype=int)
     estimate = mm.predict(
