@@ -99,6 +99,10 @@ class TestFitWindCorrection(unittest.TestCase):
                 self.assertEqual(len(pairs), n_cases * 3)
                 self.assertEqual(float(pairs["fetch"].iloc[0]), 4e4)
                 correction, scores = wind.fit_wind_correction(test_fraction=0.25)
+                k_df = wind.k_comparison(test_fraction=0.25)
+                self.assertEqual(k_df["case"].nunique(), 10)
+                for col in ("k_runs", "k_fitted", "k_formula_deep", "k_formula_depth"):
+                    self.assertTrue(k_df[col].between(0.5, 4.0).all(), col)
                 self.assertTrue(wind.correction_path().is_file())
                 loaded = wind.load_wind_correction()
                 self.assertEqual(loaded.n_samples, correction.n_samples)
@@ -106,6 +110,19 @@ class TestFitWindCorrection(unittest.TestCase):
         rmse = scores.pivot_table(index="group", columns="estimate", values="rmse")
         self.assertTrue((rmse["wind correction"] < rmse["no correction"]).all())
 
+
+class TestFormulaK(unittest.TestCase):
+    def test_growth_curves(self) -> None:
+        """Young seas grow more than developed ones; never below 1; depth limits growth."""
+        u = np.array([15.0, 15.0, 15.0])
+        hs = np.array([0.5, 2.0, 0.24 * 15.0**2 / 9.81])  # the last one fully developed
+        k = wind.formula_k(hs, u, 30e3)
+        self.assertGreater(k[0], k[1])
+        self.assertGreater(k[1], 1.0)
+        self.assertAlmostEqual(float(k[2]), 1.0)
+        shallow = wind.formula_k(np.array([2.0]), np.array([15.0]), 30e3, depth=np.array([5.0]))
+        self.assertAlmostEqual(float(shallow[0]), 1.0)  # already above the depth limit
+        self.assertTrue(np.isnan(wind.formula_k(np.array([0.0]), np.array([10.0]), 1e4))[0])
 
 if __name__ == "__main__":
     unittest.main()

@@ -3,9 +3,11 @@
 A snapshot keeps the results of one attempt (e.g. ``hs1`` = the unit-Hs
 metamodel) before the case is re-run and re-published, so the GUI can show
 every version side by side (CONTRACT.md §6). The copy is complete, built
-Jupyter Book included; its ``manifest.json`` gains a ``snapshot`` block with
-the tag, a free-text note and the snapshot date. Snapshots are never
-re-published or checked for staleness.
+report included; its ``manifest.json`` gains a ``snapshot`` block with the
+tag, a free-text note and the snapshot date. The report's links are absolute
+(``…/case-book/<case id>/…``, recorded as ``book_url``), and the GUI serves a
+snapshot's report under ``<case id>@<tag>``, so they are rewritten in the
+copy. Snapshots are never re-published or checked for staleness.
 """
 
 from __future__ import annotations
@@ -18,6 +20,24 @@ from pathlib import Path
 
 #: Allowed snapshot tags (folder ``portal_<tag>``).
 TAG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+
+#: Report files whose text can hold the report's own URL.
+_BOOK_TEXT_SUFFIXES = {".html", ".js", ".json", ".css", ".xml", ".txt", ".map"}
+
+
+def _retarget_book(book: Path, old_url: str, new_url: str) -> int:
+    """Rewrite the report's absolute links from *old_url* to *new_url*; return files changed."""
+    pattern = re.compile(re.escape(old_url) + r"(?=[/\"'?#]|$)")
+    changed = 0
+    for path in book.rglob("*"):
+        if not path.is_file() or path.suffix not in _BOOK_TEXT_SUFFIXES:
+            continue
+        text = path.read_text(encoding="utf-8", errors="surrogateescape")
+        new = pattern.sub(new_url, text)
+        if new != text:
+            path.write_text(new, encoding="utf-8", errors="surrogateescape")
+            changed += 1
+    return changed
 
 
 class SnapshotError(Exception):
@@ -77,6 +97,10 @@ def snapshot_case(case_dir: str | Path, tag: str, note: str = "") -> Path:
 
     shutil.copytree(source, target)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    old_url = manifest.get("book_url")
+    if old_url and (target / "book").is_dir():
+        manifest["book_url"] = f"{old_url}@{tag}"
+        _retarget_book(target / "book", old_url, manifest["book_url"])
     manifest["snapshot"] = {
         "tag": tag,
         "note": note,

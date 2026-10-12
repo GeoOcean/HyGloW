@@ -64,7 +64,11 @@ def _cmd_publish(args: argparse.Namespace) -> int:
     print(f"Publishing {args.case_dir} …")
     try:
         result = publish_case(
-            args.case_dir, book=not args.no_book, max_image_px=args.max_image_px
+            args.case_dir,
+            book=not args.no_book,
+            url_base=args.url_base,
+            case_id=args.case_id,
+            max_image_px=args.max_image_px,
         )
     except PublishError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -75,6 +79,8 @@ def _cmd_publish(args: argparse.Namespace) -> int:
         f"  {len(result.files)} file(s), {result.size_bytes / 1e6:.1f} MB"
         + (" (+ book/, not counted — git-ignored)" if result.book else "")
     )
+    if result.book:
+        print(f"  report built for the GUI route {result.book_url}/")
     if result.skipped:
         print(f"  {len(result.skipped)} layer(s) skipped — see the reasons above")
     print(f"\nNext: commit it with `git add {result.portal.parent.name}/portal`")
@@ -177,7 +183,18 @@ def main(argv: list[str] | None = None) -> int:
     p_publish.add_argument(
         "--no-book",
         action="store_true",
-        help="Don't copy the built Jupyter Book into portal/book/",
+        help="Don't build the report (Jupyter Book of the README + notebooks) into portal/book/",
+    )
+    p_publish.add_argument(
+        "--url-base",
+        default=None,
+        help="URL prefix the GUI is served under, baked into the report's links "
+        "(default: $HYGLOW_URL_BASE, unset = served at /)",
+    )
+    p_publish.add_argument(
+        "--case-id",
+        default=None,
+        help="Case id in the GUI catalog (default: the folder name in lowercase)",
     )
     p_publish.add_argument(
         "--max-image-px",

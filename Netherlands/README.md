@@ -118,7 +118,6 @@ from the old export; `ZandmoterBoeiNoord` was dropped (598 h).
 
 | Step | Notebook | What it does |
 | --- | --- | --- |
-| 00 | `00_Download_Wind.ipynb` | ERA5 `u10`/`v10` over the AoI → `inputs/ERA5/` |
 | 03 | `03_Generate_Observations_Configuration.ipynb` | Builds the 38 processed buoys + the observations JSON |
 | 04 | `04_Select_Goals_by_Hindcasts.ipynb` | Goals and propagation sectors |
 | 05 | `05_Metamodel_Cases_Generation.ipynb` | LHS cases per goal, build / run (SLURM) / postprocess |

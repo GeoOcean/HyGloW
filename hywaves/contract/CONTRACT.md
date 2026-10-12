@@ -147,7 +147,7 @@ scientific stack.
 | `buoy_validation/*_summary_*.csv`                 | `outputs/buoy_validation/*_summary_*.csv` (§5), as is                      |
 | `buoy_validation/figures/*.png`                   | `outputs/buoy_validation/figures/*.png` (§5), downscaled                   |
 | `gui_figures/*.png`                               | `outputs/gui_figures/*.png` (§5), downscaled                               |
-| `book/`                                           | `book/_build/html/` if built (`--no-book` to skip) — **not** committed     |
+| `book/`                                           | the case's report: a Jupyter Book of `README.md` + every numbered notebook (`NN*_*.ipynb`, saved outputs, not re-executed), built by `publish` in the git-ignored `{Case}/tmp/book/` (needs `jupyter-book`; `--no-book` to skip) — **not** committed |
 | `manifest.json`                                   | see below                                                                  |
 
 - Coordinates are rounded to 5 decimals (~1 m). PNGs whose longest side
@@ -162,7 +162,9 @@ scientific stack.
 
 **`manifest.json`** — `schema` (currently `1`), `hywaves_version`, `case`,
 `model` (`simulations.model`: the numerical model behind the results),
-`published_at` (UTC ISO-8601), `max_image_px`, `book` (bool), `skipped`
+`published_at` (UTC ISO-8601), `max_image_px`, `book` (bool), `book_url`
+(the route the report's absolute links were built for,
+`[/<HYGLOW_URL_BASE>]/case-book/<case id>`; `--url-base` / `--case-id`), `skipped`
 (`{layer: reason}`), `files` (`{path: {size, sha256}}`, excluding `book/`),
 `sources` (`{case-relative path: {size, mtime_ns, sha256}}` of every input
 read) and `source_patterns` (the globs that found them).
@@ -177,7 +179,8 @@ appeared or disappeared since the last publish — re-run `publish`.
 `portal.tmp/` / `portal.old/`.
 
 **Snapshots.** `python -m hywaves snapshot {Case}/ <tag> --note "…"` copies
-the current `portal/` (book included) to `{Case}/portal_<tag>/` — `<tag>` is
+the current `portal/` (book included; its links rewritten to
+`…/case-book/<case id>@<tag>`, where the GUI serves it) to `{Case}/portal_<tag>/` — `<tag>` is
 lowercase letters, digits and `-` — and adds `snapshot: {tag, note, created}`
 to that copy's `manifest.json`. Snapshots are frozen versions of a case (e.g.
 before re-running it with a new metamodel): never re-published, not checked
@@ -228,7 +231,10 @@ Every change to this document is recorded here.
   `templates-{snapwave,swan}-{metamodel,dynamic}/`. Both models write the same
   `output_sites_{goal}.nc`; the fitted artefacts record the model in
   `outputs/goal_*/split.json` (`model`) and refuse to mix with the other one.
-  The portal `manifest.json` records `model`. New optional `forcing` block:
+  The portal `manifest.json` records `model`. `publish` builds the report
+  itself (README + numbered notebooks → `portal/book/`, in `{Case}/tmp/book/`;
+  no `{Case}/book/` folder any more) and records its `book_url`; `snapshot`
+  points a copied report at its own route. New optional `forcing` block:
   `forcing.wind` (10 m `u10`/`v10` on `(time, latitude, longitude)`, e.g.
   ERA5) and `forcing.water_level` (on `(time, goal)`, e.g. CODEC) feed the
   dynamic runs; `reconstruct(wl="forcing")` uses the water-level series at

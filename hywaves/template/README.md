@@ -83,7 +83,10 @@ Run notebooks with `__CASE_NAME__/` as the working directory.
 
    Commit `__CASE_NAME__/portal/` (a few MB: configs, merged metrics,
    pre-computed map layers, web-sized figures), but git-ignore
-   `__CASE_NAME__/portal/book/` — a built report is deployed separately.
+   `__CASE_NAME__/portal/book/`: the case's report, a Jupyter Book of this
+   README and the numbered notebooks that `publish` builds (needs
+   `pip install jupyter-book`; `--no-book` skips it; `--url-base` matches a
+   GUI served under a prefix). It is deployed separately.
    Re-run `publish` after re-running notebooks; `validate` warns
    (`portal.stale`) whenever the bundle has fallen behind.
 

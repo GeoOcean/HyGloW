@@ -38,6 +38,24 @@ class TestSnapshot(unittest.TestCase):
         self.assertNotIn("snapshot", json.loads((self.case_dir / "portal" / "manifest.json").read_text()))
         self.assertEqual(list_snapshots(self.case_dir), [target])
 
+    def test_book_links_point_to_the_snapshot(self) -> None:
+        portal = self.case_dir / "portal"
+        (portal / "book" / "index.html").write_text(
+            '<a href="/case-book/snapcase/page">p</a><script src="/case-book/snapcase/app.js"></script>'
+            '<a href="/case-book/snapcaseother/x">other case</a>'
+        )
+        manifest = json.loads((portal / "manifest.json").read_text())
+        manifest["book_url"] = "/case-book/snapcase"
+        (portal / "manifest.json").write_text(json.dumps(manifest))
+
+        target = snapshot_case(self.case_dir, "hs1")
+        html = (target / "book" / "index.html").read_text()
+        self.assertIn('href="/case-book/snapcase@hs1/page"', html)
+        self.assertIn('src="/case-book/snapcase@hs1/app.js"', html)
+        self.assertIn('href="/case-book/snapcaseother/x"', html)
+        self.assertEqual(json.loads((target / "manifest.json").read_text())["book_url"], "/case-book/snapcase@hs1")
+        self.assertIn('/case-book/snapcase/page', (portal / "book" / "index.html").read_text())
+
     def test_refuses_bad_or_taken_tags_and_missing_portal(self) -> None:
         for bad in ("HS1", "hs 1", "_x", ""):
             with self.assertRaises(SnapshotError):

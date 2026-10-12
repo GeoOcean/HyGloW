@@ -14,6 +14,8 @@ is the case layer, driven by ``metamodel.wind_correction`` in the case JSON:
 - :func:`training_pairs` / :func:`fit_wind_correction` — ``K = Hs(with wind) /
   Hs(without wind)`` per site and case, and the fitted model
   (``outputs/wind/wind_correction_{model}.pkl``);
+- :func:`formula_k` / :func:`k_comparison` — the growth-curve ``K`` next to
+  the fitted one and the runs', on held-out cases (notebook 05b);
 - :func:`reconstruction_inputs` — what :func:`utils.metamodel.reconstruct`
   passes to the spectral sum when the correction is on.
 """
@@ -38,7 +40,9 @@ from bluemath_tk.waves.steepness import wave_steepness
 from bluemath_tk.waves.wind import (
     WIND_SEA_SPREAD,
     WIND_SEA_STEEPNESS,
+    equivalent_fetch,
     fully_developed_wind,
+    growth_hs,
     wind_sea_weight,
     wind_speed_direction,
 )
@@ -436,6 +440,14 @@ def _fit(pairs: pd.DataFrame) -> WindCorrection:
     )
 
 
+def _holdout(pairs: pd.DataFrame, test_fraction: float, seed: int) -> pd.Series:
+    """Pairs of a random fraction of the cases (all their sites), held out."""
+    rng = np.random.default_rng(seed)
+    case_ids = pairs["case"].unique()
+    n_test = max(1, int(round(test_fraction * len(case_ids))))
+    return pairs["case"].isin(rng.choice(case_ids, n_test, replace=False))
+
+
 def fit_wind_correction(
     model: str | None = None, test_fraction: float = 0.2, seed: int = 0
 ) -> tuple[WindCorrection, pd.DataFrame]:
@@ -462,10 +474,7 @@ def fit_wind_correction(
         of Hs, m) per site group, without and with the correction.
     """
     pairs = training_pairs(model).dropna(subset=["hs0", "hs1"])
-    rng = np.random.default_rng(seed)
-    case_ids = pairs["case"].unique()
-    test_cases = rng.choice(case_ids, max(1, int(round(test_fraction * len(case_ids)))), replace=False)
-    test = pairs["case"].isin(test_cases)
+    test = _holdout(pairs, test_fraction, seed)
     held = pairs[test].copy()
     held_fit = _fit(pairs[~test])
     w = held["ws_weight"].to_numpy()
@@ -487,6 +496,92 @@ def fit_wind_correction(
     correction.save_model(str(correction_path(model)))
     logger.info("Wind correction fitted on %d pairs -> %s", correction.n_samples, correction_path(model))
     return correction, scores
+
+
+def formula_k(
+    hs_ws: np.ndarray, u10: np.ndarray, fetch: np.ndarray, depth: np.ndarray | None = None
+) -> np.ndarray:
+    """
+    ``K`` from the Kahma & Calkoen growth curves (the textbook estimate).
+
+    The wind sea ``hs_ws`` is taken as grown from calm over its equivalent
+    fetch (:func:`bluemath_tk.waves.wind.equivalent_fetch`), then grown over
+    *fetch* more (:func:`bluemath_tk.waves.wind.growth_hs`), capped by the
+    fully developed sea and, with *depth*, by the Breugem & Holthuijsen depth
+    limit. The formula only adds energy: ``K >= 1``.
+
+    Parameters
+    ----------
+    hs_ws : np.ndarray
+        Wind-sea Hs without wind (m).
+    u10 : np.ndarray
+        Wind speed (m/s).
+    fetch : np.ndarray
+        Fetch along the wind (m).
+    depth : np.ndarray, optional
+        Depth for the depth limit (m); None is deep water.
+
+    Returns
+    -------
+    np.ndarray
+        ``K``, NaN where it is undefined (no wind sea or no wind).
+    """
+    hs_ws, u10 = np.asarray(hs_ws, dtype=float), np.asarray(u10, dtype=float)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        x0 = equivalent_fetch(hs_ws, u10)
+        grown = growth_hs(u10, np.where(np.isfinite(x0), x0 + np.asarray(fetch, dtype=float), 1e12), depth)
+        k = np.maximum(grown / hs_ws, 1.0)
+    return np.where((hs_ws > 0) & (u10 > 0), k, np.nan)
+
+
+def k_comparison(model: str | None = None, test_fraction: float = 0.2, seed: int = 0) -> pd.DataFrame:
+    """
+    ``K`` three ways on held-out training cases: the runs', the fitted model's, the formula's.
+
+    The cases held out are those of :func:`fit_wind_correction` (same
+    *test_fraction* and *seed*); the model compared is refitted on the other
+    cases, so it never saw them.
+
+    Parameters
+    ----------
+    model
+        Default ``simulations.model``.
+    test_fraction, seed
+        Held-out cases, as in :func:`fit_wind_correction`.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per held-out case and site with a wind sea: ``hs_ws``, ``u10``,
+        ``fetch``, ``depth``, ``angle``, ``hs_ws_u2`` (``g Hs_ws / U^2``),
+        ``k_runs`` (from the runs with and without wind, the reference),
+        ``k_fitted``, ``k_formula_deep`` and ``k_formula_depth`` (depth limit
+        at the site; both bounded like the others), plus ``site_label`` when
+        present.
+    """
+    pairs = training_pairs(model).dropna(subset=["hs0", "hs1"])
+    test = _holdout(pairs, test_fraction, seed)
+    fitted = _fit(pairs[~test])
+    held = pairs[test].copy()
+    w = held["ws_weight"].to_numpy()
+    held["hs_ws"] = np.sqrt(w) * held["hs0"]
+    with np.errstate(invalid="ignore", divide="ignore"):
+        k2 = 1.0 + (held["hs1"] ** 2 - held["hs0"] ** 2) / (w * held["hs0"] ** 2)
+    held["k_runs"] = np.sqrt(np.clip(k2, fitted.k_range[0] ** 2, fitted.k_range[1] ** 2))
+    held = held[(held["u10"] >= fitted.u10_min) & (held["hs_ws"] >= fitted.hs_min) & np.isfinite(held["k_runs"])]
+    held = held.dropna(subset=["fetch", "depth", "mean_depth"])
+    args = [held[c].to_numpy() for c in ("hs_ws", "u10", "fetch", "depth", "mean_depth", "angle")]
+    held["k_fitted"] = fitted.predict(*args)
+    # same bounds as the runs' and the fitted K (tiny wind seas would give huge K)
+    bounds = fitted.k_range
+    held["k_formula_deep"] = np.clip(formula_k(held["hs_ws"], held["u10"], held["fetch"]), *bounds)
+    held["k_formula_depth"] = np.clip(
+        formula_k(held["hs_ws"], held["u10"], held["fetch"], held["depth"]), *bounds
+    )
+    held["hs_ws_u2"] = 9.81 * held["hs_ws"] / held["u10"] ** 2
+    keep = ["case", "sites", "hs_ws", "u10", "fetch", "depth", "angle", "hs_ws_u2",
+            "k_runs", "k_fitted", "k_formula_deep", "k_formula_depth"]
+    return held[[c for c in keep + ["site_label"] if c in held]].reset_index(drop=True)
 
 
 def load_wind_correction(model: str | None = None) -> WindCorrection:
@@ -578,7 +673,9 @@ __all__ = [
     "enabled",
     "fetch_table",
     "fit_wind_correction",
+    "formula_k",
     "generate_wind_cases",
+    "k_comparison",
     "load_wind_correction",
     "postprocessed_path",
     "reconstruction_inputs",

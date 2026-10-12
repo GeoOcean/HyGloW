@@ -13,6 +13,12 @@ Workflow::
     python -m hywaves publish MyCase/              # → MyCase/portal/
     git add MyCase/portal                          # book/ is git-ignored
 
+The report (``portal/book/``) is a Jupyter Book of the case README and its
+numbered notebooks, built by ``publish`` itself (saved outputs, nothing is
+re-executed) in the case's git-ignored ``tmp/book/``: no ``book/`` folder in
+the case. Its links are absolute, for the route the GUI serves it under
+(``{HYGLOW_URL_BASE}/case-book/{case id}``).
+
 Only the stdlib is needed to build a bare bundle. The pre-computed layers
 use the case environment's scientific stack (``pyshp`` for the AoI,
 ``rioxarray`` + ``contourpy`` for depth contours, ``xarray`` for output
@@ -28,6 +34,8 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -74,6 +82,7 @@ class PublishResult:
     files: dict[str, dict] = field(default_factory=dict)
     skipped: dict[str, str] = field(default_factory=dict)
     book: bool = False
+    book_url: str | None = None
 
     @property
     def size_bytes(self) -> int:
@@ -390,11 +399,99 @@ def _publish_images(
             img.resize(size, Image.LANCZOS).save(dest, optimize=True)
 
 
-def _publish_book(bundle: _Bundle) -> None:
-    """Built Jupyter Book (``book/_build/html``) → ``book/`` — git-ignored, deployed by hand."""
-    html = bundle.case_dir / "book" / "_build" / "html"
-    if not (html / "index.html").is_file():
-        raise LayerSkipped("no built book (book/_build/html/index.html)")
+#: Where ``publish`` builds the report, inside the case (git-ignored).
+BOOK_BUILD_DIR = Path("tmp") / "book"
+
+
+def book_url(case_dir: Path, url_base: str | None = None, case_id: str | None = None) -> str:
+    """Route the GUI serves the case's report under: ``[/<url_base>]/case-book/<case id>``.
+
+    Parameters
+    ----------
+    case_dir
+        Case folder.
+    url_base
+        The GUI's URL prefix; default the ``HYGLOW_URL_BASE`` environment
+        variable (unset = served at the root).
+    case_id
+        The case id in the GUI catalog; default the folder name in lowercase.
+    """
+    base = (url_base if url_base is not None else os.environ.get("HYGLOW_URL_BASE", "")).strip("/")
+    cid = case_id or case_dir.name.lower()
+    return f"/{base}/case-book/{cid}" if base else f"/case-book/{cid}"
+
+
+def book_notebooks(case_dir: Path) -> list[Path]:
+    """The case's numbered notebooks (``01_*.ipynb``, ``05b_*.ipynb``…), in order."""
+    return sorted(case_dir.glob("[0-9][0-9]*_*.ipynb"))
+
+
+def write_book_config(case_dir: Path, build_dir: Path, config: dict) -> Path:
+    """Write the book's ``myst.yml``: the case README, then every numbered notebook."""
+    files = [case_dir / "README.md"] if (case_dir / "README.md").is_file() else []
+    files += book_notebooks(case_dir)
+    name = config.get("name", case_dir.name)
+    description = " ".join(str(config.get("description") or "").split()).replace('"', "'")
+    toc = "\n".join(f"    - file: {os.path.relpath(f, build_dir)}" for f in files)
+    text = (
+        "# Written by `python -m hywaves publish` (see mystmd.org/guide/frontmatter)\n"
+        "version: 1\n"
+        "project:\n"
+        f"  id: {uuid.uuid5(uuid.NAMESPACE_URL, 'hyglow/' + case_dir.name)}\n"
+        f'  title: "HyGloW — {name}"\n'
+        f'  description: "{description}"\n'
+        "  toc:\n"
+        f"{toc}\n"
+        "site:\n"
+        "  template: book-theme\n"
+    )
+    build_dir.mkdir(parents=True, exist_ok=True)
+    path = build_dir / "myst.yml"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def build_book(case_dir: Path, config: dict, url: str, timeout: int = 3600) -> Path:
+    """Build the case's report with ``jupyter-book`` in ``{case}/tmp/book/``; return its HTML folder.
+
+    The notebooks' saved outputs are rendered as they are (nothing is
+    re-executed). This jupyter-book/mystmd version fetches the theme's
+    runtime JS/CSS into ``_build/templates/.../public/build/`` but never
+    copies it into the static export, so it is copied to
+    ``_build/html/myst_assets_folder/`` here.
+
+    Raises
+    ------
+    LayerSkipped
+        If ``jupyter-book`` is not installed or the build fails.
+    """
+    exe = shutil.which("jupyter-book")
+    if exe is None:
+        raise LayerSkipped("jupyter-book is not installed (pip install jupyter-book)")
+    build_dir = case_dir / BOOK_BUILD_DIR
+    write_book_config(case_dir, build_dir, config)
+    html = build_dir / "_build" / "html"
+    if html.exists():
+        shutil.rmtree(html)
+    try:
+        run = subprocess.run(
+            [exe, "build", "--html"], cwd=build_dir, env={**os.environ, "BASE_URL": url},
+            capture_output=True, text=True, timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        raise LayerSkipped(f"jupyter-book build took longer than {timeout} s") from None
+    if run.returncode != 0 or not (html / "index.html").is_file():
+        tail = (run.stderr or run.stdout).strip().splitlines()[-1:] or ["no output"]
+        raise LayerSkipped(f"jupyter-book build failed: {tail[0]}")
+    theme = next((build_dir / "_build" / "templates").glob("site/**/public/build"), None)
+    if theme is not None:
+        shutil.copytree(theme, html / "myst_assets_folder", dirs_exist_ok=True)
+    return html
+
+
+def _publish_book(bundle: _Bundle, config: dict, url: str) -> None:
+    """The case's report (:func:`build_book`) → ``book/`` — git-ignored, deployed by hand."""
+    html = build_book(bundle.case_dir, config, url)
     shutil.copytree(html, bundle.staging / "book")
 
 
@@ -407,6 +504,8 @@ def publish_case(
     case_dir: str | Path,
     *,
     book: bool = True,
+    url_base: str | None = None,
+    case_id: str | None = None,
     max_image_px: int = MAX_IMAGE_PX,
     log: Callable[[str], None] = print,
 ) -> PublishResult:
@@ -421,7 +520,12 @@ def publish_case(
     case_dir
         Path to the case folder.
     book
-        Copy a built Jupyter Book into ``portal/book/`` (if one exists).
+        Build the case's report (README + numbered notebooks, saved outputs)
+        into ``portal/book/`` (needs ``jupyter-book``; slow on big notebooks).
+    url_base, case_id
+        Route of the report in the GUI (see :func:`book_url`): the GUI's
+        ``HYGLOW_URL_BASE`` (default that environment variable) and the case
+        id of the GUI catalog (default the folder name in lowercase).
     max_image_px
         Longest side, in pixels, of any published PNG.
     log
@@ -489,8 +593,9 @@ def publish_case(
                 ),
             ),
         ]
+        url = book_url(case_dir, url_base, case_id)
         if book:
-            layers.append(("book", lambda: _publish_book(bundle)))
+            layers.append(("book", lambda: _publish_book(bundle, config, url)))
 
         for name, build in layers:
             try:
@@ -500,6 +605,7 @@ def publish_case(
                 result.skipped[name] = str(exc)
                 log(f"  - {name}: skipped ({exc})")
         result.book = (staging / "book").is_dir()
+        result.book_url = url if result.book else None
 
         # Checksums for the committed part only — the book is a deploy-time extra.
         for path in sorted(p for p in staging.rglob("*") if p.is_file()):
@@ -516,6 +622,7 @@ def publish_case(
             "published_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "max_image_px": max_image_px,
             "book": result.book,
+            "book_url": result.book_url,
             "skipped": result.skipped,
             "files": result.files,
             "sources": bundle.sources,

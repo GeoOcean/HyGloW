@@ -1956,6 +1956,62 @@ def plot_dynamic_forcing(
     return fig
 
 
+def plot_wind_k_comparison(df: pd.DataFrame, title: str = "How K is estimated") -> Figure:
+    """
+    The wind correction's ``K``: fitted model and growth formula vs the model runs.
+
+    Left: ``K`` of each estimate against the runs' ``K`` (the reference, on
+    the x-axis), with RMSE and bias. Right: median ``K`` against how developed
+    the wind sea already is (``g Hs_ws / U^2``; 0.24 is fully developed), in
+    bins with at least 30 site-cases.
+
+    Parameters
+    ----------
+    df
+        Output of :func:`utils.wind.k_comparison`.
+    title
+        Figure title.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
+    estimates = {
+        "k_fitted": ("fitted model", "#1f77b4"),
+        "k_formula_deep": ("formula, deep water", "#ff7f0e"),
+        "k_formula_depth": ("formula, depth-limited", "#2ca02c"),
+    }
+    fig, (ax_sc, ax_bin) = plt.subplots(1, 2, figsize=(14, 6), constrained_layout=True)
+    fig.suptitle(display_title(title), fontsize=14, fontweight="bold")
+    ref = df["k_runs"].to_numpy()
+    top = float(np.nanpercentile(ref, 99.5))
+    for col, (label, color) in estimates.items():
+        est = df[col].to_numpy()
+        ok = np.isfinite(ref) & np.isfinite(est)
+        err = est[ok] - ref[ok]
+        ax_sc.scatter(ref[ok], est[ok], s=4, alpha=0.25, color=color, rasterized=True,
+                      label=f"{label}: RMSE {np.sqrt(np.mean(err**2)):.3f}, bias {np.mean(err):+.3f}")
+    ax_sc.plot([1, top], [1, top], "k--", lw=1)
+    ax_sc.set(xlim=(0.9, top), ylim=(0.9, top), xlabel="K from the runs (with / without wind)",
+              ylabel="K estimated", title=f"Held-out cases · {len(df):,} site-cases")
+    ax_sc.legend(fontsize=9, markerscale=4, loc="upper left")
+
+    bins = np.geomspace(max(float(df["hs_ws_u2"].min()), 1e-3), float(df["hs_ws_u2"].max()), 16)
+    mid = np.sqrt(bins[:-1] * bins[1:])
+    grouped = df.groupby(pd.cut(df["hs_ws_u2"], bins), observed=False)
+    enough = (grouped.size() >= 30).to_numpy()  # bins with few samples are noise
+    medians = grouped[["k_runs", *estimates]].median()[enough]
+    ax_bin.plot(mid[enough], medians["k_runs"], "k-o", ms=4, label="runs (reference)")
+    for col, (label, color) in estimates.items():
+        ax_bin.plot(mid[enough], medians[col], "-o", ms=3, color=color, label=label)
+    ax_bin.axvline(0.24, color="0.5", ls=":", lw=1)
+    ax_bin.text(0.24, ax_bin.get_ylim()[1], " fully developed", va="top", fontsize=8, color="0.4")
+    ax_bin.set(xscale="log", xlabel="g Hs_ws / U²  (how developed the wind sea already is)",
+               ylabel="median K", title="K vs development of the wind sea")
+    ax_bin.legend(fontsize=9)
+    return fig
+
+
 def plot_metamodel_case(
     case_dir: str | Path,
     *,
@@ -2092,4 +2148,5 @@ __all__ = [
     "plot_ring",
     "plot_sectors",
     "plot_validation_sites",
+    "plot_wind_k_comparison",
 ]

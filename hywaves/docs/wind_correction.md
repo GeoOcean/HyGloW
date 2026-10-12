@@ -4,6 +4,18 @@ How HyGloW adds the locally generated wind sea to a HyWaves reconstruction,
 why it is built this way, how to use it, and what it has shown so far.
 Available since hywaves 0.11.0; optional (`metamodel.wind_correction`).
 
+## In one paragraph
+
+For every hour and every output site: each goal's (or goal × partition's)
+offshore sea state says how much of it is wind sea (`w`, 0–1, from its
+steepness and spreading); the wind-sea energy reaching the site is the sum of
+`w · hs²` over the goals' predicted contributions; with the wind at the site,
+the fetch and the depth along that wind, a model trained on SnapWave (or SWAN)
+runs with and without wind gives the growth factor `K` of that wind sea; one
+extra contribution with the missing energy `(K² − 1) · E_ws` is added, from
+the wind direction, and summed with the goals as a spectrum. The swell is
+never scaled.
+
 ## Why it is needed
 
 The metamodel cases are stationary runs **without wind**: each one puts waves
@@ -101,6 +113,120 @@ dimensionless numbers:
   the grid. K is learned per numerical model: SnapWave and SWAN respond
   differently to wind.
 
+### What the five inputs of K mean
+
+They are made dimensionless with the wind speed, using the length `U²/g` and
+the time `U/g` that wind-wave growth scales with: the same dimensionless
+situation gives the same *relative* growth at any wind speed or site, which is
+why ~100 training cases can cover the whole coast and every wind.
+
+| Input | Meaning | Effect on K |
+| --- | --- | --- |
+| `g·Hs_ws/U²` | How developed the wind sea already is (0.24 = fully developed: the wind cannot raise it further) | The strongest: young seas under strong wind grow a lot, developed ones little |
+| `g·F/U²` | Fetch left: distance the wind acts upwind of the site inside the domain | More fetch, more growth, flattening out |
+| `g·d/U²` | Depth at the site: breaking and friction limit growth in shallow water | Shallow sites get K ≈ 1 |
+| `g·d̄/U²` | Mean depth along the fetch: shallow banks upwind limit growth on the way | As above, along the path |
+| `cos(angle)` | Wind relative to the wind-sea direction | Following wind grows most |
+
+`K` is not a formula of these: it is what the model runs showed for similar
+situations, learned by a gradient-boosting regression on all the training
+pairs.
+
+### Growth formula vs fitted model
+
+Notebook `05b` (section 5, `wind.k_comparison()` and
+`viz.plot_wind_k_comparison()`) puts three estimates side by side on training
+cases held out from the fit: the `K` the runs show (the reference), the fitted
+model, and the growth formula (`wind.formula_k`: the wind sea treated as grown
+over its equivalent fetch, grown over the fetch left, in deep water or capped
+by the depth limit at the site). Netherlands, SnapWave, 20 held-out cases,
+7,265 site-cases (all three bounded to 0.5–4):
+
+| Estimate of K | RMSE | bias | median |
+| --- | --- | --- | --- |
+| runs (reference) | — | — | 1.25 |
+| fitted model | 0.38 | −0.06 | 1.23 |
+| formula, depth-limited | 0.51 | −0.00 | 1.23 |
+| formula, deep water | 0.84 | +0.30 | 1.54 |
+
+The depth-limited formula gets the typical K right, but scatters more and
+saturates at the cap (K = 4) for very young seas (`g·Hs_ws/U²` < 0.02), where
+the runs give 1.5–2.5; in storms it tends to stay below the runs, because over
+shallow seas the wind also keeps the existing sea from decaying, which growth
+curves do not describe. The fitted model follows the runs in both regimes.
+
+## A worked example
+
+Xaver's peak, **5 December 2013 19:00**, buoy **IJmuidenMunitiestort_1**
+(Netherlands), bulk mode, `buoys` set, MDA 550, ERA5 wind.
+
+**1 · Wind-sea weight per goal** (from the goal's *offshore* forcing) and what
+reaches the buoy:
+
+| Goal | offshore Hs / Tp / spreading | steepness | w | nearshore Hs | w · hs² |
+| --- | --- | --- | --- | --- | --- |
+| 3 | 3.95 m / 8.5 s / 27.0° | 0.035 | 1.00 | 2.94 m | 8.63 |
+| 4 | 4.52 m / 9.2 s / 24.7° | 0.034 | 0.94 | 3.15 m | 9.32 |
+| 5 | 5.28 m / 10.6 s / 23.4° | 0.030 | 0.67 | 0.84 m | 0.48 |
+| 8 | 6.67 m / 12.0 s / 20.9° | 0.029 | 0.17 | 0.00 m | 0.00 |
+| 1, 2, 6, 7, 9, 10 | … | … | … | ≤ 0.41 m | ≤ 0.17 |
+
+(Goal 4: steepness 0.034 is above 0.03, so 1 on the first ramp; spreading
+24.7° gives (24.7 − 20) / 5 = 0.94 on the second; w = 0.94.)
+
+**2 · Wind-sea energy:** `E_ws = Σ w·hs² = 18.75 m²` → `Hs_ws = 4.33 m`,
+direction 312° (energy-weighted). The total energy is 19.58 m², so 96 % of it
+is wind sea here.
+
+**3 · Wind at the buoy** (ERA5): 18.5 m/s from 310°; wind–wave angle −2°.
+(The inferred wind would be ≈ 12.7 m/s, the fully developed lower bound.)
+
+**4 · Fetch and depth along 310°:** effective fetch 29.6 km, depth 24.7 m at
+the buoy, 26.1 m on average upwind.
+
+**5 · K:** with `U²/g = 34.9 m`, the inputs are `g·Hs_ws/U² = 0.124` (half way
+to fully developed), `g·F/U² = 846`, `g·d/U² = 0.705`, `g·d̄/U² = 0.746`,
+`cos(angle) = 0.999` → **K = 1.156**. Changing one input at a time:
+
+| Hs_ws (m) | 1 | 2 | 3 | **4.33** | 5 | 6 | 7 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| K | 2.67 | 1.55 | 1.31 | **1.156** | 1.12 | 1.10 | 1.08 |
+
+| U (m/s) | 8 | 12 | 15 | **18.5** | 22 | 26 | 30 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| K | 1.02 | 1.06 | 1.12 | **1.156** | 1.26 | 1.29 | 1.35 |
+
+| fetch (km) | 2 | 10 | 20 | **29.6** | 50 | 80 | 120 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| K | 1.04 | 1.10 | 1.13 | **1.156** | 1.20 | 1.21 | 1.22 |
+
+| site depth (m) | 5 | 10 | 15 | **24.7** | 35 | 50 |
+| --- | --- | --- | --- | --- | --- | --- |
+| K | 0.98 | 1.05 | 1.11 | **1.156** | 1.18 | 1.21 |
+
+| wind–wave angle | **−2°** | 30° | 60° | 90° | 135° | 180° |
+| --- | --- | --- | --- | --- | --- | --- |
+| K | **1.156** | 1.12 | 1.11 | 1.11 | 1.11 | 1.11 |
+
+The growth formula for the same hour: the 4.33 m sea is "already grown" over
+≈ 150 km at 18.5 m/s; 29.6 km more gives 4.70 m, **K = 1.085**. Its
+shallow-water cap (3.62 m at 24.7 m depth) would even allow no growth at all.
+
+**6 · Extra contribution:** `Hs_add = √((1.156² − 1) · 18.75) = 2.51 m`, from
+310°, Tp 8.86 s (energy-weighted Tp of the wind-sea contributions), spreading
+30°.
+
+**7 · Spectral sum** (10 goals + the wind sea):
+
+| | Hs | Tp | dir |
+| --- | --- | --- | --- |
+| without correction | √19.58 = 4.43 m | 8.84 s | 315° |
+| with correction | √(19.58 + 6.29) = 5.09 m | 8.85 s | 313° |
+
+The wind-sea part went from 4.33 to 4.33 × 1.156 = 5.01 m; the rest is
+unchanged. (The buoy has no record at 19:00; its nearest, at 17:00, read
+5.15 m — an order of magnitude check, not a comparison.)
+
 ## Using it
 
 1. In the case JSON, `metamodel.wind_correction` (template defaults):
@@ -158,9 +284,15 @@ For comparison, over the same 2012–2013 buoys:
   compare once the SWAN pass is done.
 - **Training winds are uniform.** Real wind fields vary over the domain; K
   sees only the wind at the site and the fetch along its direction.
-- **Angles beyond ±60°** (opposing or cross winds) are outside training; K
-  extrapolates there. Notebook 08's forcing figure shows how often that happens
-  (about 3 % of wind-sea hours in the Netherlands for 2012–2014).
+- **Angles beyond ±60°** (opposing or cross winds) are outside training.
+  Tree models do not extrapolate: K stays at its ±60° value (1.11 in the
+  example, for 90°, 135° and 180° alike), which is likely too high for
+  opposing winds. Notebook 08's forcing figure shows how often that happens
+  (about 3 % of wind-sea hours in the Netherlands for 2012–2014); widening
+  the training angles would fix it.
+- **Refits differ slightly.** The regression holds out a random 10 % for early
+  stopping when it has more than 10,000 samples, so refitting changes scores
+  in the third decimal.
 - **Very shallow sites** (≈ 5 m) are dominated by breaking; the models even give
   K slightly below 1 there.
 - **The inferred wind is a lower bound** (the fully developed speed). With wind
@@ -177,6 +309,7 @@ For comparison, over the same 2012–2013 buoys:
 | Fetch table, effective fetch | `bluemath_tk/waves/fetch.py` |
 | `WindCorrection`, `wind_sea_contribution` | `bluemath_tk/waves/hywaves/wind_correction.py` |
 | Hook in the spectral sum | `bluemath_tk/waves/hywaves/reconstruction.py` (`wind_correction=` of `sum_partition_spectra_batched`) |
-| Case layer (config, fetch per case, training design, fit, reconstruction inputs) | `hywaves/template/utils/wind.py` |
+| Case layer (config, fetch per case, training design, fit, formula vs fitted K, reconstruction inputs) | `hywaves/template/utils/wind.py` |
+| K comparison figure | `hywaves/template/utils/viz.py` (`plot_wind_k_comparison`) |
 | `reconstruct(wind_correction=...)` | `hywaves/template/utils/metamodel.py` |
 | Notebook | `hywaves/template/notebooks/05b_Wind_Correction.ipynb` |

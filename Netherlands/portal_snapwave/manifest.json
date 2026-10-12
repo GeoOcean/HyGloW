@@ -3,9 +3,10 @@
  "hywaves_version": "0.11.0",
  "case": "Netherlands",
  "model": "snapwave",
- "published_at": "2026-10-10T10:15:43+00:00",
+ "published_at": "2026-10-12T08:51:10+00:00",
  "max_image_px": 2400,
  "book": true,
+ "book_url": "/case-book/netherlands@snapwave",
  "skipped": {},
  "files": {
   "aoi.geojson": {
@@ -216,7 +217,7 @@
  "sources": {
   "Netherlands.json": {
    "size": 6124,
-   "mtime_ns": 1791543190000000000,
+   "mtime_ns": 1791627956000000000,
    "sha256": "ff3142be817bae5bc0196d044befcb687a40d9ac529e452fb83d801c4adf820e"
   },
   "inputs/Goals/Netherlands_Goals.json": {
@@ -226,7 +227,7 @@
   },
   "inputs/Observations/Netherlands_observations.json": {
    "size": 15677,
-   "mtime_ns": 1791549211000000000,
+   "mtime_ns": 1791627956000000000,
    "sha256": "20a99d287d2b97d10455d9a3ff589b1911935b9962daee62d711bb009299d997"
   },
   "inputs/AoI_Polygons/Netherlands_AoI.shp": {
@@ -586,5 +587,10 @@
   "outputs/buoy_validation/*_summary_*.csv",
   "outputs/buoy_validation/figures/*.png",
   "outputs/gui_figures/*.png"
- ]
+ ],
+ "snapshot": {
+  "tag": "snapwave",
+  "note": "SnapWave, hywaves 0.11.0",
+  "created": "2026-10-12T08:52:30+00:00"
+ }
 }

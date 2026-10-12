@@ -22,6 +22,7 @@ python -m hywaves validate MyCase/ --publish   # strict: portal-ready check
 # Export the portal bundle the GUI reads (validates first) → MyCase/portal/
 python -m hywaves publish MyCase/              # commit MyCase/portal/ (its book/ is git-ignored)
 python -m hywaves publish MyCase/ --no-book --max-image-px 1600
+python -m hywaves publish MyCase/ --url-base /hyglow/   # report links for a GUI served under /hyglow/
 
 # Keep the current portal as a version before re-running/re-publishing → MyCase/portal_<tag>/
 python -m hywaves snapshot MyCase/ hs1 --note "unit Hs metamodel"   # commit it; its book/ is git-ignored

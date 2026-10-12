@@ -167,9 +167,10 @@ location /hyglow {
 **Reports** (`portal/book/`, and each snapshot's `portal_<tag>/book/`) are
 not in git — copy them to the server by hand after publishing, e.g.
 `rsync -a NewSouthWales/portal/book/ server:/deploys/HyGloW/NewSouthWales/portal/book/`.
-A book's links are baked in at build time, so build it for the same prefix
-first: `HYGLOW_URL_BASE=/hyglow/ NewSouthWales/book/build.sh`, then re-run
-`python -m hywaves publish NewSouthWales`.
+A report's links are baked in at build time, so publish it for the same
+prefix: `python -m hywaves publish NewSouthWales/ --url-base /hyglow/` (or with
+`HYGLOW_URL_BASE` set). Snapshots get their links rewritten to their own
+route (`…/case-book/<case id>@<tag>`) automatically.
 
 **Updating a case** on the server = re-run `publish` locally, commit
 `{Case}/portal/`, pull on the server, restart the service.
@@ -226,12 +227,11 @@ as something it isn't).
 ## Report (Jupyter Book)
 
 The header's **📖 Report** link opens a rendered [Jupyter Book](https://jupyterbook.org)
-built from a case's own numbered notebooks (see `{Case}/book/README.md`, e.g.
-`NewSouthWales/book/`) — a narrated, sequential write-up alongside the tabs
-above. It's a static site the GUI just serves, from the bundle's
-`portal/book/` (copied there by `publish`); the link is disabled
-automatically for any case without a `portal/book/index.html`. It does
-**not** rebuild on its own — rerun the case's `book` build after notebooks
-change (see that case's `book/README.md`), then `publish` again. The book is
-git-ignored (tens of MB of static site): copy it to a deployment by hand, as
-described under **Deploy**.
+of a case's `README.md` and numbered notebooks (with the outputs they were
+saved with) — a narrated, sequential write-up alongside the tabs above.
+`python -m hywaves publish {Case}/` builds it (needs `pip install
+jupyter-book`; `--no-book` skips it) in the case's git-ignored `tmp/book/` and
+puts the static site in `portal/book/`; the GUI just serves it, and disables
+the link for any case without a `portal/book/index.html`. Re-publish after
+re-running notebooks. The book is git-ignored (tens of MB of static site):
+copy it to a deployment by hand, as described under **Deploy**.

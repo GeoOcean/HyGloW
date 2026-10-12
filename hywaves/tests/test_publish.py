@@ -34,6 +34,10 @@ class _CaseFixture(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
+        # no jupyter-book unless a test adds the fake one (the real build is slow)
+        path = os.environ.get("PATH", "")
+        os.environ["PATH"] = os.pathsep.join(["/usr/bin", "/bin"])
+        self.addCleanup(os.environ.__setitem__, "PATH", path)
         self.case_dir = Path(self._tmp.name) / "PubCase"
         self.case_dir.mkdir()
         self.config = {
@@ -152,19 +156,47 @@ class TestPublishBasics(_CaseFixture):
         self.assertTrue((self.portal / "metamodel_validation" / "period_2020.csv").is_file())
         self.assertTrue((self.portal / "buoy_validation" / "offshore_summary_2020.csv").is_file())
 
-    def test_book_is_copied_but_not_checksummed_and_can_be_skipped(self) -> None:
-        html = self.case_dir / "book" / "_build" / "html"
-        html.mkdir(parents=True)
-        (html / "index.html").write_text("<html></html>")
+    def _fake_jupyter_book(self) -> None:
+        """A `jupyter-book` on PATH that writes a site with BASE_URL and a theme bundle."""
+        bin_dir = Path(self._tmp.name) / "bin"
+        bin_dir.mkdir(exist_ok=True)
+        exe = bin_dir / "jupyter-book"
+        exe.write_text(
+            "#!/bin/sh\n"
+            "mkdir -p _build/html _build/templates/site/myst/book-theme/public/build\n"
+            'echo "<a href=\\"$BASE_URL/x\\">x</a>" > _build/html/index.html\n'
+            "echo js > _build/templates/site/myst/book-theme/public/build/app.js\n"
+        )
+        exe.chmod(0o755)
+        os.environ["PATH"] = f"{bin_dir}{os.pathsep}{os.environ['PATH']}"
 
-        result = self._publish()
+    def test_book_is_built_from_the_notebooks_not_checksummed_and_skippable(self) -> None:
+        self._fake_jupyter_book()
+        for name in ("01_First.ipynb", "05b_Extra.ipynb", "10_Last.ipynb", "scratch.ipynb"):
+            (self.case_dir / name).write_text("{}")
+
+        result = self._publish(url_base="/hyglow/")
         self.assertTrue(result.book)
-        self.assertTrue((self.portal / "book" / "index.html").is_file())
+        self.assertEqual(result.book_url, "/hyglow/case-book/pubcase")
+        self.assertIn('href="/hyglow/case-book/pubcase/x"', (self.portal / "book" / "index.html").read_text())
+        self.assertTrue((self.portal / "book" / "myst_assets_folder" / "app.js").is_file())
         self.assertFalse(any(k.startswith("book/") for k in self._manifest()["files"]))
+        self.assertEqual(self._manifest()["book_url"], "/hyglow/case-book/pubcase")
+        # built in tmp/book/, from the numbered notebooks in order; no book/ in the case
+        toc = (self.case_dir / "tmp" / "book" / "myst.yml").read_text()
+        order = [toc.index(n) for n in ("01_First", "05b_Extra", "10_Last")]
+        self.assertEqual(order, sorted(order))
+        self.assertNotIn("scratch.ipynb", toc)
+        self.assertFalse((self.case_dir / "book").exists())
 
         result = self._publish(book=False)
         self.assertFalse(result.book)
         self.assertFalse((self.portal / "book").exists())
+
+    def test_book_skipped_without_jupyter_book(self) -> None:
+        result = self._publish()
+        self.assertFalse(result.book)
+        self.assertIn("jupyter-book is not installed", result.skipped["book"])
 
 
 @unittest.skipUnless(_has("PIL"), "Pillow not installed")
