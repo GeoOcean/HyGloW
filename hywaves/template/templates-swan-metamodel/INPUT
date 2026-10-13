@@ -24,6 +24,8 @@ NUMERIC STOPC 0.005 0.01 0.005 99.5 STATIONARY 50
 $
 POINTS 'sites' FILE '{{ points_file }}'
 TABLE 'sites' NOHEAD '{{ table_file }}' {{ table_quantities }}
-$
+$ Grid map (save_map cases only):
+{% if map_file %}BLOCK 'COMPGRID' NOHEAD '{{ map_file }}' LAY 3 {{ map_quantities }}
+{% endif %}$
 COMPUTE
 STOP

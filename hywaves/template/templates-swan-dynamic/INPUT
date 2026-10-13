@@ -28,7 +28,9 @@ NUMERIC STOPC 0.005 0.01 0.005 99.5 STATIONARY 50
 $
 POINTS 'sites' FILE '{{ points_file }}'
 TABLE 'sites' NOHEAD '{{ table_file }}' {{ table_quantities }}
-$ 2D spectra at the sites (not used by the pipeline):
+$ Grid map (save_map cases only):
+{% if map_file %}BLOCK 'COMPGRID' NOHEAD '{{ map_file }}' LAY 3 {{ map_quantities }}
+{% endif %}$ 2D spectra at the sites (not used by the pipeline):
 $ SPECOUT 'sites' SPEC2D ABS 'output_sites.spc'
 $
 COMPUTE

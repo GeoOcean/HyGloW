@@ -1735,8 +1735,8 @@ def _plot(
     """Shared body of :func:`plot_metamodel_case` / :func:`plot_dynamic_case`.
 
     SWAN case folders (an ``INPUT`` file) go to
-    :func:`bluemath_tk.wrappers.swan.swan_plots.plot_case` (outputs at the
-    sites only: SWAN writes no mesh map here), SnapWave ones to
+    :func:`bluemath_tk.wrappers.swan.swan_plots.plot_case` (with the grid map
+    of ``save_map`` cases), SnapWave ones to
     :func:`bluemath_tk.wrappers.snapwave.snapwave_plots.plot_case`.
     """
     name = Path(case_dir).name
@@ -1755,6 +1755,7 @@ def _plot(
             title=title,
             show_satellite=show_satellite,
             satellite_source=satellite_source,
+            map_variable=kwargs.get("map_variable", "hs"),
         )
     else:
         fig = plot_case(

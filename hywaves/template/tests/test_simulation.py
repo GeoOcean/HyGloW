@@ -199,9 +199,13 @@ class TestMetamodelCases(unittest.TestCase):
             cases = pd.DataFrame({**_CASE, "save_map": [True, False]})
             wrapper = setup.metamodel_wrapper(cases, debug=False)
             self.assertIsInstance(wrapper, SwanMetaModelWrapper)
-            self.assertNotIn("save_map", wrapper.metamodel_parameters)
+            self.assertIn("save_map", wrapper.metamodel_parameters)
             wrapper.build_cases()
+            self.assertIn(
+                "BLOCK 'COMPGRID'", (Path(wrapper.cases_dirs[0]) / "INPUT").read_text()
+            )
             text = (Path(wrapper.cases_dirs[1]) / "INPUT").read_text()
+            self.assertNotIn("BLOCK", text)
             self.assertIn("SET LEVEL=0.5", text)
             self.assertNotIn("SPECOUT 'sites'", text.replace("$ SPECOUT", ""))
             rows = [r for r in text.splitlines() if r.strip() and r.strip()[0].isdigit()]

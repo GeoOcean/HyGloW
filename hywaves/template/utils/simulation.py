@@ -80,9 +80,6 @@ WRAPPERS = {
     "swan": {"metamodel": SwanMetaModelWrapper, "dynamic": SwanDynamicModelWrapper},
 }
 
-#: Case parameters only SnapWave reads (mesh map output); dropped for SWAN.
-SNAPWAVE_ONLY_PARAMETERS = ("save_map",)
-
 CASE_KINDS = ("metamodel", "dynamic")
 
 
@@ -439,9 +436,6 @@ class HyWavesWrapperSetup:
         if isinstance(parameters, pd.DataFrame):
             parameters = parameters.to_dict(orient="list")
         parameters = dict(parameters)
-        if self.model != "snapwave":
-            for name in SNAPWAVE_ONLY_PARAMETERS:
-                parameters.pop(name, None)
         geometry = (
             self.metamodel_kwargs() if kind == "metamodel" else self.wrapper_kwargs()
         )
@@ -468,7 +462,7 @@ class HyWavesWrapperSetup:
         ----------
         cases
             One row (or list entry) per case: ``goal``, ``active_node``, ``hs``,
-            ``tp``, ``dir``, ``spr``, ``wl`` (and SnapWave's ``save_map``).
+            ``tp``, ``dir``, ``spr``, ``wl`` (and optional ``save_map``: grid map output).
         output_dir, templates
             Override ``simulations.<model>.metamodel_cases`` / ``metamodel_templates``.
         **kwargs

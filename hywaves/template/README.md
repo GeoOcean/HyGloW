@@ -102,6 +102,9 @@ Run notebooks with `__CASE_NAME__/` as the working directory.
   Both models write the same `output_sites_{goal}.nc`, so 06 onward is the
   same. SWAN changes Tp nearshore: predict it (`vars_to_predict.tp` as a PCA
   target) instead of `"raw"`.
+  Cases with `save_map=True` (05, 08) also write the whole grid (SnapWave
+  `output_map.nc`, SWAN `output_map.mat` via `BLOCK`), shown on the domain
+  panel of `viz.plot_metamodel_case` / `plot_dynamic_case`.
 - **Wind and water level (optional).** With `forcing.wind` and
   `forcing.water_level` in the JSON, notebook 08 gives every hourly case the
   wind field and the water level at the goals, and shows them first
