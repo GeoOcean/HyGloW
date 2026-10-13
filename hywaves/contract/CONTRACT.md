@@ -41,7 +41,7 @@ fallback accepted).
 | `paths`                  | dict | no       | Declared input paths (existence warned) |
 | `simulations.goals_file` | str  | yes      | Relative path to the goals JSON         |
 | `onshore_waves`          | str  | publish  | Relative path to observations GeoJSON   |
-| `offshore_waves`         | list | no       | Each entry: `name` (+ `data_path`)      |
+| `offshore_waves`         | list | no       | Each entry: `name` (+ `data_path`; optional `hindcast`: the goals JSON hindcast its series sit on, e.g. `WHACS` for `WHACS_cal`) |
 
 Values containing `TODO` are allowed in development and rejected at publish.
 
@@ -209,6 +209,7 @@ reference GUI lists them as versions of the case.
 | `simulations.model`                                     | `"snapwave"` or `"swan"`, with a `simulations.<model>` block                                                   |
 | `simulations.<model>`                                   | `grid_file`, `metamodel_templates`, `dynamic_templates`, `metamodel_cases`, `dynamic_cases` (paths; templates folders and grid should exist), optional `wind_cases` (training pairs of the wind correction) and `slurm` dict |
 | `wind_correction` (optional)                            | dict; `wind` `"inferred"` or `"forcing"` (needs `forcing.wind`); `added_tp` `"wind_sea"` or `"growth"`; ranges (`speed_ratio`, `wind_wave_angle`, `u10_range`, `steepness_range`, `spr_range`) increasing pairs |
+| `satellite` (optional)                                  | `{name, data_path}` (path or URL of a cell-indexed altimeter zarr; missing data only warns); `radius_km` > 0, `min_depth` ≥ 0 (m), `train_fraction` in (0, 1], `flags` list of ints, `min_points` ≥ 1, `split` `"random"` or `"time"`; see `docs/satellite_calibration.md` |
 | `forcing.wind` / `forcing.water_level` (optional)       | `{name, data_path}` (water level: optional `variable`, default `waterlevel`); data should exist — warning      |
 | `vars_to_predict.tp` with SWAN                          | should be a PCA target, not `"raw"` (SWAN changes Tp nearshore) — warning                                       |
 
@@ -221,6 +222,16 @@ not importable — the validator itself never requires third-party packages.
 
 Every change to this document is recorded here.
 
+- **2026-10** (hywaves 0.13.0): offshore hindcasts can be validated and
+  calibrated against satellite altimetry. New optional `satellite` block (the
+  altimeter zarr and the matching choices: `radius_km` around each goal's
+  hindcast node, `min_depth`, `flags`, `max_time_diff`, `min_points`,
+  `train_fraction`); outputs in `outputs/calibration/{offshore}/` (`pairs.csv`,
+  `coefficients.csv`, `metrics.csv`, `calval_goal_XX.pkl`; not part of the
+  portal yet). An `offshore_waves` entry may name the goals JSON `hindcast`
+  its series sit on, so a calibrated `WHACS_cal` reuses the WHACS nodes.
+  Notebook 07 is split into `07a_Download_Process_WHACS` and
+  `07b_Satellite_Calibration`. Details in `docs/satellite_calibration.md`.
 - **2026-10** (hywaves 0.12.0): dry and outside-grid output sites are handled
   by the site filter instead of the PCA. When the cases are loaded, a site-case
   with `hs` NaN or 0 becomes NaN in every field (SnapWave writes `hs = 0` with

@@ -46,6 +46,7 @@ from utils.config import (
     OFFSHORE_WAVES,
     get_offshore_wave,
     load_goals,
+    model_label,
     offshore_catalog_key,
     open_offshore_waves,
     resolve,
@@ -784,7 +785,10 @@ class ComparisonResult:
 
 
 HOLDOUT_ESTIMATE_LABEL = "Metamodel"
-HOLDOUT_REFERENCE_LABEL = "SnapWave"
+#: The model that ran the cases (``simulations.model``): the holdout reference
+#: and the dynamic runs of notebooks 09-13.
+HOLDOUT_REFERENCE_LABEL = model_label()
+DYNAMIC_REFERENCE_LABEL = f"Dynamic {model_label()}"
 
 
 @dataclass
@@ -812,7 +816,7 @@ class HoldoutValidationResult(ComparisonResult):
         estimate_label: str | None = None,
         **kwargs: Any,
     ) -> Figure:
-        """As :meth:`ComparisonResult.plot`, defaulting labels to Metamodel/SnapWave."""
+        """As :meth:`ComparisonResult.plot`, defaulting labels to Metamodel and the case model."""
         return super().plot(
             group,
             variables=variables,
@@ -830,7 +834,7 @@ class HoldoutValidationResult(ComparisonResult):
         estimate_label: str | None = None,
         **kwargs: Any,
     ) -> Figure:
-        """As :meth:`ComparisonResult.plot_scatter`, defaulting labels to Metamodel/SnapWave."""
+        """As :meth:`ComparisonResult.plot_scatter`, defaulting labels to Metamodel and the case model."""
         return super().plot_scatter(
             group,
             variables=variables,
@@ -848,7 +852,7 @@ class HoldoutValidationResult(ComparisonResult):
         estimate_label: str | None = None,
         **kwargs: Any,
     ) -> list[Figure]:
-        """As :meth:`ComparisonResult.plot_all`, defaulting labels to Metamodel/SnapWave."""
+        """As :meth:`ComparisonResult.plot_all`, defaulting labels to Metamodel and the case model."""
         return super().plot_all(
             variables=variables,
             groups=groups,

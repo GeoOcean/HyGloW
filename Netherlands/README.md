@@ -50,7 +50,8 @@ SnapWave in the Xaver pilot (`SWAN_test/`).
 | Metamodel cases (05) | done; SnapWave, 629 cases/goal, 407 output sites (369 isobath + 38 buoy) |
 | Wind-correction training (05b) | done; 100 cases with and 100 without wind, `K` fitted (`outputs/wind/`) |
 | Metamodel fit (06) | done; 10 goals × 2 sets × 5 MDA sizes (50–550) |
-| Offshore hindcast (07a/07b) | done; WHACS 1979–2023 at the goals, bulk + 4 partitions |
+| Offshore hindcast (07a) | done; WHACS 1979–2023 at the goals, bulk + 4 partitions |
+| Satellite calibration (07b) | set up (2026-10-13); IMOS 1985–2020, 50 km, depth > 15 m: 2145–4549 passes per goal; raw WHACS bias −0.03 to −0.12 m, slope 0.81–0.92 (test passes); calibrated zarr not written yet |
 | Dynamic runs (08) | run for **2012–2014** with ERA5 wind + CODEC water level; 2012–2013 postprocessed (`Dynamic_Cases_WHACS_2012-2013.nc`) |
 | Linear summation (09) | done, `buoys` set, 2012–2013, MDA 550 |
 | Buoy validation (10) | done, 2012–2013, MDA 550, with and without the wind correction (27 of the 38 buoys have data in those years) |
@@ -127,7 +128,9 @@ from the old export; `ZandmoterBoeiNoord` was dropped (598 h).
 | 05 | `05_Metamodel_Cases_Generation.ipynb` | LHS cases per goal, build / run (SLURM) / postprocess |
 | 05b | `05b_Wind_Correction.ipynb` | Fetch table, wind-correction training cases (with / without wind), fit `K` |
 | 06 | `06_Validate_Metamodel.ipynb` | `mm.fit_all()`, holdout metrics per goal, set and MDA size |
-| 07a/b | `07a/07b_Download_Process_WHACS.ipynb` | WHACS at the goals → zarr |
+| 07a | `07a_Download_ERA5.ipynb` | ERA5 waves (Earth Data Hub) at the goal nodes, 1979–2023, all partitions → `ERA5` |
+| 07a | `07a_Download_Process_WHACS.ipynb` | Raw WHACS → seapoint zarr (dask on SLURM) → goal zarr |
+| 07b | `07b_Satellite_Calibration.ipynb` | WHACS vs IMOS altimetry at the goals; directional calibration per goal → `WHACS_cal` |
 | 08 | `08_Dynamic_Cases_Generation.ipynb` | One full-forcing case per hour (WHACS + ERA5 + CODEC); forcing diagnostics |
 | 09 | `09_Validate_Linear_Summation.ipynb` | Reconstruction vs dynamic runs |
 | 10 | `10_Validate_Onshore_Buoys.ipynb` | Reconstruction, dynamic runs and WHACS vs the 38 buoys |

@@ -2175,3 +2175,117 @@ __all__ = [
     "plot_validation_sites",
     "plot_wind_k_comparison",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Offshore hindcast vs satellite altimetry (notebook 07b, utils.calibration)
+# ---------------------------------------------------------------------------
+
+
+def plot_satellite_pairs(
+    pairs: pd.DataFrame,
+    nodes: pd.DataFrame,
+    radius_km: float,
+    *,
+    title: str = "Altimeter passes around the goal nodes",
+    show_topobathy: bool | None = False,
+) -> Figure:
+    """Where the altimeter passes used for each goal are, and how many.
+
+    Parameters
+    ----------
+    pairs
+        :func:`utils.calibration.satellite_pairs` (``goal``, ``sat_lon``,
+        ``sat_lat``, ``sat_satellite``, ...).
+    nodes
+        :func:`utils.calibration.goal_nodes` (hindcast node per goal).
+    radius_km
+        Search radius, drawn around each node.
+    title
+        Figure title.
+    show_topobathy
+        Draw the bathymetry under the map.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        Map (pass centres coloured by goal, nodes, circles) and passes per goal.
+    """
+    goal_ids = list(nodes.index)
+    colors = _goal_colors(goal_ids)
+    fig = plt.figure(figsize=(14, 7))
+    gs = GridSpec(1, 2, figure=fig, width_ratios=[2.2, 1], wspace=0.25)
+    ax = fig.add_subplot(gs[0, 0])
+    plot_base_map(ax=ax, title=title, show_topobathy=show_topobathy)
+    theta = np.linspace(0, 2 * np.pi, 120)
+    for gid, node in nodes.iterrows():
+        sub = pairs[pairs["goal"] == str(gid)]
+        ax.scatter(sub["sat_lon"], sub["sat_lat"], s=2, color=colors[gid], alpha=0.25, zorder=3)
+        dlat = np.rad2deg(radius_km / 6371.0)
+        dlon = dlat / np.cos(np.deg2rad(node["lat"]))
+        ax.plot(node["lon"] + dlon * np.sin(theta), node["lat"] + dlat * np.cos(theta),
+                color=colors[gid], lw=1.0, zorder=4)
+        ax.plot(node["lon"], node["lat"], "*", color="black", ms=11, mec="white", zorder=5)
+        ax.annotate(f"G{gid}", (node["lon"], node["lat"]), xytext=(4, 4),
+                    textcoords="offset points", fontsize=9, fontweight="bold", zorder=6)
+    lons = np.r_[pairs["sat_lon"], nodes["lon"]]
+    lats = np.r_[pairs["sat_lat"], nodes["lat"]]
+    ax.set_xlim(np.nanmin(lons) - 0.2, np.nanmax(lons) + 0.2)
+    ax.set_ylim(np.nanmin(lats) - 0.2, np.nanmax(lats) + 0.2)
+
+    ax_bar = fig.add_subplot(gs[0, 1])
+    counts = pairs.groupby("goal").size().reindex([str(g) for g in goal_ids]).fillna(0)
+    ax_bar.barh([f"G{g}" for g in goal_ids], counts.to_numpy(),
+                color=[colors[g] for g in goal_ids])
+    ax_bar.invert_yaxis()
+    ax_bar.set_xlabel("satellite passes (one median Hs each)")
+    years = pd.to_datetime(pairs["time"])
+    ax_bar.set_title(f"{years.min():%Y}–{years.max():%Y} · radius {radius_km:g} km", fontsize=10)
+    ax_bar.grid(axis="x", alpha=0.3)
+    return fig
+
+
+def plot_calibration_metrics(
+    metrics: pd.DataFrame,
+    *,
+    subset: str = "test",
+    title: str | None = None,
+) -> Figure:
+    """Hindcast vs satellite per goal, before and after the calibration.
+
+    Parameters
+    ----------
+    metrics
+        :func:`utils.calibration.calibration_metrics` (goal, set, stage, n,
+        bias, rmse, si, r2, slope); bias = hindcast − satellite.
+    subset
+        ``"test"`` (passes not used in the fit, default), ``"train"`` or ``"all"``.
+    title
+        Figure title.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        Bias, RMSE and slope per goal, raw and calibrated.
+    """
+    table = metrics[metrics["set"] == subset]
+    goals = sorted(table["goal"].astype(str).unique(), key=int)
+    x = np.arange(len(goals))
+    fig, axes = plt.subplots(1, 3, figsize=(15, 4.2))
+    for ax, metric, ref in zip(axes, ("bias", "rmse", "slope"), (0.0, None, 1.0)):
+        for k, (stage, color) in enumerate((("raw", "0.6"), ("calibrated", "tab:blue"))):
+            vals = (
+                table[table["stage"] == stage].set_index("goal")[metric]
+                .reindex(goals).to_numpy()
+            )
+            ax.bar(x + (k - 0.5) * 0.38, vals, width=0.38, color=color, label=stage)
+        if ref is not None:
+            ax.axhline(ref, color="k", lw=0.8)
+        ax.set_xticks(x, [f"G{g}" for g in goals])
+        ax.set_title(f"{metric} ({subset} passes)" + (" (m)" if metric != "slope" else ""))
+        ax.grid(axis="y", alpha=0.3)
+    axes[0].legend()
+    n = int(table[table["stage"] == "raw"]["n"].sum())
+    fig.suptitle(title or f"Hindcast vs satellite Hs per goal · {n} {subset} passes")
+    fig.tight_layout()
+    return fig

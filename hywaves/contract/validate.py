@@ -276,9 +276,22 @@ def _check_offshore(config: dict, report: _Report) -> None:
     if not isinstance(entries, list):
         report.error("offshore.structure", "'offshore_waves' must be a list")
         return
+    names = {e.get("name") for e in entries if isinstance(e, dict)}
     for i, entry in enumerate(entries):
         if not isinstance(entry, dict) or not entry.get("name"):
             report.error("offshore.name", f"offshore_waves[{i}] must have a 'name'")
+            continue
+        hindcast = entry.get("hindcast")
+        if hindcast is not None and not (isinstance(hindcast, str) and hindcast):
+            report.error(
+                "offshore.hindcast",
+                f"offshore_waves[{i}].hindcast must be the name of the goals JSON hindcast",
+            )
+        elif hindcast is not None and hindcast not in names:
+            report.warn(
+                "offshore.hindcast",
+                f"offshore_waves[{i}].hindcast {hindcast!r} is not another offshore_waves entry",
+            )
 
 
 def _check_outputs(case_dir: Path, report: _Report) -> None:
@@ -653,6 +666,37 @@ def _check_engine(case_dir: Path, config: dict, report: _Report) -> None:
             report.error("engine.forcing", f"forcing.{kind}.data_path must be a path")
         elif not (case_dir / path).exists():
             report.warn("engine.forcing", f"forcing.{kind}.data_path missing: {path}")
+
+    satellite = config.get("satellite")
+    if satellite is not None:
+        if not isinstance(satellite, dict):
+            report.error("engine.satellite", "satellite must be a dict")
+        else:
+            path = satellite.get("data_path")
+            if not isinstance(path, str) or not path:
+                report.error("engine.satellite", "satellite.data_path must be a path or URL")
+            elif "://" not in path and not (case_dir / path).exists():
+                report.warn("engine.satellite", f"satellite.data_path missing: {path}")
+            checks = {
+                "radius_km": lambda v: _is_number(v) and v > 0,
+                "min_depth": lambda v: _is_number(v) and v >= 0,
+                "train_fraction": lambda v: _is_number(v) and 0 < v <= 1,
+                "min_points": lambda v: isinstance(v, int) and not isinstance(v, bool) and v >= 1,
+                "flags": lambda v: isinstance(v, list)
+                and all(isinstance(f, int) and not isinstance(f, bool) for f in v),
+                "split": lambda v: v in ("random", "time"),
+            }
+            expected = {
+                "radius_km": "a positive number (km)",
+                "min_depth": "a number >= 0 (m)",
+                "train_fraction": "in (0, 1]",
+                "min_points": "an integer >= 1",
+                "flags": "a list of integers",
+                "split": "'random' or 'time'",
+            }
+            for key, ok in checks.items():
+                if key in satellite and not ok(satellite[key]):
+                    report.error("engine.satellite", f"satellite.{key} must be {expected[key]}")
 
     sim = config.get("simulations", {})
     bounds = sim.get("bounds", {})

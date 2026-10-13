@@ -237,6 +237,37 @@ class TestValidateCase(unittest.TestCase):
         self.assertFalse(any("bounds.dir" in m or "bounds.tp" in m for m in messages))
 
 
+    def test_engine_checks_satellite(self) -> None:
+        config = _minimal_config(metamodel={"mda_candidates": [50]})
+        config["satellite"] = {
+            "data_path": "https://example.org/altimeter.zarr",
+            "radius_km": -5,
+            "train_fraction": 1.5,
+            "flags": [1, "2"],
+        }
+        self._write_config(config)
+        messages = [
+            f.message for f in _errors(validate_case(self.case_dir))
+            if f.code == "engine.satellite"
+        ]
+        self.assertTrue(any("radius_km" in m for m in messages))
+        self.assertTrue(any("train_fraction" in m for m in messages))
+        self.assertTrue(any("flags" in m for m in messages))
+        self.assertFalse(any("data_path" in m for m in messages))  # URLs are not checked
+
+    def test_offshore_hindcast_key(self) -> None:
+        config = _minimal_config()
+        config["offshore_waves"] = [
+            {"name": "WHACS", "data_path": "w.zarr"},
+            {"name": "WHACS_cal", "data_path": "c.zarr", "hindcast": "WHACS"},
+            {"name": "X", "data_path": "x.zarr", "hindcast": "ERA5"},
+        ]
+        self._write_config(config)
+        findings = validate_case(self.case_dir)
+        warnings = [f.message for f in _warnings(findings) if f.code == "offshore.hindcast"]
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("'ERA5'", warnings[0])
+
     def test_engine_checks_site_filter(self) -> None:
         metamodel = {
             "site_filter": {"hs_ratio_max": 3.0, "hs_nan_max": 1.5, "tp_below": 1},

@@ -143,6 +143,16 @@ def portal_manifest(case: dict) -> dict | None:
     return _portal_json(case, "manifest.json")
 
 
+#: Display names of the numerical models in the portal manifest (``model``).
+MODEL_LABELS = {"snapwave": "SnapWave", "swan": "SWAN"}
+
+
+def case_model_label(case: dict) -> str:
+    """Display name of the model that ran the case (manifest ``model``; SnapWave before 0.11.0)."""
+    model = (portal_manifest(case) or {}).get("model") or "snapwave"
+    return MODEL_LABELS.get(model, model)
+
+
 def load_case_config(case: dict) -> dict:
     """The case config as published (``portal/case.json``).
 

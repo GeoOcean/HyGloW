@@ -10,8 +10,25 @@
         {
             "name": "WHACS",
             "data_path": "inputs/WHACS/processed/Netherlands_WHACS_goal.zarr"
+        },
+        {
+            "name": "ERA5",
+            "data_path": "inputs/ERA5/processed/Netherlands_ERA5_goal.zarr"
         }
     ],
+    "satellite": {
+        "name": "IMOS altimeter",
+        "data_path": "https://geoocean.unican.es/zarr/IMOS/imos_altimeter_1985_2020.zarr",
+        "radius_km": 25,
+        "min_depth": 15,
+        "flags": [
+            1,
+            2
+        ],
+        "max_time_diff": "30min",
+        "min_points": 3,
+        "train_fraction": 0.75
+    },
     "forcing": {
         "wind": {
             "name": "ERA5",

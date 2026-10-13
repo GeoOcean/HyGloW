@@ -66,6 +66,7 @@ def _refresh_sections(config: dict[str, Any]) -> None:
     """Refresh module-level section shortcuts from *config*."""
     global PATHS, OFFSHORE_WAVES, ONSHORE_WAVES
     global OUTPUT_SITES, SIMULATIONS, OUTPUT_SITES_CONFIG, METAMODEL, FORCING
+    global SATELLITE
 
     PATHS = config["paths"]
     OFFSHORE_WAVES = config.get("offshore_waves", [])
@@ -75,6 +76,7 @@ def _refresh_sections(config: dict[str, Any]) -> None:
     OUTPUT_SITES_CONFIG = SIMULATIONS.get("output_sites_config", {})
     METAMODEL = config.get("metamodel", {})
     FORCING = config.get("forcing", {})
+    SATELLITE = config.get("satellite", {})
 
 
 CONFIG = _load()
@@ -86,6 +88,7 @@ SIMULATIONS: dict[str, Any]
 OUTPUT_SITES_CONFIG: dict[str, Any]
 METAMODEL: dict[str, Any]
 FORCING: dict[str, Any]
+SATELLITE: dict[str, Any]
 _refresh_sections(CONFIG)
 
 
@@ -207,6 +210,15 @@ def simulation_model(model: str | None = None) -> str:
     return name
 
 
+#: Display names of the numerical models, for plot labels.
+MODEL_LABELS: dict[str, str] = {"snapwave": "SnapWave", "swan": "SWAN"}
+
+
+def model_label(model: str | None = None) -> str:
+    """Display name of *model* (default ``simulations.model``), e.g. ``"SWAN"``."""
+    return MODEL_LABELS[simulation_model(model)]
+
+
 def model_config(model: str | None = None) -> dict[str, Any]:
     """
     The ``simulations.<model>`` block: grid, templates, cases folders, SLURM.
@@ -300,6 +312,9 @@ def offshore_catalog_key(entry: dict[str, Any]) -> str:
     """
     Goals hindcast key for a processed offshore-waves entry.
 
+    The entry's ``hindcast`` (e.g. ``"WHACS"`` for a calibrated ``WHACS_cal``,
+    whose series sit on the same nodes), else its ``name``.
+
     Parameters
     ----------
     entry
@@ -310,7 +325,7 @@ def offshore_catalog_key(entry: dict[str, Any]) -> str:
     str
         Lowercase catalog name (e.g. ``whacs``).
     """
-    return str(entry["name"]).casefold()
+    return str(entry.get("hindcast") or entry["name"]).casefold()
 
 
 def open_offshore_waves(
@@ -375,6 +390,24 @@ def open_wind(time: str | slice | None = None) -> xr.Dataset:
         ds = ds.rename(valid_time="time")
     ds = ds[["u10", "v10"]].sortby("latitude")
     return ds if time is None else ds.sel(time=time)
+
+
+def open_satellite() -> xr.Dataset:
+    """
+    Open the altimeter store of the ``satellite`` block (local zarr or URL).
+
+    Returns
+    -------
+    xarray.Dataset
+        Cell-indexed along-track observations (see
+        :func:`bluemath_tk.waves.altimetry.open_altimeter`).
+    """
+    from bluemath_tk.waves.altimetry import open_altimeter
+
+    path = SATELLITE.get("data_path")
+    if not path:
+        raise KeyError("satellite.data_path is not configured in the case JSON")
+    return open_altimeter(path if "://" in str(path) else str(resolve(path)))
 
 
 def open_water_level() -> xr.DataArray:
@@ -792,6 +825,7 @@ __all__ = [
     "OUTPUT_SITES",
     "OUTPUT_SITES_CONFIG",
     "PATHS",
+    "SATELLITE",
     "SIMULATIONS",
     "SIMULATION_MODELS",
     "case_description",
@@ -805,8 +839,10 @@ __all__ = [
     "load_goals",
     "mda_max_points",
     "model_config",
+    "model_label",
     "offshore_catalog_key",
     "open_offshore_waves",
+    "open_satellite",
     "open_water_level",
     "open_wind",
     "reload",

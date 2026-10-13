@@ -54,7 +54,9 @@ Run notebooks with `__CASE_NAME__/` as the working directory.
    | 05    | `05_Metamodel_Cases_Generation.ipynb`          | LHS model cases per goal       |
    | 05b   | `05b_Wind_Correction.ipynb`                    | Optional: wind correction (K)  |
    | 06    | `06_Validate_Metamodel.ipynb`                  | Fit + holdout validation       |
-   | 07    | `07_Download_Process_WHACS.ipynb`              | Offshore hindcast zarr         |
+   | 07a   | `07a_Download_Process_WHACS.ipynb`             | Offshore hindcast zarr         |
+   | 07a   | `07a_Download_ERA5.ipynb`                      | Optional: ERA5 waves at the goals (Earth Data Hub) |
+   | 07b   | `07b_Satellite_Calibration.ipynb`              | Optional: hindcast vs altimetry, calibration |
    | 08    | `08_Dynamic_Cases_Generation.ipynb`            | Dynamic reference runs         |
    | 09    | `09_Validate_Linear_Summation.ipynb`           | Metamodel vs dynamic runs      |
    | 10a   | `10a_Validate_Offshore_Buoys.ipynb`            | Offshore buoy validation       |

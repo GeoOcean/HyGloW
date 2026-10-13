@@ -11,8 +11,22 @@
         {
             "name": "WHACS",
             "data_path": "inputs/WHACS/processed/__CASE_NAME___WHACS_goal.zarr"
+        },
+        {
+            "name": "ERA5",
+            "data_path": "inputs/ERA5/processed/__CASE_NAME___ERA5_goal.zarr"
         }
     ],
+    "satellite": {
+        "name": "IMOS altimeter",
+        "data_path": "/lustre/geocean/DATA/IMOS/processed/imos_altimeter_1985_2020.zarr",
+        "radius_km": 50,
+        "min_depth": 15,
+        "flags": [1, 2],
+        "max_time_diff": "30min",
+        "min_points": 3,
+        "train_fraction": 0.75
+    },
     "forcing": {
         "wind": {
             "name": "ERA5",
