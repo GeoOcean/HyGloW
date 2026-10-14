@@ -12,6 +12,11 @@
             "data_path": "inputs/WHACS/processed/Netherlands_WHACS_goal.zarr"
         },
         {
+            "name": "WHACS_cal",
+            "data_path": "inputs/WHACS/processed/Netherlands_WHACS_goal_cal.zarr",
+            "hindcast": "WHACS"
+        },
+        {
             "name": "ERA5",
             "data_path": "inputs/ERA5/processed/Netherlands_ERA5_goal.zarr"
         }
@@ -223,7 +228,7 @@
         "wind_correction": {
             "enabled": false,
             "wind": "forcing",
-            "num_cases": 100,
+            "num_cases": 250,
             "speed_ratio": [
                 0.8,
                 2.0
