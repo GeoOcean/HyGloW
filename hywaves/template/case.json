@@ -65,6 +65,7 @@
         },
         "num_samples_per_goal": 1000,
         "max_steepness": 0.06,
+        "min_depth": 0.1,
         "bounds": {
             "hs": [0.05, 8.0],
             "tp": [1, 15],

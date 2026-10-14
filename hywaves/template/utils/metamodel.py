@@ -536,9 +536,9 @@ def set_sites(cases: xr.Dataset, metamodel: str) -> list[str]:
 def detect_removed_sites(cases: xr.Dataset) -> list[str]:
     """Return site labels that fail ``METAMODEL.site_filter`` on the model cases.
 
-    *cases* should come from ``load_cases_goal(goal, apply_site_filter=False)``
-    (dry site-cases already NaN), so ``hs_nan_max`` counts dry and
-    outside-grid points the same way for SnapWave and SWAN. See
+    *cases* should come from ``load_cases_goal(goal, apply_site_filter=False)``.
+    Output sites are inside the mesh and always wet, so ``hs_nan_max`` only
+    counts model failures (``hs = 0`` is a valid result). See
     :func:`bluemath_tk.waves.hywaves.metamodel.detect_removed_sites`.
     """
     return hw.detect_removed_sites(cases, SITE_FILTER)
@@ -569,16 +569,17 @@ def removed_sites(goal: str | int) -> list[str]:
 
 
 def load_cases_goal(
-    goal: str | int, *, apply_site_filter: bool = True, fill_dry: bool = True
+    goal: str | int, *, apply_site_filter: bool = True, fill_zero: bool = True
 ) -> xr.Dataset:
-    """Model LHS output for one goal, dry-masked, with ``dir_u``/``dir_v``.
+    """Model LHS output for one goal at the saved output sites, with ``dir_u``/``dir_v``.
 
-    Dry or outside-grid site-cases (``hs`` NaN or 0) are first set to NaN in
-    every field (:func:`bluemath_tk.waves.hywaves.metamodel.mask_dry_sites`),
-    so SnapWave and SWAN look the same. With the site filter, the sites in
-    ``split.json`` ``removed_sites`` are dropped and the dry cases left are
-    filled for training (``hs = 0``, other fields = case forcing; see
-    :func:`bluemath_tk.waves.hywaves.metamodel.fill_dry_sites`).
+    Only the sites of :func:`utils.geometry.output_sites` are read (cases run
+    with an older, larger table keep working). Where no energy reaches a site (``hs = 0``) the other fields are set to
+    NaN (:func:`bluemath_tk.waves.hywaves.metamodel.mask_zero_energy`), so
+    SnapWave and SWAN look the same. With the site filter, the sites in
+    ``split.json`` ``removed_sites`` are dropped and the zero-energy fields
+    are filled for training (case forcing; see
+    :func:`bluemath_tk.waves.hywaves.metamodel.fill_zero_energy`).
 
     Parameters
     ----------
@@ -586,22 +587,26 @@ def load_cases_goal(
         Goal id (as in the case goals JSON).
     apply_site_filter
         If ``True``, drop sites listed in ``split.json`` ``removed_sites``.
-    fill_dry
-        With *apply_site_filter*, fill the remaining dry cases (training). Use
-        ``False`` for a holdout reference: dry cases stay NaN and the metrics
-        skip them.
+    fill_zero
+        With *apply_site_filter*, fill the zero-energy fields (training). Use
+        ``False`` for a holdout reference: ``hs = 0`` is compared, the other
+        fields stay NaN there and the metrics skip them.
 
     Returns
     -------
     xarray.Dataset
         Dimensions ``(case_num, sites)``; variables ``hs``, ``tp``, ``dir``, …
     """
+    from utils.geometry import output_sites
+
+    keep = set(output_sites()["source_id"].astype(str))
     with xr.open_dataset(cases_path(goal)) as ds:
-        out = hw.mask_dry_sites(ds.load())
+        out = ds.sel(sites=[s for s in ds.sites.values if str(s) in keep]).load()
+    out = hw.mask_zero_energy(out)
     if apply_site_filter:
         out = drop_sites(out, removed_sites(goal))
-        if fill_dry:
-            out = hw.fill_dry_sites(out)
+        if fill_zero:
+            out = hw.fill_zero_energy(out)
     return hw.add_direction_components(out)
 
 

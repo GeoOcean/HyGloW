@@ -5,7 +5,7 @@ to be pip-installed: everything runs as `python -m hywaves` from the
 repository root, and case folders receive a **vendored copy** of `utils/` so
 they stay fully self-contained (laptop, HPC, or someone else's repo).
 
-Current version: **0.13.0** (`hywaves/__init__.py`). What changed in each
+Current version: **0.14.0** (`hywaves/__init__.py`). What changed in each
 version, and the config keys it introduced, is in the
 [contract changelog](contract/CONTRACT.md#changelog).
 
@@ -52,7 +52,7 @@ No data is downloaded.
 | `scaffold.py`          | `start` implementation (vendoring + manifest)               |
 | `update.py`            | `update` implementation (re-sync vendored `utils/` and `tests/`) |
 | `template/`            | The canonical case reference (see below)                    |
-| `docs/`                | Method notes: [`boundary_forcing.md`](docs/boundary_forcing.md), [`satellite_calibration.md`](docs/satellite_calibration.md), [`site_filter.md`](docs/site_filter.md), [`wind_correction.md`](docs/wind_correction.md) |
+| `docs/`                | Method notes: [`boundary_forcing.md`](docs/boundary_forcing.md), [`satellite_calibration.md`](docs/satellite_calibration.md), [`output_sites.md`](docs/output_sites.md), [`wind_correction.md`](docs/wind_correction.md) |
 | `tests/`               | Tests for `hywaves` itself — scaffold/update/validate/config |
 
 ## The model
@@ -82,22 +82,22 @@ No data is downloaded.
   its `develop` branch (`pip install "git+https://github.com/GeoOcean/BlueMath_tk.git@develop"`), as no release includes this code yet.
   `template/utils/` is the JSON/case layer on top of it.
 
-## What a case configures (0.13.0)
+## What a case configures (0.14.0)
 
 All in the case JSON (`{Case}/{Case}.json`); the template's `case.json` has
 every key, and the contract documents them.
 
 | Block | What it sets |
 | --- | --- |
-| `paths` | AoI, bathymetry raster, plotting mesh |
+| `paths` | AoI, bathymetry raster (isobaths are traced on it; a case without one builds it from its grid with `utils.geometry.topobathy_from_mesh`), optional plotting mesh |
 | `offshore_waves` | Offshore hindcast zarr(s) at the goals, `(time, goal)` |
 | `satellite` (optional) | Altimeter zarr (path or URL) and matching choices (`radius_km`, `min_depth`, `train_fraction`, ...) to validate and calibrate the offshore hindcast at the goals (notebook 07b); see [`docs/satellite_calibration.md`](docs/satellite_calibration.md) |
 | `forcing` (optional) | `wind` (10 m `u10`/`v10`, e.g. ERA5) and `water_level` (per goal, e.g. CODEC) for the dynamic runs and `reconstruct(wl="forcing")` |
 | `simulations.model` | `"snapwave"` or `"swan"` |
 | `simulations.<model>` | Its grid (`grid_file`), template folders, cases folders (`metamodel_cases`, `dynamic_cases`, `wind_cases`) and SLURM options; how each model spreads the goals along its open boundary: [`docs/boundary_forcing.md`](docs/boundary_forcing.md) |
-| `simulations` (rest) | Goals file, LHS size and bounds, steepness filter, output sites (isobaths, polygons, buoys) |
+| `simulations` (rest) | Goals file, LHS size and bounds, steepness filter, `min_depth` (the models' dry threshold), output sites (isobaths, polygons with optional `fraction`, buoys): built on the model mesh in notebook 03 and saved as `outputs/output_sites_{model}.csv`; see [`docs/output_sites.md`](docs/output_sites.md) |
 | `metamodel` | Inputs, sets (groups of output sites), MDA sizes, predicted variables, PCA/GP options, reconstruction variables |
-| `metamodel.site_filter` | Which output sites are trained: bounds, ratio to the forcing, and `hs_nan_max` (outside the grid or dry in too many cases); see [`docs/site_filter.md`](docs/site_filter.md) |
+| `metamodel.site_filter` | Which output sites are trained: bounds, ratio to the forcing, and `hs_nan_max` (model failures; sites are already inside the mesh and never dry); see [`docs/output_sites.md`](docs/output_sites.md) |
 | `metamodel.wind_correction` (optional) | Wind-correction training design and use (`enabled`, `wind`: `"inferred"` or `"forcing"`); see [`docs/wind_correction.md`](docs/wind_correction.md) |
 
 Switching the model: the cases folders are separate per model, and fitted
@@ -107,9 +107,9 @@ model needs a fresh `outputs/`. Keep the first model's results with
 
 ## Versioning
 
-- **Current: 0.13.0** (offshore hindcast validated and calibrated against
-  satellite altimetry; 0.12.0: dry and outside-grid sites handled by the site
-  filter). Both models (SnapWave and SWAN) are ready to use; the results
+- **Current: 0.14.0** (output sites built on the model mesh, never dry, in
+  notebook 03; 0.13.0: offshore hindcast validated and calibrated against
+  satellite altimetry). Both models (SnapWave and SWAN) are ready to use; the results
   published so far were made with SnapWave (0.11.0).
 - **While in 0.x:** the minor version goes up (0.12, 0.13, …) whenever the
   case JSON or the contract changes, and the patch version (0.11.1, …) for

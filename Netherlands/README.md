@@ -3,7 +3,7 @@
 Nearshore waves along the Belgian and Dutch coasts, up to the Ems, downscaled
 from the WHACS offshore hindcast with the HyWaves method. This is the **current
 reference case** of the repository: it runs on the latest engine (hywaves
-0.11.0) and is where new features land first (SWAN as an alternative model,
+0.14.0) and is where new features land first (SWAN as an alternative model,
 wind and water-level forcing, the wind correction). All results so far were
 made with **SnapWave**; SWAN is set up for this case and was compared with
 SnapWave in the Xaver pilot (`SWAN_test/`).
@@ -22,14 +22,18 @@ SnapWave in the Xaver pilot (`SWAN_test/`).
    their own **metamodel**: 1000 Latin Hypercube sea states (`hs, tp, dir, spr,
    wl`), of which the 629 plausible ones (`hs / L0 <= 0.06`) are run with
    SnapWave, Hs only at that goal.
-2. Per goal and per **metamodel set** (`buoys`: the 38 buoys; `isobaths`: 369
-   sites on the smoothed 5/10/20 m isobaths), MDA picks the training cases
-   (50, 100, 200, 350 or 550), PCA compresses the site fields and a GP maps
-   the offshore sea state to them. The rest of the cases are the holdout.
-   Before that, the site filter removes 48 isobath sites (from hywaves
-   0.12.0): 39 outside the mesh (estuaries, harbours, Wadden inlets) and 9
-   that fall dry in more than 1 % of the cases (`"hs_nan_max": 0.01`); see
-   `hywaves/docs/site_filter.md`.
+2. Per goal and per **metamodel set**, MDA picks the training cases (50, 100,
+   200, 350 or 550), PCA compresses the site fields and a GP maps the
+   offshore sea state to them. The rest of the cases are the holdout. Sets:
+   `buoys` (the buoys), `isobaths` (5/10/20 m isobaths, `smooth_m` 50,
+   points every 500 m) and `deenhaag` (mesh nodes in
+   `inputs/AoI_Polygons/DeenHaag_AoI.shp`, `fraction` 0.1). Since hywaves
+   0.14.0 the sites are built in notebook 03 on the model mesh: isobaths
+   stop at the mesh edge, every site carries its `mesh_depth`, and sites that
+   could fall dry at the lowest water level (`bounds.wl` −3.25 m,
+   `min_depth` 0.1 m) are dropped before any run. On 2026-10-14 that gave
+   5156 sites (5m 1175, 10m 1875, 20m 1927, DeenHaag 141, 38 buoys); see
+   `hywaves/docs/output_sites.md`.
 3. Any offshore time series (WHACS, bulk or its 4 spectral partitions) is
    reconstructed by predicting every goal's contribution and **summing them
    as spectra**.
@@ -87,13 +91,12 @@ Two caveats:
 | Data | Path | Notes |
 | --- | --- | --- |
 | AoI | `inputs/AoI_Polygons/Netherlands_AoI.shp` | |
-| Bathymetry | `inputs/GRID/UGdcsm-fm_100m2coast3d_v3_era5bnd_net.tiff` | DCSM; isobath sites are drawn on it |
-| Computational grid | `inputs/GRID/Netherlands_mesh.nc` / `.grd` | BlueMesh2D; the `.grd` triangles are counterclockwise (SWAN requires it). 39 isobath sites fall outside it |
-| Plotting mesh | `inputs/GRID/UGdcsm-fm_100m2coast3d_v3_era5bnd_net.nc` | `paths.mesh_file`, maps only |
+| Bathymetry | `inputs/GRID/UGdcsm-fm_100m2coast3d_v3_era5bnd_net.tiff` | DCSM; isobaths are traced on it, blanked outside the computational grid |
+| Computational grid | `inputs/GRID/Netherlands_mesh.nc` / `.grd` | BlueMesh2D; the `.grd` triangles are counterclockwise (SWAN requires it). Same nodes and depths in both; every site's `mesh_depth` comes from it |
 | Offshore waves | `inputs/WHACS/processed/Netherlands_WHACS_goal.zarr` | `(time, goal)`, 1979–2023 |
 | Wind | `inputs/ERA5/raw/Netherlands_wind.zarr` | ERA5 `u10`/`v10`, hourly 1979–2023, 0.25°, covers the mesh |
 | Water level | `inputs/CODEC/processed/Netherlands_CODEC_goal.zarr` | `waterlevel` at the goals, **1979–2018 only** (0 afterwards, with a warning) |
-| Buoys | `inputs/Observations/Netherlands_observations.json` + `processed/<id>.nc` | built in notebook 03 |
+| Buoys | `inputs/Observations/Netherlands_observations.json` + `processed/<id>.nc` | built in notebook 03; `measured_depth` from the station metadata |
 
 ### Buoys
 
@@ -102,8 +105,8 @@ delivery (`inputs/Observations/raw/paulina/`: the original transfer zip,
 `paulina.csv`, Waterinfo and CMEMS archives) plus the earlier Rijkswaterstaat
 exports in `inputs/Observations/raw/`:
 
-- stations **inside the AoI and the model grid** only (no model output
-  elsewhere);
+- stations **inside the AoI** only; the ones outside the model grid stay in
+  the observations but are dropped from the output sites (notebook 03);
 - stations within **1 km** of each other are **one buoy** (co-located sensors,
   renamed stations, the same buoy in both sources); earlier ids are kept, e.g.
   `AmelanderZeegat_1_2` is merged into `AmelanderZeegat_1_1`;
@@ -113,8 +116,10 @@ exports in `inputs/Observations/raw/`:
 - processed files: `hs`, `tp` (from the peak frequency), `dir`, `spr` where
   measured; each variable's `sources` attribute lists what was merged.
 
-Result: 38 buoys, all with Hs, 27 with Tp, 17 with direction and 12 with
-spreading. The Belgian buoys inside the AoI are Hs-only from CMEMS (mostly 2020–2025). `PettenMeetraai01` comes only
+Result: 44 buoys in the observations JSON; 38 are inside the model grid and
+become output sites (outside: HonteSloehaven, Hoofdplaat, MeetboeiRZGN1,
+NieuwpoortBuoy, PasVanTerneuzenBoei, StortemelkOost). Of those 38, all have
+Hs, 27 Tp, 17 direction and 12 spreading. The Belgian buoys inside the AoI are Hs-only from CMEMS (mostly 2020–2025). `PettenMeetraai01` comes only
 from the old export; `ZandmoterBoeiNoord` was dropped (598 h).
 
 ---
@@ -123,7 +128,7 @@ from the old export; `ZandmoterBoeiNoord` was dropped (598 h).
 
 | Step | Notebook | What it does |
 | --- | --- | --- |
-| 03 | `03_Generate_Observations_Configuration.ipynb` | Builds the 38 processed buoys + the observations JSON |
+| 03 | `03_Generate_Observations_Configuration.ipynb` | Builds the processed buoys + the observations JSON, then the output sites on the model mesh (summary, buoy depth check, maps) |
 | 04 | `04_Select_Goals_by_Hindcasts.ipynb` | Goals and propagation sectors |
 | 05 | `05_Metamodel_Cases_Generation.ipynb` | LHS cases per goal, build / run (SLURM) / postprocess |
 | 05b | `05b_Wind_Correction.ipynb` | Fetch table, wind-correction training cases (with / without wind), fit `K` |

@@ -198,7 +198,7 @@ reference GUI lists them as versions of the case.
 | `mda_inputs`                                            | non-empty list of strings (`hs`, `tp`, `dir`, `spr`, `wl`)                                                      |
 | `mda_directional_variables`                             | list, subset of `mda_inputs`                                                                                    |
 | `vars_to_predict`                                       | non-empty dict; each value `"raw"` or a dict with `vars_to_stack` (non-empty list) and `pca_variance` in (0, 1] |
-| `site_filter`                                           | dict; keys `{var}_max`, `{var}_min`, `{var}_ratio_max` (`var / {var}_forcing`) or `{var}_nan_max` (fraction of cases, in [0, 1]); see `docs/site_filter.md` |
+| `site_filter`                                           | dict; keys `{var}_max`, `{var}_min`, `{var}_ratio_max` (`var / {var}_forcing`) or `{var}_nan_max` (fraction of cases, in [0, 1]); see `docs/output_sites.md` |
 | `pca_preprocessing`                                     | optional dict of dicts                                                                                          |
 | `validation.metrics_variables`                          | non-empty list, subset of `vars_to_predict`                                                                     |
 | `reconstruction.variables`                              | non-empty dict; keys subset of `vars_to_predict`; values valid wavespectra stats                                |
@@ -222,6 +222,23 @@ not importable — the validator itself never requires third-party packages.
 
 Every change to this document is recorded here.
 
+- **2026-10** (hywaves 0.14.0): output sites are built on the model mesh and
+  are never dry (notebook 03, after the observations). Isobaths are traced on
+  the topobathy raster blanked outside the mesh; every site gets its
+  `mesh_depth` (m positive down, the depth the models see and the one used
+  from here on; coordinate `site_mesh_depth`) next to its `nominal_depth`
+  (contour level, or the buoy's `measured_depth`, which replaces `depth` in
+  the observations GeoJSON; coordinate `site_nominal_depth`), and a `status`:
+  sites outside the mesh or with
+  `mesh_depth + simulations.bounds.wl[0] < simulations.min_depth` are dropped
+  before any run. New `simulations.min_depth` (default 0.1, templates
+  `{{ min_depth }}` for SnapWave `hmin` / SWAN `DEPMIN`). The table, dropped
+  sites included, is saved as `outputs/output_sites_{model}.csv`
+  (`# grid:` header) and read by the metamodel cases, dynamic runs and
+  `load_cases_goal`. `hs = 0` is a valid zero contribution
+  (`mask_zero_energy` / `fill_zero_energy` replace `mask_dry_sites` /
+  `fill_dry_sites`), so `hs_nan_max` counts model failures only. Existing
+  runs need the full pipeline re-run. Details in `docs/output_sites.md`.
 - **2026-10** (hywaves 0.13.0): offshore hindcasts can be validated and
   calibrated against satellite altimetry. New optional `satellite` block (the
   altimeter zarr and the matching choices: `radius_km` around each goal's
@@ -241,7 +258,7 @@ Every change to this document is recorded here.
   `split.json` `removed_sites`). The dry cases left are filled for training
   (`hs = 0`, other fields = case forcing), so `pca_preprocessing` no longer
   drops columns; the holdout reference keeps them NaN. Details in
-  `docs/site_filter.md`.
+  `docs/output_sites.md`.
 - **2026-10** (hywaves 0.11.0): the numerical cases run with SnapWave or SWAN.
   `simulations.model` chooses the model, and a `simulations.<model>` block
   holds its `grid_file` (SnapWave: UGRID `.nc`; SWAN: ADCIRC `.grd` with

@@ -874,7 +874,8 @@ def _holdout_pair(
     """Model reference and metamodel estimate on MDA test cases.
 
     Returns reference, estimate (both ``case_num`` × ``sites``), and test count.
-    Dry reference cases stay NaN, so the metrics skip them.
+    Zero-energy reference cases keep ``hs = 0``; their other fields stay NaN
+    and the metrics skip them.
     """
     if context is None:
         context = mm.load_context(goal)
@@ -884,7 +885,7 @@ def _holdout_pair(
             goal, metamodel, mda_candidate, pca_variance=pca_variance
         )
 
-    cases = mm.load_cases_goal(goal, fill_dry=False)
+    cases = mm.load_cases_goal(goal, fill_zero=False)
     cases = cases.sel(sites=mm.set_sites(cases, metamodel))
     idx = np.asarray(test_idx, dtype=int)
     estimate = mm.predict(

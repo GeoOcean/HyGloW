@@ -66,7 +66,7 @@ from utils.config import (
     resolve,
     simulation_model,
 )
-from utils.geometry import compute_output_sites
+from utils.geometry import min_depth, output_sites
 
 #: Metamodel LHS parameters, stored as ``{name}_forcing`` on postprocessed output.
 FORCING_VARS = ("hs", "tp", "dir", "spr", "wl")
@@ -142,7 +142,8 @@ SITE_COORDS = {
     "sites": "source_id",
     "site_source": "source",
     "site_label": "source_label",
-    "site_depth": "depth",
+    "site_mesh_depth": "mesh_depth",
+    "site_nominal_depth": "nominal_depth",
     "site_longitude": "lon",
     "site_latitude": "lat",
 }
@@ -334,8 +335,8 @@ class HyWavesWrapperSetup:
             Outward AoI buffer in metres (default
             ``simulations.enclosure_buffer_m``, else 10 km).
         output_sites_df
-            Pre-built output sites (default computed from the AoI, see
-            :func:`utils.geometry.compute_output_sites`).
+            Output sites (default the saved table of the model, see
+            :func:`utils.geometry.output_sites`).
 
         Returns
         -------
@@ -353,8 +354,9 @@ class HyWavesWrapperSetup:
             )
         aoi_gdf = gpd.read_file(resolve(PATHS["aoi_file"]))
         aoi_polygon = aoi_gdf.geometry.iloc[0]
+        model = simulation_model(model)
         if output_sites_df is None:
-            output_sites_df = compute_output_sites(aoi_polygon=aoi_polygon)
+            output_sites_df = output_sites(model)
         mesh = PATHS.get("mesh_file")
         return cls(
             aoi_gdf=aoi_gdf,
@@ -362,7 +364,7 @@ class HyWavesWrapperSetup:
             enclosure_buffer_m=float(enclosure_buffer_m),
             goals_config=goals_config,
             output_sites_df=output_sites_df.reset_index(drop=True),
-            model=simulation_model(model),
+            model=model,
             mesh_file=str(resolve(mesh)) if mesh else None,
         )
 
@@ -420,10 +422,11 @@ class HyWavesWrapperSetup:
         }
 
     def fixed_parameters(self) -> dict[str, Any]:
-        """Parameters shared by every case: SnapWave's ``gridfile`` (SWAN links its grid)."""
+        """Parameters shared by every case: ``min_depth`` and SnapWave's ``gridfile`` (SWAN links its grid)."""
+        fixed: dict[str, Any] = {"min_depth": min_depth()}
         if self.model == "snapwave":
-            return {"gridfile": str(grid_file(self.model))}
-        return {}
+            fixed["gridfile"] = str(grid_file(self.model))
+        return fixed
 
     def _wrapper(
         self,

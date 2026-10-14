@@ -31,7 +31,8 @@ def _sites() -> pd.DataFrame:
             "source_id": ["iso_5m_0", "buoy_A"],
             "source": ["isobath", "buoy"],
             "source_label": ["5m", "A"],
-            "depth": [5.0, 12.0],
+            "nominal_depth": [5.0, 10.0],
+            "mesh_depth": [5.0, 12.0],
             "lon": [0.2, 0.6],
             "lat": [0.3, 0.4],
         }
@@ -178,7 +179,7 @@ class TestMetamodelCases(unittest.TestCase):
             with xr.open_dataset(written[2]) as ds:
                 self.assertEqual(list(ds.sites.values), ["iso_5m_0", "buoy_A"])
                 self.assertEqual(set(sws.SITE_COORDS) - set(ds.coords), set())
-                self.assertEqual(float(ds.site_depth.sel(sites="buoy_A")), 12.0)
+                self.assertEqual(float(ds.site_mesh_depth.sel(sites="buoy_A")), 12.0)
                 self.assertEqual(float(ds.tp_forcing.squeeze()), 12.0)
                 self.assertEqual(float(ds.hs_forcing.squeeze()), 2.5)
                 self.assertEqual(ds.case_num.item(), 1)

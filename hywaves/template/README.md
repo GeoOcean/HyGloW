@@ -38,10 +38,12 @@ Run notebooks with `__CASE_NAME__/` as the working directory.
    (`templates-<model>-metamodel/`, `templates-<model>-dynamic/`), cases
    folders and SLURM options; with SWAN, predict `tp` (a PCA target) instead
    of `"raw"`. Optional `forcing` (wind, e.g. ERA5; water level, e.g. CODEC)
-   feeds the dynamic runs and `reconstruct(wl="forcing")`. `site_filter`
-   decides which output sites are trained: keep `"hs_nan_max": 0.01` so sites
-   outside the mesh or often dry are removed (see the hywaves
-   `docs/site_filter.md`).
+   feeds the dynamic runs and `reconstruct(wl="forcing")`. Output sites
+   are built on the model mesh in notebook 03: `simulations.min_depth` (the
+   models' dry threshold) and the lower `bounds.wl` decide which sites stay
+   wet, and the table is saved in `outputs/output_sites_{model}.csv`;
+   `site_filter` (`"hs_nan_max": 0.01`) then only catches model failures (see
+   the hywaves `docs/output_sites.md`).
 2. **Area of interest** — put your AoI shapefile in `inputs/AoI_Polygons/`.
 3. **Work through the notebooks in order:**
 
@@ -49,7 +51,7 @@ Run notebooks with `__CASE_NAME__/` as the working directory.
    | ----- | ---------------------------------------------- | ------------------------------ |
    | 01    | `01_Generate_tiff_from_GEBCO.ipynb`            | Clip GEBCO bathymetry to AoI   |
    | 02    | `02_Create_mesh_by_bluemesh2d.ipynb`           | Unstructured mesh              |
-   | 03    | `03_Generate_Observations_Configuration.ipynb` | Buoy/site GeoJSON catalogue    |
+   | 03    | `03_Generate_Observations_Configuration.ipynb` | Buoy GeoJSON + output sites on the mesh |
    | 04    | `04_Select_Goals_by_Hindcasts.ipynb`           | Goal locations + sectors       |
    | 05    | `05_Metamodel_Cases_Generation.ipynb`          | LHS model cases per goal       |
    | 05b   | `05b_Wind_Correction.ipynb`                    | Optional: wind correction (K)  |

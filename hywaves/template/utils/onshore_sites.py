@@ -87,7 +87,7 @@ def get_coordinates(
             "institution": props.get("institution"),
             "type": props.get("type"),
             "recording": props.get("recording"),
-            "depth": props.get("depth"),
+            "measured_depth": props.get("measured_depth"),
             "name": props.get("name"),
         }
 
@@ -124,7 +124,9 @@ def attach_buoy_site_meta(ds: xr.Dataset, site_id: str) -> xr.Dataset:
     -------
     xarray.Dataset
         *ds* with ``site_source``, ``site_label``, ``site_longitude``,
-        ``site_latitude``, and ``site_depth`` coordinates.
+        ``site_latitude``, ``site_mesh_depth`` (from the saved output sites,
+        NaN if the buoy is not one) and ``site_nominal_depth`` (the measured
+        depth) coordinates.
 
     Raises
     ------
@@ -144,15 +146,18 @@ def attach_buoy_site_meta(ds: xr.Dataset, site_id: str) -> xr.Dataset:
             f"Buoy {site_id!r} not in onshore-waves GeoJSON (instrument {iid!r})"
         )
 
+    from utils.geometry import output_sites
+
     n = int(ds.sizes["sites"])
-    depth = meta.get("depth")
-    depth_val = float(depth) if depth is not None else np.nan
+    measured = meta.get("measured_depth")
+    sites = output_sites().set_index("source_id")["mesh_depth"]
     return ds.assign_coords(
         site_source=("sites", ["buoy"] * n),
         site_label=("sites", [iid] * n),
         site_longitude=("sites", [float(meta["lon"])] * n),
         site_latitude=("sites", [float(meta["lat"])] * n),
-        site_depth=("sites", [depth_val] * n),
+        site_mesh_depth=("sites", [float(sites.get(site_id, np.nan))] * n),
+        site_nominal_depth=("sites", [float(measured) if measured is not None else np.nan] * n),
     )
 
 

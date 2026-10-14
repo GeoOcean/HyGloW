@@ -7,7 +7,7 @@ $ the case has wind: a field (wind_file) or a uniform u10 / u10dir.
 PROJECT 'HyWaves' '{{ "%04d" % case_num }}'
 MODE STATIONARY TWODIMENSIONAL
 COORDINATES SPHERICAL CCM
-SET LEVEL={{ wl }} DEPMIN=0.1 NAUTICAL
+SET LEVEL={{ wl }} DEPMIN={{ min_depth }} NAUTICAL
 $
 CGRID UNSTRUCTURED CIRCLE 36 0.03 1.0 36
 READGRID UNSTRUCTURED ADCIRC

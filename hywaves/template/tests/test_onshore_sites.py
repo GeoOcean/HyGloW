@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import unittest
+from unittest import mock
 
 import numpy as np
+import pandas as pd
 import xarray as xr
 
 from utils import config
@@ -28,7 +30,10 @@ class TestOnshoreSites(unittest.TestCase):
             {"hs": (("time", "sites"), np.ones((3, 1)))},
             coords={"time": np.arange(3), "sites": [site_id]},
         )
-        out = obs.attach_buoy_site_meta(ds, site_id)
+        table = pd.DataFrame({"source_id": [site_id], "mesh_depth": [12.5]})
+        with mock.patch("utils.geometry.output_sites", return_value=table):
+            out = obs.attach_buoy_site_meta(ds, site_id)
+        self.assertEqual(float(out["site_mesh_depth"].values[0]), 12.5)
         self.assertEqual(str(out["site_source"].values[0]), "buoy")
         self.assertEqual(str(out["site_label"].values[0]), instrument)
         self.assertAlmostEqual(float(out["site_longitude"].values[0]), meta["lon"])

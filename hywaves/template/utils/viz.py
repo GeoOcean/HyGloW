@@ -29,14 +29,17 @@ import numpy as np
 import pandas as pd
 import rioxarray
 import xarray as xr
-from bluemath_tk.core.operations import in_nautical_sector, nautical_sector_to_wedge_angles
+from bluemath_tk.core.operations import (
+    in_nautical_sector,
+    nautical_sector_to_wedge_angles,
+)
 from bluemath_tk.core.plotting.base_plotting import (
     DefaultStaticPlotting,
     decimate_raster,
 )
+from bluemath_tk.core.plotting.cases import CasePlotStyle
 from bluemath_tk.waves.hywaves.output_points import smooth_raster
 from bluemath_tk.wrappers.snapwave import BOUNDARY_VARS
-from bluemath_tk.core.plotting.cases import CasePlotStyle
 from bluemath_tk.wrappers.snapwave.snapwave_plots import plot_case
 from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.axes import Axes
@@ -597,9 +600,7 @@ def plot_validation_sites(
         if show_label:
             drawn.add(legend_key)
         legend = (
-            label
-            if source == "isobath"
-            else ("mesh" if source == "mesh" else "buoy")
+            label if source == "isobath" else ("mesh" if source == "mesh" else "buoy")
         )
         ax.scatter(
             lon[mask],
@@ -627,6 +628,122 @@ def plot_validation_sites(
                 zorder=7,
             )
     ax.legend(loc="lower left", fontsize=8, framealpha=0.9)
+
+
+#: Marker colour of the output sites dropped by the mesh check, by status.
+DROPPED_SITE_COLORS = {"outside_mesh": "#d62728", "can_dry": "#ff7f0e"}
+
+
+def plot_output_sites(
+    sites: pd.DataFrame,
+    *,
+    title: str | None = "Output sites on the model mesh",
+    show_satellite: bool = False,
+    cmap: str = "viridis",
+) -> tuple[Figure, Axes]:
+    """
+    Map of the output sites coloured by mesh depth, with the dropped ones marked.
+
+    Parameters
+    ----------
+    sites
+        Output-sites table with every site (``output_sites(all_sites=True)``).
+    title, show_satellite
+        Passed to :func:`plot_base_map`.
+    cmap
+        Colormap of ``mesh_depth``.
+
+    Returns
+    -------
+    tuple[Figure, Axes]
+        Figure and axes handles.
+    """
+    fig, ax = plot_base_map(
+        title=title, show_isobaths=False, show_satellite=show_satellite
+    )
+    ok = sites[sites["status"] == "ok"]
+    norm = mcolors.Normalize(0.0, float(np.nanmax(ok["mesh_depth"])))
+    for source, group in ok.groupby("source"):
+        sc = ax.scatter(
+            group["lon"],
+            group["lat"],
+            c=group["mesh_depth"],
+            cmap=cmap,
+            norm=norm,
+            marker=SITE_SOURCE_MARKERS.get(source, "o"),
+            s=POINT_MARKERSIZE * (0.35 if source == "mesh" else 0.6),
+            edgecolors=POINT_EDGE_COLOR,
+            linewidths=POINT_EDGE_WIDTH,
+            label=f"{source} ({len(group)})",
+            zorder=6,
+        )
+    for status, group in sites[sites["status"] != "ok"].groupby("status"):
+        ax.scatter(
+            group["lon"],
+            group["lat"],
+            c=DROPPED_SITE_COLORS.get(status, "k"),
+            marker="x",
+            s=POINT_MARKERSIZE * 0.5,
+            label=f"{status} ({len(group)})",
+            zorder=7,
+        )
+    fig.colorbar(sc, ax=ax, shrink=0.7, label="mesh depth (m)")
+    ax.legend(loc="lower right", fontsize=8, framealpha=0.9)
+    return fig, ax
+
+
+def plot_site_depths(sites: pd.DataFrame) -> tuple[Figure, Axes]:
+    """
+    Nominal depth (contour level, buoy measured depth) against mesh depth.
+
+    Parameters
+    ----------
+    sites
+        Output-sites table (``output_sites(all_sites=True)``); only ``ok``
+        sites are drawn.
+
+    Returns
+    -------
+    tuple[Figure, Axes]
+        Figure and axes handles.
+    """
+    ok = sites[(sites["status"] == "ok") & sites["nominal_depth"].notna()]
+    fig, ax = plt.subplots(figsize=(5.5, 5.5))
+    for (source, label), group in ok.groupby(["source", "source_label"]):
+        if source == "buoy":
+            continue
+        ax.scatter(
+            group["nominal_depth"],
+            group["mesh_depth"],
+            s=14,
+            alpha=0.6,
+            color=_site_color(source, label),
+            label=f"{label} ({len(group)})",
+        )
+    buoys = ok[ok["source"] == "buoy"]
+    ax.scatter(
+        buoys["nominal_depth"],
+        buoys["mesh_depth"],
+        s=30,
+        marker="s",
+        color=SITE_SOURCE_COLORS["buoy"],
+        edgecolors="k",
+        linewidths=0.4,
+        label=f"buoys ({len(buoys)})",
+    )
+    top = float(np.nanmax(ok[["nominal_depth", "mesh_depth"]].to_numpy())) * 1.05
+    ax.plot([0, top], [0, top], color="0.5", lw=0.8, ls="--")
+    ax.set(
+        xlim=(0, top),
+        ylim=(0, top),
+        aspect="equal",
+        xlabel="nominal depth (m): contour level / buoy measured",
+        ylabel="mesh depth (m)",
+    )
+    ax.grid(alpha=0.3)
+    ax.legend(fontsize=8)
+    fig.tight_layout()
+    return fig, ax
 
 
 def _goal_colors(goal_ids: list) -> dict:
@@ -657,15 +774,19 @@ def _wave_from_arrowprops(
     theta = np.deg2rad(float(dir_deg))
     dlon = np.sin(theta) * scale_deg
     dlat = np.cos(theta) * scale_deg
-    return dict(
-        arrowstyle="-|>",
-        color=color,
-        lw=lw,
-        alpha=alpha,
-        shrinkA=0,
-        shrinkB=2,
-        mutation_scale=8,
-    ), (lon + dlon, lat + dlat), (lon, lat)
+    return (
+        dict(
+            arrowstyle="-|>",
+            color=color,
+            lw=lw,
+            alpha=alpha,
+            shrinkA=0,
+            shrinkB=2,
+            mutation_scale=8,
+        ),
+        (lon + dlon, lat + dlat),
+        (lon, lat),
+    )
 
 
 def _sector_spans(left: float, right: float) -> list[tuple[float, float]]:
@@ -716,16 +837,16 @@ def _offshore_bulk_long(offshore: xr.Dataset) -> pd.DataFrame:
     if missing:
         raise KeyError(f"offshore missing variables: {missing}")
     if "goal" not in offshore.dims:
-        raise KeyError(f"offshore must have a 'goal' dimension; got {dict(offshore.sizes)}")
+        raise KeyError(
+            f"offshore must have a 'goal' dimension; got {dict(offshore.sizes)}"
+        )
 
     df = offshore[list(BOUNDARY_VARS)].to_dataframe().reset_index()
     df["goal"] = df["goal"].astype(int)
     return df
 
 
-def _frac_dirs_outside_sector(
-    dirs: np.ndarray, left: float, right: float
-) -> float:
+def _frac_dirs_outside_sector(dirs: np.ndarray, left: float, right: float) -> float:
     """Share of directions outside a nautical propagation sector."""
     inside = in_nautical_sector(dirs, left, right)
     return float(1.0 - np.mean(inside))
@@ -944,7 +1065,10 @@ def _boxes_overlap(
     ax0, ay0, ax1, ay1 = a
     bx0, by0, bx1, by1 = b
     return not (
-        ax1 + margin < bx0 or bx1 + margin < ax0 or ay1 + margin < by0 or by1 + margin < ay0
+        ax1 + margin < bx0
+        or bx1 + margin < ax0
+        or ay1 + margin < by0
+        or by1 + margin < ay0
     )
 
 
@@ -973,7 +1097,9 @@ def _label_candidate_ring(radius: float) -> list[tuple[tuple[float, float], str,
 # so a tight cluster of goals (e.g. several sectors sharing one headland)
 # still finds a free spot instead of stacking labels on top of each other.
 _LABEL_CANDIDATES: list[tuple[tuple[float, float], str, str]] = [
-    c for radius in (6, 11, 16, 22, 28, 34, 42, 55) for c in _label_candidate_ring(radius)
+    c
+    for radius in (6, 11, 16, 22, 28, 34, 42, 55)
+    for c in _label_candidate_ring(radius)
 ]
 
 
@@ -1078,8 +1204,12 @@ def _plot_configuration_map(
     # this close-up view.
     boundary_gdf = gpd.GeoDataFrame(geometry=[model_boundary], crs="EPSG:4326")
     minx, miny, maxx, maxy = boundary_gdf.total_bounds
-    lons = [g["lon"] for g in goals_config.values()] + list(output_sites_df.get("lon", []))
-    lats = [g["lat"] for g in goals_config.values()] + list(output_sites_df.get("lat", []))
+    lons = [g["lon"] for g in goals_config.values()] + list(
+        output_sites_df.get("lon", [])
+    )
+    lats = [g["lat"] for g in goals_config.values()] + list(
+        output_sites_df.get("lat", [])
+    )
     if lons:
         minx, maxx = min(minx, min(lons)), max(maxx, max(lons))
         miny, maxy = min(miny, min(lats)), max(maxy, max(lats))
@@ -1096,7 +1226,11 @@ def _plot_configuration_map(
         satellite_source=satellite_source,
         satellite_area=satellite_area,
     )
-    outline = boundary_gdf.boundary if model_boundary.geom_type.endswith("Polygon") else boundary_gdf
+    outline = (
+        boundary_gdf.boundary
+        if model_boundary.geom_type.endswith("Polygon")
+        else boundary_gdf
+    )
     outline.plot(
         ax=ax_map,
         color="#d62728",
@@ -1173,9 +1307,7 @@ def _plot_configuration_map(
     if not output_sites_df.empty:
         sites_gdf = gpd.GeoDataFrame(
             output_sites_df,
-            geometry=gpd.points_from_xy(
-                output_sites_df["lon"], output_sites_df["lat"]
-            ),
+            geometry=gpd.points_from_xy(output_sites_df["lon"], output_sites_df["lat"]),
             crs="EPSG:4326",
         )
         for source, group in sites_gdf.groupby("source"):
@@ -1535,7 +1667,9 @@ def plot_dynamic_configuration(
     matplotlib.figure.Figure
     """
     cases = _offshore_bulk_long(offshore)
-    n_time = int(offshore.sizes.get("time", len(cases) // max(cases["goal"].nunique(), 1)))
+    n_time = int(
+        offshore.sizes.get("time", len(cases) // max(cases["goal"].nunique(), 1))
+    )
 
     fig, ax_map, ax_bars, ax_info, goal_ids, colors = _configuration_figure(
         cases, show_satellite=show_satellite
@@ -1598,7 +1732,9 @@ def plot_dynamic_configuration(
             f"  dir : [{cases['dir'].min():.1f}, {cases['dir'].max():.1f}]°",
             f"  spr : [{cases['spr'].min():.1f}, {cases['spr'].max():.1f}]°",
         ]
-        + _forcing_summary_lines(time_vals, wind, water_level, wind_name, water_level_name)
+        + _forcing_summary_lines(
+            time_vals, wind, water_level, wind_name, water_level_name
+        )
         + ["", "Per goal — sector vs observed dir (nautical):"]
     )
     for goal_key in sorted(goals_config, key=int):
@@ -1665,6 +1801,7 @@ def plot_dynamic_configuration(
 # ---------------------------------------------------------------------------
 # Finished SnapWave cases (bluemath_tk plot_case + case base map and titles)
 # ---------------------------------------------------------------------------
+
 
 def infer_goal_from_path(case_dir: str | Path) -> int | None:
     """
@@ -1744,7 +1881,9 @@ def _plot(
     if title is None:
         goal = infer_goal_from_path(case_dir) if mode == "metamodel" else None
         label = f" · G{goal}" if goal is not None else ""
-        title = display_title(f"{'SWAN' if swan else 'SnapWave'} {mode}{label} · case {name}")
+        title = display_title(
+            f"{'SWAN' if swan else 'SnapWave'} {mode}{label} · case {name}"
+        )
     if swan:
         from bluemath_tk.wrappers.swan.swan_plots import plot_case as plot_swan_case
 
@@ -1799,7 +1938,9 @@ def _forcing_summary_lines(
             wt = pd.DatetimeIndex(wind["time"].values)
             inside = (times >= wt.min()) & (times <= wt.max())
             covered = f", covers {inside.mean() * 100:.0f}% of case times"
-        p50, p95, top = np.nanpercentile(speed, [50, 95]).tolist() + [float(np.nanmax(speed))]
+        p50, p95, top = np.nanpercentile(speed, [50, 95]).tolist() + [
+            float(np.nanmax(speed))
+        ]
         lines += [
             "",
             f"Wind              : {wind_name or 'u10/v10'}{covered}",
@@ -1810,7 +1951,9 @@ def _forcing_summary_lines(
         wl = water_level
         if times is not None and "time" in wl.dims:
             wl = wl.reindex(time=times)
-        missing = float(wl.isnull().all([d for d in wl.dims if d != "time"]).mean()) * 100
+        missing = (
+            float(wl.isnull().all([d for d in wl.dims if d != "time"]).mean()) * 100
+        )
         lines += [
             "",
             f"Water level       : {water_level_name or 'per goal'}"
@@ -1870,7 +2013,9 @@ def plot_dynamic_forcing(
 
     times = pd.DatetimeIndex(offshore["time"].values)
     goal_ids = [int(g) for g in offshore["goal"].values]
-    goal_xy = np.array([[goals_config[str(g)]["lon"], goals_config[str(g)]["lat"]] for g in goal_ids])
+    goal_xy = np.array(
+        [[goals_config[str(g)]["lon"], goals_config[str(g)]["lat"]] for g in goal_ids]
+    )
     storm = times[int(np.nanargmax(offshore["hs"].mean("goal").values))]
 
     fig = plt.figure(figsize=(16, 10.5), constrained_layout=True)
@@ -1890,7 +2035,14 @@ def plot_dynamic_forcing(
         aoi_gdf.to_crs(4326).boundary.plot(ax=ax, color="black", lw=1.0, zorder=4)
         ax.scatter(*goal_xy.T, s=25, c="white", edgecolors="black", zorder=7)
         for g, (x, y) in zip(goal_ids, goal_xy):
-            ax.annotate(f"G{g}", (x, y), xytext=(3, 3), textcoords="offset points", fontsize=7, zorder=8)
+            ax.annotate(
+                f"G{g}",
+                (x, y),
+                xytext=(3, 3),
+                textcoords="offset points",
+                fontsize=7,
+                zorder=8,
+            )
         ax.set_xlim(extent[0], extent[1])
         ax.set_ylim(extent[2], extent[3])
         ax.set_aspect("equal", adjustable="box")
@@ -1902,49 +2054,128 @@ def plot_dynamic_forcing(
         lon, lat = wind["longitude"].values, wind["latitude"].values
         speed = np.hypot(wind["u10"], wind["v10"])
         mean_speed = speed.mean("time").values
-        mean_u, mean_v = wind["u10"].mean("time").values, wind["v10"].mean("time").values
+        mean_u, mean_v = (
+            wind["u10"].mean("time").values,
+            wind["v10"].mean("time").values,
+        )
         vmax = float(np.nanmax(speed.max("time").values))
-        mesh = ax_mean.pcolormesh(lon, lat, mean_speed, cmap="YlGnBu", vmin=0, vmax=max(vmax * 0.6, 1), shading="auto", zorder=1)
+        mesh = ax_mean.pcolormesh(
+            lon,
+            lat,
+            mean_speed,
+            cmap="YlGnBu",
+            vmin=0,
+            vmax=max(vmax * 0.6, 1),
+            shading="auto",
+            zorder=1,
+        )
         plt.colorbar(mesh, ax=ax_mean, fraction=0.03, label="mean u10 (m/s)")
         lon2, lat2 = np.meshgrid(lon, lat)
         s_mean, d_mean = wind_speed_direction(mean_u, mean_v)
-        plot_wind_arrows(ax_mean, lon2, lat2, s_mean, d_mean, max_arrows=400, key_speed=5.0, scale=80.0, width=0.003)
+        plot_wind_arrows(
+            ax_mean,
+            lon2,
+            lat2,
+            s_mean,
+            d_mean,
+            max_arrows=400,
+            key_speed=5.0,
+            scale=80.0,
+            width=0.003,
+        )
         steadiness = float(np.nanmean(s_mean) / np.nanmean(mean_speed))
-        frame(ax_mean, f"Mean wind {times.min():%Y-%m} → {times.max():%Y-%m} "
-                       f"(arrows: mean vector; steadiness {steadiness:.2f})")
+        frame(
+            ax_mean,
+            f"Mean wind {times.min():%Y-%m} → {times.max():%Y-%m} "
+            f"(arrows: mean vector; steadiness {steadiness:.2f})",
+        )
 
         at = wind.sel(time=storm, method="nearest")
         s_storm, d_storm = wind_speed_direction(at["u10"].values, at["v10"].values)
-        mesh = ax_storm.pcolormesh(lon, lat, s_storm, cmap="YlOrRd", vmin=0, vmax=max(vmax, 1), shading="auto", zorder=1)
+        mesh = ax_storm.pcolormesh(
+            lon,
+            lat,
+            s_storm,
+            cmap="YlOrRd",
+            vmin=0,
+            vmax=max(vmax, 1),
+            shading="auto",
+            zorder=1,
+        )
         plt.colorbar(mesh, ax=ax_storm, fraction=0.03, label="u10 (m/s)")
-        plot_wind_arrows(ax_storm, lon2, lat2, s_storm, d_storm, max_arrows=400, scale=280.0, width=0.003)
+        plot_wind_arrows(
+            ax_storm,
+            lon2,
+            lat2,
+            s_storm,
+            d_storm,
+            max_arrows=400,
+            scale=280.0,
+            width=0.003,
+        )
         off = offshore.sel(time=storm)
         for (x, y), h, d in zip(goal_xy, off["hs"].values, off["dir"].values):
             th = np.deg2rad(d)
-            ax_storm.annotate("", xy=(x, y), xytext=(x + 0.25 * np.sin(th), y + 0.25 * np.cos(th)),
-                              arrowprops=dict(arrowstyle="-|>", color="#08306b", lw=2, mutation_scale=14), zorder=8)
-        frame(ax_storm, f"Storm hour {storm:%Y-%m-%d %H:%M} (max goal-mean Hs "
-                        f"{float(off['hs'].mean()):.1f} m; blue = wave dir)")
+            ax_storm.annotate(
+                "",
+                xy=(x, y),
+                xytext=(x + 0.25 * np.sin(th), y + 0.25 * np.cos(th)),
+                arrowprops=dict(
+                    arrowstyle="-|>", color="#08306b", lw=2, mutation_scale=14
+                ),
+                zorder=8,
+            )
+        frame(
+            ax_storm,
+            f"Storm hour {storm:%Y-%m-%d %H:%M} (max goal-mean Hs "
+            f"{float(off['hs'].mean()):.1f} m; blue = wave dir)",
+        )
 
         dm_speed, dm_dir = _domain_mean_wind(wind)
         plot_wind_rose(ax_rose, dm_speed, dm_dir)
-        ax_rose.set_title(f"Domain-mean wind ({wind_name or 'u10'})", fontsize=11, pad=12)
-        ax_rose.legend(fontsize=7, loc="upper left", bbox_to_anchor=(1.02, 1.0), frameon=False)
+        ax_rose.set_title(
+            f"Domain-mean wind ({wind_name or 'u10'})", fontsize=11, pad=12
+        )
+        ax_rose.legend(
+            fontsize=7, loc="upper left", bbox_to_anchor=(1.02, 1.0), frameon=False
+        )
 
         at_goals = wind.interp(
             latitude=xr.DataArray(goal_xy[:, 1], dims="goal"),
             longitude=xr.DataArray(goal_xy[:, 0], dims="goal"),
         ).reindex(time=times, method="nearest", tolerance=pd.Timedelta("1h"))
-        w_speed, w_dir = wind_speed_direction(at_goals["u10"].values, at_goals["v10"].values)
-        weight = wind_sea_weight(offshore["hs"].values, offshore["tp"].values, offshore["spr"].values)
+        w_speed, w_dir = wind_speed_direction(
+            at_goals["u10"].values, at_goals["v10"].values
+        )
+        weight = wind_sea_weight(
+            offshore["hs"].values, offshore["tp"].values, offshore["spr"].values
+        )
         angle = np.mod(w_dir - offshore["dir"].values + 180.0, 360.0) - 180.0
         sel = (weight > 0) & np.isfinite(angle) & (w_speed > 1)
-        ax_angle.hist(angle[sel], bins=np.arange(-180, 181, 10), color="#4c72b0", edgecolor="white")
+        ax_angle.hist(
+            angle[sel],
+            bins=np.arange(-180, 181, 10),
+            color="#4c72b0",
+            edgecolor="white",
+        )
         if angle_range is not None:
-            ax_angle.axvspan(*angle_range, color="#55a868", alpha=0.18, label="wind-correction training range")
-            outside = np.mean((angle[sel] < angle_range[0]) | (angle[sel] > angle_range[1])) * 100 if sel.any() else 0
+            ax_angle.axvspan(
+                *angle_range,
+                color="#55a868",
+                alpha=0.18,
+                label="wind-correction training range",
+            )
+            outside = (
+                np.mean((angle[sel] < angle_range[0]) | (angle[sel] > angle_range[1]))
+                * 100
+                if sel.any()
+                else 0
+            )
             ax_angle.legend(fontsize=8, loc="upper left")
-            ax_angle.set_title(f"Wind − wave direction, wind-sea hours ({outside:.0f}% outside)", fontsize=11)
+            ax_angle.set_title(
+                f"Wind − wave direction, wind-sea hours ({outside:.0f}% outside)",
+                fontsize=11,
+            )
         else:
             ax_angle.set_title("Wind − wave direction, wind-sea hours", fontsize=11)
         ax_angle.set_xlabel("angle (deg; + = wind clockwise of waves)")
@@ -1952,7 +2183,14 @@ def plot_dynamic_forcing(
         ax_angle.set_xlim(-180, 180)
     else:
         for ax in (ax_mean, ax_storm, ax_angle):
-            ax.text(0.5, 0.5, "no wind forcing", ha="center", va="center", transform=ax.transAxes)
+            ax.text(
+                0.5,
+                0.5,
+                "no wind forcing",
+                ha="center",
+                va="center",
+                transform=ax.transAxes,
+            )
             ax.set_axis_off()
         ax_rose.set_axis_off()
 
@@ -1965,8 +2203,13 @@ def plot_dynamic_forcing(
         if missing.any():
             edges = np.flatnonzero(np.diff(np.r_[0, missing.astype(int), 0]))
             for k, (a, b) in enumerate(zip(edges[::2], edges[1::2])):
-                ax_wl.axvspan(times[a], times[b - 1], color="#d62728", alpha=0.12,
-                              label="no data (wl = 0)" if k == 0 else None)
+                ax_wl.axvspan(
+                    times[a],
+                    times[b - 1],
+                    color="#d62728",
+                    alpha=0.12,
+                    label="no data (wl = 0)" if k == 0 else None,
+                )
         ax_wl.set_title(f"Water level ({water_level_name or 'per goal'})", fontsize=11)
         ax_wl.set_ylabel("m")
         ax_wl.legend(fontsize=8, loc="upper right")
@@ -1975,13 +2218,22 @@ def plot_dynamic_forcing(
         ax_wl.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
         ax_wl.tick_params(axis="x", labelsize=8)
     else:
-        ax_wl.text(0.5, 0.5, "no water-level forcing", ha="center", va="center", transform=ax_wl.transAxes)
+        ax_wl.text(
+            0.5,
+            0.5,
+            "no water-level forcing",
+            ha="center",
+            va="center",
+            transform=ax_wl.transAxes,
+        )
         ax_wl.set_axis_off()
 
     return fig
 
 
-def plot_wind_k_comparison(df: pd.DataFrame, title: str = "How K is estimated") -> Figure:
+def plot_wind_k_comparison(
+    df: pd.DataFrame, title: str = "How K is estimated"
+) -> Figure:
     """
     The wind correction's ``K``: fitted model and growth formula vs the model runs.
 
@@ -2014,14 +2266,28 @@ def plot_wind_k_comparison(df: pd.DataFrame, title: str = "How K is estimated") 
         est = df[col].to_numpy()
         ok = np.isfinite(ref) & np.isfinite(est)
         err = est[ok] - ref[ok]
-        ax_sc.scatter(ref[ok], est[ok], s=4, alpha=0.25, color=color, rasterized=True,
-                      label=f"{label}: RMSE {np.sqrt(np.mean(err**2)):.3f}, bias {np.mean(err):+.3f}")
+        ax_sc.scatter(
+            ref[ok],
+            est[ok],
+            s=4,
+            alpha=0.25,
+            color=color,
+            rasterized=True,
+            label=f"{label}: RMSE {np.sqrt(np.mean(err**2)):.3f}, bias {np.mean(err):+.3f}",
+        )
     ax_sc.plot([1, top], [1, top], "k--", lw=1)
-    ax_sc.set(xlim=(0.9, top), ylim=(0.9, top), xlabel="K from the runs (with / without wind)",
-              ylabel="K estimated", title=f"Held-out cases · {len(df):,} site-cases")
+    ax_sc.set(
+        xlim=(0.9, top),
+        ylim=(0.9, top),
+        xlabel="K from the runs (with / without wind)",
+        ylabel="K estimated",
+        title=f"Held-out cases · {len(df):,} site-cases",
+    )
     ax_sc.legend(fontsize=9, markerscale=4, loc="upper left")
 
-    bins = np.geomspace(max(float(df["hs_ws_u2"].min()), 1e-3), float(df["hs_ws_u2"].max()), 16)
+    bins = np.geomspace(
+        max(float(df["hs_ws_u2"].min()), 1e-3), float(df["hs_ws_u2"].max()), 16
+    )
     mid = np.sqrt(bins[:-1] * bins[1:])
     grouped = df.groupby(pd.cut(df["hs_ws_u2"], bins), observed=False)
     enough = (grouped.size() >= 30).to_numpy()  # bins with few samples are noise
@@ -2030,9 +2296,20 @@ def plot_wind_k_comparison(df: pd.DataFrame, title: str = "How K is estimated") 
     for col, (label, color) in estimates.items():
         ax_bin.plot(mid[enough], medians[col], "-o", ms=3, color=color, label=label)
     ax_bin.axvline(0.24, color="0.5", ls=":", lw=1)
-    ax_bin.text(0.24, ax_bin.get_ylim()[1], " fully developed", va="top", fontsize=8, color="0.4")
-    ax_bin.set(xscale="log", xlabel="g Hs_ws / U²  (how developed the wind sea already is)",
-               ylabel="median K", title="K vs development of the wind sea")
+    ax_bin.text(
+        0.24,
+        ax_bin.get_ylim()[1],
+        " fully developed",
+        va="top",
+        fontsize=8,
+        color="0.4",
+    )
+    ax_bin.set(
+        xscale="log",
+        xlabel="g Hs_ws / U²  (how developed the wind sea already is)",
+        ylabel="median K",
+        title="K vs development of the wind sea",
+    )
     ax_bin.legend(fontsize=9)
     return fig
 
@@ -2220,14 +2497,30 @@ def plot_satellite_pairs(
     theta = np.linspace(0, 2 * np.pi, 120)
     for gid, node in nodes.iterrows():
         sub = pairs[pairs["goal"] == str(gid)]
-        ax.scatter(sub["sat_lon"], sub["sat_lat"], s=2, color=colors[gid], alpha=0.25, zorder=3)
+        ax.scatter(
+            sub["sat_lon"], sub["sat_lat"], s=2, color=colors[gid], alpha=0.25, zorder=3
+        )
         dlat = np.rad2deg(radius_km / 6371.0)
         dlon = dlat / np.cos(np.deg2rad(node["lat"]))
-        ax.plot(node["lon"] + dlon * np.sin(theta), node["lat"] + dlat * np.cos(theta),
-                color=colors[gid], lw=1.0, zorder=4)
-        ax.plot(node["lon"], node["lat"], "*", color="black", ms=11, mec="white", zorder=5)
-        ax.annotate(f"G{gid}", (node["lon"], node["lat"]), xytext=(4, 4),
-                    textcoords="offset points", fontsize=9, fontweight="bold", zorder=6)
+        ax.plot(
+            node["lon"] + dlon * np.sin(theta),
+            node["lat"] + dlat * np.cos(theta),
+            color=colors[gid],
+            lw=1.0,
+            zorder=4,
+        )
+        ax.plot(
+            node["lon"], node["lat"], "*", color="black", ms=11, mec="white", zorder=5
+        )
+        ax.annotate(
+            f"G{gid}",
+            (node["lon"], node["lat"]),
+            xytext=(4, 4),
+            textcoords="offset points",
+            fontsize=9,
+            fontweight="bold",
+            zorder=6,
+        )
     lons = np.r_[pairs["sat_lon"], nodes["lon"]]
     lats = np.r_[pairs["sat_lat"], nodes["lat"]]
     ax.set_xlim(np.nanmin(lons) - 0.2, np.nanmax(lons) + 0.2)
@@ -2235,12 +2528,17 @@ def plot_satellite_pairs(
 
     ax_bar = fig.add_subplot(gs[0, 1])
     counts = pairs.groupby("goal").size().reindex([str(g) for g in goal_ids]).fillna(0)
-    ax_bar.barh([f"G{g}" for g in goal_ids], counts.to_numpy(),
-                color=[colors[g] for g in goal_ids])
+    ax_bar.barh(
+        [f"G{g}" for g in goal_ids],
+        counts.to_numpy(),
+        color=[colors[g] for g in goal_ids],
+    )
     ax_bar.invert_yaxis()
     ax_bar.set_xlabel("satellite passes (one median Hs each)")
     years = pd.to_datetime(pairs["time"])
-    ax_bar.set_title(f"{years.min():%Y}–{years.max():%Y} · radius {radius_km:g} km", fontsize=10)
+    ax_bar.set_title(
+        f"{years.min():%Y}–{years.max():%Y} · radius {radius_km:g} km", fontsize=10
+    )
     ax_bar.grid(axis="x", alpha=0.3)
     return fig
 
@@ -2273,16 +2571,22 @@ def plot_calibration_metrics(
     x = np.arange(len(goals))
     fig, axes = plt.subplots(1, 3, figsize=(15, 4.2))
     for ax, metric, ref in zip(axes, ("bias", "rmse", "slope"), (0.0, None, 1.0)):
-        for k, (stage, color) in enumerate((("raw", "0.6"), ("calibrated", "tab:blue"))):
+        for k, (stage, color) in enumerate(
+            (("raw", "0.6"), ("calibrated", "tab:blue"))
+        ):
             vals = (
-                table[table["stage"] == stage].set_index("goal")[metric]
-                .reindex(goals).to_numpy()
+                table[table["stage"] == stage]
+                .set_index("goal")[metric]
+                .reindex(goals)
+                .to_numpy()
             )
             ax.bar(x + (k - 0.5) * 0.38, vals, width=0.38, color=color, label=stage)
         if ref is not None:
             ax.axhline(ref, color="k", lw=0.8)
         ax.set_xticks(x, [f"G{g}" for g in goals])
-        ax.set_title(f"{metric} ({subset} passes)" + (" (m)" if metric != "slope" else ""))
+        ax.set_title(
+            f"{metric} ({subset} passes)" + (" (m)" if metric != "slope" else "")
+        )
         ax.grid(axis="y", alpha=0.3)
     axes[0].legend()
     n = int(table[table["stage"] == "raw"]["n"].sum())

@@ -123,41 +123,6 @@ def output_dir() -> Path:
 # ---------------------------------------------------------------------------
 
 
-def read_grid(model: str | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray | None]:
-    """
-    The model grid: node x, y, triangles (0-based), depth (m, positive down).
-
-    Parameters
-    ----------
-    model
-        Default ``simulations.model``.
-
-    Returns
-    -------
-    tuple
-        ``x, y, triangles, depth`` and SWAN's open-boundary polyline (None for
-        SnapWave).
-    """
-    model = simulation_model(model)
-    path = resolve(model_config(model)["grid_file"])
-    if model == "swan":
-        from bluemath_tk.wrappers.swan.swan_utils import read_adcirc_grid, swan_boundary_side
-
-        grid = read_adcirc_grid(str(path))
-        v = grid["vertices"]
-        return v[:, 0], v[:, 1], grid["triangles"], v[:, 2], swan_boundary_side(grid)[0]
-    with xr.open_dataset(path) as mesh:
-        faces = mesh["mesh2d_face_nodes"]
-        start = int(faces.attrs.get("start_index", 0))
-        return (
-            mesh["mesh2d_node_x"].values,
-            mesh["mesh2d_node_y"].values,
-            faces.values.astype(int) - start,
-            -mesh["mesh2d_node_z"].values,
-            None,
-        )
-
-
 def fetch_table_path(model: str | None = None) -> Path:
     """``outputs/wind/fetch_table_{model}.nc``."""
     return output_dir() / f"fetch_table_{simulation_model(model)}.nc"
@@ -203,17 +168,20 @@ def fetch_table(
 
         sites = HyWavesWrapperSetup.from_case(model=model).output_sites_df
     cfg = config()["fetch"]
-    x, y, triangles, depth, open_boundary = read_grid(model)
+    from utils.geometry import model_grid
+
+    grid = model_grid(model)
+    open_boundary = grid.open_boundary
     if open_boundary is None:
         from utils.simulation import HyWavesWrapperSetup
 
         open_boundary = np.asarray(HyWavesWrapperSetup.from_case(model=model).boundary_nodes)
     table = mesh_fetch_table(
         sites[["lon", "lat"]].to_numpy(float),
-        x,
-        y,
-        triangles,
-        depth,
+        grid.x,
+        grid.y,
+        grid.triangles,
+        grid.depth,
         directions=np.arange(0.0, 360.0, float(cfg["directions_step"])),
         step=float(cfg["step_m"]),
         max_distance=float(cfg["max_distance_m"]),
@@ -667,7 +635,6 @@ def reconstruction_inputs(
 
 __all__ = [
     "DEFAULTS",
-    "read_grid",
     "config",
     "correction_path",
     "enabled",

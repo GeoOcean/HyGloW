@@ -36,8 +36,8 @@ class TestMetamodelHelpers(unittest.TestCase):
             removed = mm.detect_removed_sites(cases)
         self.assertEqual(removed, ["bad"])
 
-    def test_detect_removed_sites_dry(self) -> None:
-        """Sites dry (or outside the grid) in too many cases are removed."""
+    def test_detect_removed_sites_zero_energy(self) -> None:
+        """hs = 0 is a valid result; only NaN hs (model failure) removes a site."""
         hs = np.array([[1.0, 0.0, np.nan], [2.0, 1.0, np.nan], [3.0, 2.0, np.nan]])
         cases = xr.Dataset(
             {
@@ -46,16 +46,15 @@ class TestMetamodelHelpers(unittest.TestCase):
                 "hs_forcing": (("case_num",), np.array([2.0, 3.0, 4.0])),
                 "tp_forcing": (("case_num",), np.array([8.0, 9.0, 10.0])),
             },
-            coords={"case_num": [0, 1, 2], "sites": ["wet", "dry_once", "outside"]},
+            coords={"case_num": [0, 1, 2], "sites": ["wet", "zero_once", "failed"]},
         )
-        masked = hw.mask_dry_sites(cases)
-        with mock.patch.dict(mm.SITE_FILTER, {"hs_nan_max": 0.5}, clear=True):
-            self.assertEqual(mm.detect_removed_sites(masked), ["outside"])
+        masked = hw.mask_zero_energy(cases)
+        self.assertTrue(np.isnan(float(masked.tp.sel(sites="zero_once")[0])))
         with mock.patch.dict(mm.SITE_FILTER, {"hs_nan_max": 0.0}, clear=True):
-            self.assertEqual(mm.detect_removed_sites(masked), ["dry_once", "outside"])
-        filled = hw.fill_dry_sites(mm.drop_sites(masked, ["outside"]))
-        self.assertEqual(float(filled.hs.sel(sites="dry_once")[0]), 0.0)
-        self.assertEqual(float(filled.tp.sel(sites="dry_once")[0]), 8.0)
+            self.assertEqual(mm.detect_removed_sites(masked), ["failed"])
+        filled = hw.fill_zero_energy(mm.drop_sites(masked, ["failed"]))
+        self.assertEqual(float(filled.hs.sel(sites="zero_once")[0]), 0.0)
+        self.assertEqual(float(filled.tp.sel(sites="zero_once")[0]), 8.0)
 
     def test_set_sites(self) -> None:
         """A set's selector picks its sites; unknown sets are rejected."""
