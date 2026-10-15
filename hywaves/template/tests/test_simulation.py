@@ -31,7 +31,8 @@ def _sites() -> pd.DataFrame:
             "source_id": ["iso_5m_0", "buoy_A"],
             "source": ["isobath", "buoy"],
             "source_label": ["5m", "A"],
-            "depth": [5.0, 12.0],
+            "nominal_depth": [5.0, 10.0],
+            "mesh_depth": [5.0, 12.0],
             "lon": [0.2, 0.6],
             "lat": [0.3, 0.4],
         }
@@ -178,7 +179,7 @@ class TestMetamodelCases(unittest.TestCase):
             with xr.open_dataset(written[2]) as ds:
                 self.assertEqual(list(ds.sites.values), ["iso_5m_0", "buoy_A"])
                 self.assertEqual(set(sws.SITE_COORDS) - set(ds.coords), set())
-                self.assertEqual(float(ds.site_depth.sel(sites="buoy_A")), 12.0)
+                self.assertEqual(float(ds.site_mesh_depth.sel(sites="buoy_A")), 12.0)
                 self.assertEqual(float(ds.tp_forcing.squeeze()), 12.0)
                 self.assertEqual(float(ds.hs_forcing.squeeze()), 2.5)
                 self.assertEqual(ds.case_num.item(), 1)
@@ -199,9 +200,13 @@ class TestMetamodelCases(unittest.TestCase):
             cases = pd.DataFrame({**_CASE, "save_map": [True, False]})
             wrapper = setup.metamodel_wrapper(cases, debug=False)
             self.assertIsInstance(wrapper, SwanMetaModelWrapper)
-            self.assertNotIn("save_map", wrapper.metamodel_parameters)
+            self.assertIn("save_map", wrapper.metamodel_parameters)
             wrapper.build_cases()
+            self.assertIn(
+                "BLOCK 'COMPGRID'", (Path(wrapper.cases_dirs[0]) / "INPUT").read_text()
+            )
             text = (Path(wrapper.cases_dirs[1]) / "INPUT").read_text()
+            self.assertNotIn("BLOCK", text)
             self.assertIn("SET LEVEL=0.5", text)
             self.assertNotIn("SPECOUT 'sites'", text.replace("$ SPECOUT", ""))
             rows = [r for r in text.splitlines() if r.strip() and r.strip()[0].isdigit()]
@@ -221,6 +226,20 @@ class TestMetamodelCases(unittest.TestCase):
                 self.assertEqual(float(ds.hs_forcing.squeeze()), 2.5)
                 self.assertEqual(set(sws.SITE_COORDS) - set(ds.coords), set())
 
+
+    def test_model_boundary(self) -> None:
+        """SnapWave maps show the enclosure, SWAN the grid's open boundary."""
+        boundary, label = _setup("snapwave").model_boundary
+        self.assertEqual(boundary.geom_type, "Polygon")
+        self.assertIn("enclosure", label)
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(
+            sws.SIMULATIONS, {**_models_config(tmp), "model": "swan"}
+        ):
+            _write_square_grid(Path(tmp) / "mesh.grd")
+            boundary, label = _setup("swan").model_boundary
+        self.assertEqual(boundary.geom_type, "LineString")
+        self.assertIn("SWAN", label)
+        np.testing.assert_allclose(np.asarray(boundary.coords)[:, 1], 1.0)
 
 if __name__ == "__main__":
     unittest.main()

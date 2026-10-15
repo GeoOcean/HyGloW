@@ -15,6 +15,7 @@ from .loaders import (
     available_gui_figures,
     book_available,
     case_mda_candidate,
+    case_model_label,
     case_options,
     catalog_by_continent,
     load_all_metrics,
@@ -154,7 +155,7 @@ def _render_metamodel_validation(case: dict):
             "label": _variable_order(subset["label"].unique()),
             "group": _sort_isobath_groups(subset["group"].unique()),
         },
-        title="Linear summation vs. dynamic SnapWave — domain-wide RMSE",
+        title=f"Linear summation vs. dynamic {case_model_label(case)} — domain-wide RMSE",
         template=CHART_TEMPLATE,
         color_discrete_map=CONTOUR_COLORS,
         labels={"rmse": "RMSE", "group": "Contour"},
@@ -212,7 +213,7 @@ def _render_buoy_validation(case: dict):
     if buoys.empty:
         return dbc.Alert(
             "No buoy validation published for this case yet. Run "
-            "10a_Validate_Offshore_Buoys.ipynb / 10b_Validate_Onshore_Buoys.ipynb "
+            "10_Validate_Buoys.ipynb "
             "(with their save-summary cells), then `python -m hywaves publish`.",
             color="warning",
             className="drawer-alert",
@@ -509,7 +510,7 @@ def register_callbacks(app):
             if key not in available_buoy_figures(case):
                 body = dbc.Alert(
                     "No validation summary generated yet for this buoy. Run "
-                    "10a_Validate_Offshore_Buoys.ipynb / 10b_Validate_Onshore_Buoys.ipynb "
+                    "10_Validate_Buoys.ipynb "
                     "(with their save-summary-PNG cell), then `python -m hywaves publish`.",
                     color="secondary",
                     className="drawer-alert",

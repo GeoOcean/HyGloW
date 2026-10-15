@@ -1,143 +1,66 @@
-# hywaves — engine, contract, and CLI
+# HyWaves: the method
 
-Source of truth for the HyGloW project tooling. `hywaves` itself never needs
-to be pip-installed: everything runs as `python -m hywaves` from the
-repository root, and case folders receive a **vendored copy** of `utils/` so
-they stay fully self-contained (laptop, HPC, or someone else's repo).
+HyWaves turns an offshore wave hindcast into nearshore waves without running
+a spectral wave model for every hour. The code is in
+[bluemath_tk](https://github.com/GeoOcean/BlueMath_tk) (`waves/hywaves/`);
+this folder holds the case template, the case checks and the command line.
 
-Current version: **0.11.0** (`hywaves/__init__.py`). What changed in each
-version, and the config keys it introduced, is in the
-[contract changelog](contract/CONTRACT.md#changelog).
+## Physics in one page
+
+**Goals.** The offshore sea enters the nearshore domain through a few points
+on its open boundary, the *goals*, each with the sector of directions from
+which waves can reach the coast. Each goal takes its waves from the nearest
+node of an offshore hindcast (WHACS, ERA5, ...), as bulk sea state or as
+spectral partitions (wind sea and swells).
+
+**Training cases.** For every goal, a few hundred stationary runs of a
+nearshore model (SnapWave or SWAN) force waves at that goal only, sampling its
+sea states with a Latin hypercube: significant height Hs, peak period Tp,
+direction, directional spreading and water level. Implausibly steep seas
+(Hs / L0 above a limit) are dropped. Each run gives Hs, Tp, direction and
+spreading at the output sites (isobaths, buoys, mesh areas), which are chosen
+inside the model mesh and always wet.
+
+**Metamodel.** Per goal, a maximum-dissimilarity selection (MDA) picks the
+training cases; the fields at the sites are compressed with one PCA per
+variable (direction as its two components), and a Gaussian process maps the
+offshore sea state to the principal components. The rest of the cases check
+it (holdout).
+
+**Reconstruction by linear summation.** For each hour, every goal (and every
+offshore partition) is predicted at the sites, turned into a directional
+spectrum (JONSWAP in frequency, cos²ˢ in direction), and the spectra of all
+goals are **added as energy**; the nearshore bulk parameters (or the full
+spectrum) come from the sum. This works because wave energy propagates
+linearly away from breaking and wind growth, and because both models spread
+each goal's energy along the open boundary with weights that add up to one,
+so the sum of single-goal runs equals a run with every goal forced.
+
+**What the sum leaves out, and the options for it.**
+
+- *Local wind.* The training runs have no wind (with wind, every goal's run
+  would grow its own copy of the local sea). An optional **wind correction**
+  adds the wind sea once, after the goals are predicted: its growth factor K
+  is learned from full-domain runs with and without wind, as a function of
+  how developed the sea is, the fetch and the depth (all scaled with the wind
+  speed).
+- *Water level.* A metamodel input: constant, or a tide and surge series per
+  goal.
+- *Offshore bias.* The hindcast can be checked and calibrated against
+  satellite altimetry per goal and direction sector before reconstructing.
+- *Non-linear processes* (strong breaking, wave-current interaction, time lag
+  across a large domain) are what the **dynamic runs** check: the model run
+  hour by hour with every goal, wind and water level, against which the
+  reconstruction is validated, and buoys are the final check.
 
 ## Commands
 
 ```bash
-# Scaffold a new self-contained case (engine + notebooks + templates + config skeleton)
-python -m hywaves start --name MyCase
-
-# Check a case against the case contract
-python -m hywaves validate MyCase/             # development mode: gaps are warnings
-python -m hywaves validate MyCase/ --publish   # strict: portal-ready check
-
-# Export the portal bundle the GUI reads (validates first) → MyCase/portal/
-python -m hywaves publish MyCase/              # commit MyCase/portal/ (its book/ is git-ignored)
-python -m hywaves publish MyCase/ --no-book --max-image-px 1600
-python -m hywaves publish MyCase/ --url-base /hyglow/   # report links for a GUI served under /hyglow/
-
-# Keep the current portal as a version before re-running/re-publishing → MyCase/portal_<tag>/
-python -m hywaves snapshot MyCase/ hs1 --note "unit Hs metamodel"   # commit it; its book/ is git-ignored
-
-# Re-sync a case's vendored engine from the template
-python -m hywaves update MyCase/ --dry-run     # report only
-python -m hywaves update MyCase/               # sync untouched files, keep local edits
-python -m hywaves update MyCase/ --force       # overwrite local edits too
-
-# Run the hywaves package's own test suite (scaffold/update/validate/config)
-python -m unittest discover -s hywaves/tests -t . -v
+python -m hywaves start --name MyCase        # a new case from template/
+python -m hywaves validate MyCase/ [--publish]
+python -m hywaves publish MyCase/            # MyCase/portal/, read by the GUI
+python -m hywaves snapshot MyCase/ <tag>     # keep this portal as a version
+python -m hywaves update MyCase/             # bring the case's utils/ to the template
 ```
 
-`start` is deliberately minimal — it creates the structure and the user takes
-over with the notebooks (GEBCO clipping, mesh, goals, LHS, fit, validation).
-No data is downloaded.
-
-## Layout
-
-| Path                   | Role                                                        |
-| ---------------------- | ----------------------------------------------------------- |
-| `contract/CONTRACT.md` | The case contract (Level 1 portal + Level 2 engine)         |
-| `contract/validate.py` | Stdlib-only validator — copyable standalone into any repo   |
-| `publish.py`           | `publish` implementation — builds `{Case}/portal/` (CONTRACT.md §6) |
-| `snapshot.py`          | `snapshot` implementation — freezes `portal/` as `portal_<tag>/`    |
-| `config.py`            | `CaseConfig` class — load any case folder programmatically  |
-| `scaffold.py`          | `start` implementation (vendoring + manifest)               |
-| `update.py`            | `update` implementation (re-sync vendored `utils/` and `tests/`) |
-| `template/`            | The canonical case reference (see below)                    |
-| `docs/`                | Method notes, e.g. [`wind_correction.md`](docs/wind_correction.md) |
-| `tests/`               | Tests for `hywaves` itself — scaffold/update/validate/config |
-
-## The model
-
-- **Cases are folders, not packages.** Each case carries its own engine
-  snapshot (`utils/`), stamped in `.hywaves/manifest.json`. `bluemesh2d` is a
-  regular environment dependency (see a case's README), not part of the
-  snapshot.
-- **`template/` is the canonical reference.** It holds the versioned engine
-  code (`utils/`), case-agnostic pipeline notebooks (`notebooks/`), SnapWave/SWAN
-  templates, tests, and the config skeleton. Engine improvements and
-  notebook fixes land there. Existing cases
-  are snapshots that `hywaves update` re-syncs: untouched engine files are
-  updated, locally modified ones are kept (overridden by `--force`), and
-  notebooks and model templates are never touched.
-- **The contract is the interface.** `publish` turns a case's contract files
-  (case JSON, goals, observations, metrics CSVs, figures) plus pre-computed
-  map layers into a small `{Case}/portal/` bundle, and the GUI reads only
-  that. What a case does internally is its author's business. `validate`
-  warns when a bundle has fallen behind its sources.
-- **Community cases live in their authors' repos.** This repo hosts the
-  engine, the contract, the GUI, and three worked cases: Netherlands (on the
-  current engine) and Samoa and NewSouthWales (on older ones, until re-run).
-- **Generic code lives in bluemath_tk.** The HyWaves method, the wind and
-  fetch tools and the SnapWave/SWAN wrappers are in
-  [bluemath_tk](https://github.com/GeoOcean/BlueMath_tk); install it from
-  its `develop` branch (`pip install "git+https://github.com/GeoOcean/BlueMath_tk.git@develop"`), as no release includes this code yet.
-  `template/utils/` is the JSON/case layer on top of it.
-
-## What a case configures (0.11.0)
-
-All in the case JSON (`{Case}/{Case}.json`); the template's `case.json` has
-every key, and the contract documents them.
-
-| Block | What it sets |
-| --- | --- |
-| `paths` | AoI, bathymetry raster, plotting mesh |
-| `offshore_waves` | Offshore hindcast zarr(s) at the goals, `(time, goal)` |
-| `forcing` (optional) | `wind` (10 m `u10`/`v10`, e.g. ERA5) and `water_level` (per goal, e.g. CODEC) for the dynamic runs and `reconstruct(wl="forcing")` |
-| `simulations.model` | `"snapwave"` or `"swan"` |
-| `simulations.<model>` | Its grid (`grid_file`), template folders, cases folders (`metamodel_cases`, `dynamic_cases`, `wind_cases`) and SLURM options |
-| `simulations` (rest) | Goals file, LHS size and bounds, steepness filter, output sites (isobaths, polygons, buoys) |
-| `metamodel` | Inputs, sets (groups of output sites), MDA sizes, predicted variables, PCA/GP options, reconstruction variables |
-| `metamodel.wind_correction` (optional) | Wind-correction training design and use (`enabled`, `wind`: `"inferred"` or `"forcing"`); see [`docs/wind_correction.md`](docs/wind_correction.md) |
-
-Switching the model: the cases folders are separate per model, and fitted
-artefacts in `outputs/` record the model that produced them, so a second
-model needs a fresh `outputs/`. Keep the first model's results with
-`snapshot` before re-running.
-
-## Versioning
-
-- **Current: 0.11.0.** Both models (SnapWave and SWAN) are ready to use; the
-  results published so far were made with SnapWave.
-- **While in 0.x:** the minor version goes up (0.12, 0.13, …) whenever the
-  case JSON or the contract changes, and the patch version (0.11.1, …) for
-  fixes only. Every change is in the
-  [contract changelog](contract/CONTRACT.md#changelog), and each case records
-  the engine it was scaffolded or updated from in `.hywaves/manifest.json`
-  (`python -m hywaves update` moves it forward).
-- **Releases are git tags** on `main` (`v0.11.0`, …), after the PR is merged
-  and the reference case is published.
-- **bluemath_tk** is used from its `develop` branch until a release includes
-  the HyWaves code; then the README will name the minimum version.
-- **1.0.0** comes when the contract is stable enough that 1.x only adds
-  things (breaking changes after that mean 2.0). Before it:
-  1. a bluemath_tk release with this code;
-  2. a fresh case scaffolded with `hywaves start` running cleanly through the
-     template notebooks;
-  3. the SWAN pass run and validated in a case (today SWAN is validated in
-     the Netherlands pilot only);
-  4. Samoa and NewSouthWales migrated, or kept on purpose as 0.9.0 examples.
-
-  A `1.0.0-rc1` tag can mark the point where 1 and 2 are done.
-
-## For tooling authors
-
-```python
-from hywaves.config import CaseConfig
-from hywaves.contract import validate_case
-
-case = CaseConfig("Samoa")
-goals = case.load_goals()
-findings = validate_case("Samoa", publish=True)
-
-from hywaves.publish import publish_case
-result = publish_case("Samoa")        # → Samoa/portal/; result.skipped lists any skipped layers
-```
+`python -m hywaves <command> --help` explains each one.

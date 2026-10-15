@@ -1,48 +1,134 @@
-"""Case output sites: the SnapWave output-site table and site groups.
+"""Case output sites: the model output-site table and site groups.
 
 Sites are where nearshore waves are computed and validated. They come from
 ``simulations.output_sites_config`` in the case JSON (:func:`compute_output_sites`):
 
-1. isobath points (depth contours of ``paths.topobathy_file``),
-2. mesh nodes inside named polygons (e.g. Apia),
+1. isobath points: smoothed depth contours of ``paths.topobathy_file``, with
+   the raster blanked outside the model mesh (no tiff: :func:`topobathy_from_mesh`),
+2. model-mesh nodes inside named polygons (e.g. Apia), one site per node,
 3. buoys from the onshore-waves GeoJSON.
 
+Every site then gets its depth from the model mesh (``mesh_depth``, m
+positive down: the depth the models see and the one used from here on; the
+contour level or the buoy ``measured_depth`` stays as ``nominal_depth``) and a
+``status``: ``ok`` only if it is inside the mesh and wet at the lowest
+metamodel water level (``simulations.bounds.wl[0]``, ``simulations.min_depth``).
+The table, dropped sites included, is saved per model as
+``outputs/output_sites_{model}.csv`` (:func:`output_sites`, built in notebook
+03 with :func:`sites_summary` / :func:`buoy_depth_check`) and every step reads
+its ``ok`` sites from there.
+
 The point extraction itself is :mod:`bluemath_tk.waves.hywaves.output_points`.
-Once SnapWave has run, every site carries metadata coordinates (``SITE_META``:
+Once the model has run, every site carries metadata coordinates (``SITE_META``:
 source, label, depth, lon/lat) used to group sites for metrics and plots
 (:func:`metric_groups`, :func:`find_group`, :func:`resolve_sites`).
 """
 
 from __future__ import annotations
 
+import logging
+from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 import rioxarray
 import shapely
 import xarray as xr
+from bluemath_tk.topo_bathy.mesh import (
+    depth_at_points,
+    mask_raster_to_mesh,
+    mesh_to_raster,
+    read_mesh,
+)
 from bluemath_tk.waves.hywaves.output_points import (
+    SITE_CAN_DRY,
+    SITE_OK,
+    SITE_OUTSIDE,
     get_isobath_points,
-    get_mesh_nodes_in_polygon,
+    site_status,
+    spatial_subsample,
 )
 from shapely.geometry import MultiPolygon, Polygon
 
-from utils.config import OUTPUT_SITES_CONFIG, PATHS, resolve
+from utils.config import (
+    OUTPUT_SITES_CONFIG,
+    PATHS,
+    SIMULATIONS,
+    model_config,
+    resolve,
+    simulation_model,
+)
 from utils import onshore_sites as obs
+
+logger = logging.getLogger("hywaves.geometry")
+
+#: Default minimum depth the models compute (SnapWave ``hmin``, SWAN ``DEPMIN``).
+DEFAULT_MIN_DEPTH = 0.1
 
 # ---------------------------------------------------------------------------
 # Output-site table (SnapWave observation points)
 # ---------------------------------------------------------------------------
 
+def min_depth() -> float:
+    """``simulations.min_depth`` (m): the shallowest depth the models compute."""
+    return float(SIMULATIONS.get("min_depth", DEFAULT_MIN_DEPTH))
+
+
+def lowest_water_level() -> float:
+    """Lowest water level of the metamodel cases (``simulations.bounds.wl[0]``)."""
+    return float(SIMULATIONS["bounds"]["wl"][0])
+
+
+def model_grid(model: str | None = None):
+    """The model mesh (:class:`bluemath_tk.topo_bathy.mesh.Mesh`) of ``simulations.<model>.grid_file``."""
+    return read_mesh(resolve(model_config(model)["grid_file"]))
+
+
+def topobathy_from_mesh(
+    model: str | None = None,
+    resolution: float | None = None,
+    path: str | Path | None = None,
+) -> xr.DataArray:
+    """
+    Write ``paths.topobathy_file`` from the model mesh, for cases without a tiff.
+
+    Parameters
+    ----------
+    model
+        Model whose grid is rasterised; default ``simulations.model``.
+    resolution
+        Cell size in the mesh coordinates; default the median mesh edge.
+    path
+        Output GeoTIFF; default ``paths.topobathy_file``.
+
+    Returns
+    -------
+    xarray.DataArray
+        Elevation (m, positive up), NaN outside the mesh.
+    """
+    raster = mesh_to_raster(model_grid(model), resolution=resolution)
+    out = resolve(path or PATHS["topobathy_file"])
+    out.parent.mkdir(parents=True, exist_ok=True)
+    raster.rio.to_raster(out)
+    logger.info("Topobathy %s from the %s mesh: %s cells", out, simulation_model(model), raster.shape)
+    return raster
+
+
 def compute_output_sites(
     *,
+    model: str | None = None,
     config: Mapping[str, Any] | None = None,
     topobathy: xr.DataArray | None = None,
     aoi_polygon: Polygon | MultiPolygon | None = None,
 ) -> pd.DataFrame:
     """
-    Build the SnapWave output-sites table from config and static inputs.
+    Build the output-sites table on the model mesh from config and static inputs.
+
+    Isobaths are traced on ``paths.topobathy_file`` blanked outside the mesh;
+    every site then gets its ``mesh_depth`` and ``status``
+    (:func:`check_model_sites`). Dropped sites stay in the table.
 
     Parameters
     ----------
@@ -53,17 +139,28 @@ def compute_output_sites(
         before contouring), ``min_length_m`` (drop shorter contour pieces) and
         ``spacing_m`` (points every that many metres along the smoothed
         contour); see :func:`bluemath_tk.waves.hywaves.output_points.get_isobath_points`.
+        Each ``polygons`` entry is ``{"name", "file"}`` (a polygon file): every
+        node of the model mesh inside it becomes a site ``{name}_{node}``.
+        Optional ``fraction`` (in ``(0, 1]``) keeps about that share of the
+        always-wet nodes, one random node per equal-area cell so the subset
+        covers the whole polygon (``seed``, default 0; see
+        :func:`bluemath_tk.waves.hywaves.output_points.spatial_subsample`).
     topobathy
         Bathymetry raster; opened from ``paths.topobathy_file`` when omitted.
     aoi_polygon
         AoI geometry for clipping; read from ``paths.aoi_file`` when omitted
         and ``clip_to_aoi`` is enabled.
+    model
+        Model whose mesh the sites must lie in; default ``simulations.model``.
 
     Returns
     -------
     pandas.DataFrame
         Columns ``lon``, ``lat``, ``source``, ``source_id``, ``source_label``,
-        ``depth``, ``name``. Row order: isobaths → mesh polygons → buoys.
+        ``nominal_depth`` (contour level, polygon node depth or buoy
+        ``measured_depth``, m positive down), ``mesh_depth`` (m positive down,
+        NaN outside the mesh), ``name``, ``status``. Row order: isobaths →
+        mesh polygons → buoys.
 
     Raises
     ------
@@ -72,6 +169,7 @@ def compute_output_sites(
     """
     cfg = {**OUTPUT_SITES_CONFIG, **dict(config or {})}
     rows: list[dict[str, Any]] = []
+    grid = model_grid(model)
 
     clip_to_aoi = bool(cfg.get("clip_to_aoi", True))
     if clip_to_aoi and aoi_polygon is None:
@@ -83,6 +181,7 @@ def compute_output_sites(
             topobathy = rioxarray.open_rasterio(
                 resolve(PATHS["topobathy_file"])
             ).squeeze("band", drop=True)
+        topobathy = mask_raster_to_mesh(topobathy, grid)
         for spec in iso_specs:
             name = spec.get("name") or f"{abs(spec['level']):g}m"
             pts = get_isobath_points(
@@ -101,45 +200,47 @@ def compute_output_sites(
                         "source": "isobath",
                         "source_id": f"{name}_{i}",
                         "source_label": name,
-                        "depth": float(spec["level"]),
+                        "nominal_depth": -float(spec["level"]),
                         "name": None,
                     }
                 )
 
-    poly_specs = cfg.get("polygons") or []
-    if poly_specs:
-        mesh = xr.open_dataset(resolve(PATHS["mesh_file"]))
-        try:
-            for spec in poly_specs:
-                name = spec.get("name")
-                if not name:
-                    raise ValueError("Each entry in `polygons` must have a `name`.")
-                poly_path = spec.get("file")
-                if not poly_path:
-                    raise ValueError(
-                        f"Polygon {name!r} is missing `file` in output_sites_config."
-                    )
-                polygon = gpd.read_file(resolve(poly_path)).geometry.iloc[0]
-                nodes = get_mesh_nodes_in_polygon(
-                    polygon,
-                    mesh,
-                    wet_only=bool(spec.get("wet_only", False)),
-                )
-                for node in nodes:
-                    i = node["node_index"]
-                    rows.append(
-                        {
-                            "lon": node["lon"],
-                            "lat": node["lat"],
-                            "source": "mesh",
-                            "source_id": f"{name}_{i}",
-                            "source_label": name,
-                            "depth": node["depth"],
-                            "name": None,
-                        }
-                    )
-        finally:
-            mesh.close()
+    for spec in cfg.get("polygons") or []:
+        name = spec.get("name")
+        if not name:
+            raise ValueError("Each entry in `polygons` must have a `name`.")
+        if not spec.get("file"):
+            raise ValueError(f"Polygon {name!r} is missing `file` in output_sites_config.")
+        polygon = gpd.read_file(resolve(spec["file"]))
+        if grid.geographic and polygon.crs is not None:
+            polygon = polygon.to_crs("EPSG:4326")
+        nodes = np.flatnonzero(shapely.contains_xy(polygon.geometry.union_all(), grid.x, grid.y))
+        if spec.get("fraction") is not None:
+            wet = site_status(grid.depth[nodes], lowest_water_level(), min_depth()) == SITE_OK
+            pick = spatial_subsample(
+                grid.x[nodes[wet]],
+                grid.y[nodes[wet]],
+                float(spec["fraction"]),
+                seed=int(spec.get("seed", 0)),
+                geographic=grid.geographic,
+            )
+            logger.info(
+                "Polygon %s: %d nodes, %d always wet -> %d sites (fraction %g)",
+                name, len(nodes), int(wet.sum()), len(pick), float(spec["fraction"]),
+            )
+            nodes = nodes[wet][pick]
+        for i in nodes:
+            rows.append(
+                {
+                    "lon": float(grid.x[i]),
+                    "lat": float(grid.y[i]),
+                    "source": "mesh",
+                    "source_id": f"{name}_{i}",
+                    "source_label": name,
+                    "nominal_depth": float(grid.depth[i]),
+                    "name": None,
+                }
+            )
 
     if cfg.get("include_buoys", True):
         for iid, site in obs.get_coordinates(role=cfg.get("buoy_role")).items():
@@ -150,7 +251,7 @@ def compute_output_sites(
                     "source": "buoy",
                     "source_id": f"buoy_{iid}",
                     "source_label": site.get("type") or "buoy",
-                    "depth": site.get("depth"),
+                    "nominal_depth": site.get("measured_depth"),
                     "name": site.get("name") or site.get("institution"),
                 }
             )
@@ -168,20 +269,238 @@ def compute_output_sites(
         if df.empty:
             raise ValueError("All output-site points were clipped by the AoI.")
 
-    return df
+    return check_model_sites(df, grid)
+
+
+def check_model_sites(df: pd.DataFrame, mesh=None, model: str | None = None) -> pd.DataFrame:
+    """
+    Mesh depth and status of each site: inside the mesh and always wet, or not.
+
+    Parameters
+    ----------
+    df
+        Sites with ``lon``, ``lat``, ``source_label``.
+    mesh
+        Model mesh; default :func:`model_grid` of *model*.
+    model
+        Model name; default ``simulations.model``.
+
+    Returns
+    -------
+    pandas.DataFrame
+        *df* with ``mesh_depth`` (m positive down, NaN outside the mesh) and
+        ``status`` (``ok``, ``outside_mesh`` or ``can_dry`` at
+        ``simulations.bounds.wl[0]`` with ``simulations.min_depth``).
+
+    Raises
+    ------
+    ValueError
+        If no site is ``ok``.
+    """
+    mesh = mesh if mesh is not None else model_grid(model)
+    out = df.copy()
+    out["mesh_depth"] = depth_at_points(mesh, out["lon"].to_numpy(float), out["lat"].to_numpy(float))
+    out["status"] = site_status(
+        out["mesh_depth"].to_numpy(), wl_min=lowest_water_level(), min_depth=min_depth()
+    )
+    dropped = out.loc[out["status"] != SITE_OK]
+    if not dropped.empty:
+        counts = dropped.groupby(["source_label", "status"]).size()
+        logger.info(
+            "Dropped %d/%d sites (outside the mesh, or dry at wl %.2f m with min depth %.2f m): %s",
+            len(dropped),
+            len(out),
+            lowest_water_level(),
+            min_depth(),
+            "; ".join(f"{label} {why} {n}" for (label, why), n in counts.items()),
+        )
+    if not (out["status"] == SITE_OK).any():
+        raise ValueError("No output site is inside the mesh and always wet.")
+    return out
+
+
+def site_group(df: pd.DataFrame) -> pd.Series:
+    """Summary group of each site: the isobath or polygon label, or ``buoy``."""
+    return df["source_label"].where(df["source"] != "buoy", "buoy").astype(str)
+
+
+def sites_summary(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Sites per group: how many are kept or dropped, and the mesh depth of the kept ones.
+
+    Parameters
+    ----------
+    df
+        Output-sites table with every site (``output_sites(all_sites=True)``).
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per group (isobaths, polygons, ``buoy``) and a ``total`` row:
+        ``sites``, ``ok``, ``outside_mesh``, ``can_dry``, and ``mesh_depth``
+        ``min`` / ``p10`` / ``median`` / ``p90`` / ``max`` of the ``ok`` sites.
+    """
+    group = site_group(df)
+    counts = pd.crosstab(group, df["status"]).reindex(
+        columns=[SITE_OK, SITE_OUTSIDE, SITE_CAN_DRY], fill_value=0
+    )
+    counts.insert(0, "sites", counts.sum(axis=1))
+    ok = df["status"] == SITE_OK
+    depth = df.loc[ok, "mesh_depth"].groupby(group[ok]).quantile([0, 0.1, 0.5, 0.9, 1]).unstack()
+    depth.columns = ["min", "p10", "median", "p90", "max"]
+    out = counts.join(depth.round(1))
+    out.loc["total", counts.columns] = counts.sum()
+    order = list(dict.fromkeys(group))
+    return out.reindex(order + ["total"]).rename_axis("group")
+
+
+def buoy_depth_check(
+    df: pd.DataFrame, tolerance_m: float = 3.0, tolerance_ratio: float = 0.3
+) -> pd.DataFrame:
+    """
+    Buoys: measured depth (metadata) against the mesh depth the models see.
+
+    A large difference usually means wrong coordinates, a buoy on a bank or
+    channel the mesh smooths out, or a different vertical datum.
+
+    Parameters
+    ----------
+    df
+        Output-sites table with every site (``output_sites(all_sites=True)``).
+    tolerance_m, tolerance_ratio
+        ``flag`` is set where ``|mesh - measured|`` exceeds both *tolerance_m*
+        and *tolerance_ratio* times the measured depth.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Per buoy: ``source_id``, ``name``, ``measured_depth``, ``mesh_depth``,
+        ``difference`` (mesh - measured), ``status``, ``flag``.
+    """
+    buoys = df.loc[df["source"] == "buoy"]
+    out = pd.DataFrame(
+        {
+            "source_id": buoys["source_id"],
+            "name": buoys["name"],
+            "measured_depth": buoys["nominal_depth"].astype(float),
+            "mesh_depth": buoys["mesh_depth"].round(1),
+            "status": buoys["status"],
+        }
+    )
+    out["difference"] = (out["mesh_depth"] - out["measured_depth"]).round(1)
+    out["flag"] = (out["difference"].abs() > tolerance_m) & (
+        out["difference"].abs() > tolerance_ratio * out["measured_depth"]
+    )
+    return out[
+        ["source_id", "name", "measured_depth", "mesh_depth", "difference", "status", "flag"]
+    ].reset_index(drop=True)
+
+
+def output_sites_path(model: str | None = None) -> Path:
+    """``outputs/output_sites_{model}.csv``."""
+    return resolve(f"outputs/output_sites_{simulation_model(model)}.csv")
+
+
+def output_sites(
+    model: str | None = None, recompute: bool = False, all_sites: bool = False
+) -> pd.DataFrame:
+    """
+    The output sites of a model, built once (notebook 03) and saved.
+
+    The first line of the CSV (``# grid: ...``) records the mesh; a table
+    built on another grid is refused (rebuild with ``recompute=True``, which
+    also invalidates the model runs made with the old sites).
+
+    Parameters
+    ----------
+    model
+        Model name; default ``simulations.model``.
+    recompute
+        Rebuild with :func:`compute_output_sites` and overwrite the file.
+    all_sites
+        Also return the dropped sites (``status`` other than ``ok``).
+
+    Returns
+    -------
+    pandas.DataFrame
+        See :func:`compute_output_sites`; only ``ok`` sites unless *all_sites*.
+    """
+    path = output_sites_path(model)
+    grid = str(model_config(model)["grid_file"])
+    if path.is_file() and not recompute:
+        with open(path) as f:
+            saved = f.readline().removeprefix("# grid:").strip()
+        if saved != grid:
+            raise ValueError(
+                f"{path.name} was built on {saved!r}, the model grid is {grid!r}; "
+                "rebuild it with output_sites(recompute=True)."
+            )
+        df = pd.read_csv(path, comment="#", dtype={"source_id": str, "source_label": str})
+    else:
+        df = compute_output_sites(model=model)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w") as f:
+            f.write(f"# grid: {grid}\n")
+            df.to_csv(f, index=False)
+        logger.info(
+            "Output sites (%s): %d of %d ok -> %s",
+            simulation_model(model),
+            int((df["status"] == SITE_OK).sum()),
+            len(df),
+            path,
+        )
+    if all_sites:
+        return df
+    return df.loc[df["status"] == SITE_OK].reset_index(drop=True)
 
 
 # ---------------------------------------------------------------------------
 # Site metadata, groups and selection
 # ---------------------------------------------------------------------------
 
-SITE_META = (
-    "site_source",
-    "site_label",
-    "site_depth",
-    "site_longitude",
-    "site_latitude",
-)
+#: Site coordinate of the model outputs -> column of the output-sites table.
+SITE_COORDS = {
+    "sites": "source_id",
+    "site_source": "source",
+    "site_label": "source_label",
+    "site_mesh_depth": "mesh_depth",
+    "site_nominal_depth": "nominal_depth",
+    "site_longitude": "lon",
+    "site_latitude": "lat",
+}
+#: Metadata coordinates carried by every dataset on ``sites``.
+SITE_META = tuple(name for name in SITE_COORDS if name != "sites")
+
+
+def site_meta(site_ids: Iterable[str] | None = None) -> xr.Dataset:
+    """
+    Metadata coordinates of the ``ok`` output sites (:func:`output_sites`).
+
+    Parameters
+    ----------
+    site_ids
+        Sites to return, in this order; default every ``ok`` site.
+
+    Returns
+    -------
+    xarray.Dataset
+        No variables; ``sites`` and the :data:`SITE_META` coordinates.
+
+    Raises
+    ------
+    KeyError
+        If a site is not an ``ok`` output site.
+    """
+    table = output_sites().set_index("source_id")
+    ids = list(table.index) if site_ids is None else [str(s) for s in site_ids]
+    missing = [s for s in ids if s not in table.index]
+    if missing:
+        raise KeyError(f"Not ok output sites: {missing[:8]}")
+    rows = table.loc[ids]
+    return xr.Dataset(
+        coords={"sites": ids}
+        | {name: ("sites", rows[col].to_numpy()) for name, col in SITE_COORDS.items() if name != "sites"}
+    )
 
 
 def per_site_coord(ds: xr.Dataset, name: str, default: str = "") -> dict[str, str]:
@@ -354,32 +673,25 @@ def resolve_sites(
     return out
 
 
-def attach_site_meta(ds: xr.Dataset, template: xr.Dataset) -> xr.Dataset:
+def attach_site_meta(ds: xr.Dataset) -> xr.Dataset:
     """
-    Copy SnapWave site metadata coordinates from *template* onto *ds*.
+    Add the :data:`SITE_META` coordinates of the output sites to *ds*.
 
     Parameters
     ----------
     ds
-        Dataset to annotate (e.g. offshore hindcast at buoys).
-    template
-        Reference dataset with ``SITE_META`` coordinates (typically LHS cases).
+        Dataset on ``sites`` (output sites, e.g. buoys or a reconstruction).
 
     Returns
     -------
     xarray.Dataset
-        *ds* with shared metadata coords when sites overlap *template*.
+        *ds* with the site metadata coordinates.
     """
-    site_ids = [str(s) for s in ds.sites.values]
-    shared = [s for s in site_ids if s in template.sites.values]
-    if not shared:
-        return ds
-    ref = template.sel(sites=site_ids)
-    meta = {name: ref[name] for name in SITE_META if name in ref.coords}
-    return ds.assign_coords(meta)
+    return ds.assign_coords(site_meta(ds.sites.values).coords)
 
 
 __all__ = [
+    "SITE_COORDS",
     "SITE_META",
     "attach_site_meta",
     "compute_output_sites",
@@ -387,4 +699,5 @@ __all__ = [
     "metric_groups",
     "per_site_coord",
     "resolve_sites",
+    "site_meta",
 ]

@@ -17,7 +17,7 @@ bdsfile        = spr.txt
 bzsfile        = wl.txt
 
 gamma          = 0.7
-hmin           = 0.1
+hmin           = {{ min_depth }}
 restart        = 0
 jonswapfile    = 
 uuupwindfile   = 

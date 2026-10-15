@@ -2,7 +2,7 @@
 
 A snapshot keeps the results of one attempt (e.g. ``hs1`` = the unit-Hs
 metamodel) before the case is re-run and re-published, so the GUI can show
-every version side by side (CONTRACT.md §6). The copy is complete, built
+every version side by side. The copy is complete, built
 report included; its ``manifest.json`` gains a ``snapshot`` block with the
 tag, a free-text note and the snapshot date. The report's links are absolute
 (``…/case-book/<case id>/…``, recorded as ``book_url``), and the GUI serves a

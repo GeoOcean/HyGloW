@@ -1,12 +1,13 @@
 $ HyWaves dynamic reference: one stationary case per time step, the offshore
-$ hindcast at every goal, interpolated linearly along the open boundary.
+$ hindcast at every goal; SWAN interpolates the spectra (energy) linearly
+$ along the open boundary between them.
 $ Physics as the metamodel cases (depth-induced breaking, bottom friction,
 $ triads; whitecapping on), plus wind generation (GEN3, quadruplets on) when
 $ the case has wind: a field (wind_file) or a uniform u10 / u10dir.
 PROJECT 'HyWaves' '{{ "%04d" % case_num }}'
 MODE STATIONARY TWODIMENSIONAL
 COORDINATES SPHERICAL CCM
-SET LEVEL={{ wl }} DEPMIN=0.1 NAUTICAL
+SET LEVEL={{ wl }} DEPMIN={{ min_depth }} NAUTICAL
 $
 CGRID UNSTRUCTURED CIRCLE 36 0.03 1.0 36
 READGRID UNSTRUCTURED ADCIRC
@@ -27,7 +28,9 @@ NUMERIC STOPC 0.005 0.01 0.005 99.5 STATIONARY 50
 $
 POINTS 'sites' FILE '{{ points_file }}'
 TABLE 'sites' NOHEAD '{{ table_file }}' {{ table_quantities }}
-$ 2D spectra at the sites (not used by the pipeline):
+$ Grid map (save_map cases only):
+{% if map_file %}BLOCK 'COMPGRID' NOHEAD '{{ map_file }}' LAY 3 {{ map_quantities }}
+{% endif %}$ 2D spectra at the sites (not used by the pipeline):
 $ SPECOUT 'sites' SPEC2D ABS 'output_sites.spc'
 $
 COMPUTE

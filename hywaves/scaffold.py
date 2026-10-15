@@ -2,7 +2,7 @@
 
 ``python -m hywaves start --name Cantabria`` creates a case from the built-in
 template (``hywaves/template/``): vendored engine code (``utils/``),
-case-agnostic pipeline notebooks, SnapWave and SWAN templates, tests, and a fresh
+case-agnostic pipeline notebooks, SnapWave and SWAN templates, and a fresh
 config skeleton. The result runs anywhere — laptop or HPC — as long as the
 scientific stack (``bluemath_tk``, ``bluemesh2d``, ``wavespectra``, ...) is
 in your environment; see the generated ``README.md`` for the exact list.
@@ -11,7 +11,9 @@ in your environment; see the generated ``README.md`` for the exact list.
 (outputs stripped), for when you want to continue someone's working setup.
 
 Deliberately minimal: no data download, no tiff generation. The user starts,
-then fights (with the notebooks as the guide).
+then fights (with the notebooks as the guide). The case manifest
+(``.hywaves/manifest.json``, see :mod:`hywaves.manifest`) records the hywaves
+version and the bluemath_tk revision the case starts with.
 """
 
 from __future__ import annotations
@@ -20,33 +22,28 @@ import hashlib
 import json
 import re
 import shutil
-from datetime import datetime, timezone
 from pathlib import Path
 
-from . import SCHEMA_VERSION, __version__
+from . import __version__
+from .manifest import bluemath_tk_revision, now, write_manifest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE_DIR = Path(__file__).resolve().parent / "template"
 
-# Vendored into every new case; whichever exist in the source are copied
-# (older cases, e.g. Samoa, still carry a vendored bluemesh2d/ or legacy
-# pymesh2d/ from before bluemesh2d became a regular environment dependency —
-# see the generated README.md's Dependencies section).
-ENGINE_DIRS = ("utils", "bluemesh2d", "pymesh2d")
+# Vendored into every new case, hashed in the manifest and kept in sync by
+# `hywaves update`.
+ENGINE_DIRS = ("utils",)
+# Copied once; user-owned after scaffolding (never synced), like the notebooks.
 SUPPORT_DIRS = (
-    "tests",
     "templates-snapwave-metamodel",
     "templates-snapwave-dynamic",
     "templates-swan-metamodel",
     "templates-swan-dynamic",
 )
-# Hashed in the manifest and kept in sync by `hywaves update`. Model
-# templates and notebooks are user-owned after scaffolding — never synced.
-SYNCED_DIRS = ENGINE_DIRS + ("tests",)
 INPUT_SUBDIRS = ("AoI_Polygons", "GEBCO", "GRID", "Goals", "Observations", "WHACS")
 EMPTY_DIRS = ("outputs", "logs")
 
-_IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc", ".ipynb_checkpoints")
+_IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc", ".*")
 _NAME_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]*")
 
 
@@ -101,7 +98,7 @@ def _file_hashes(root: Path, dirs: tuple[str, ...]) -> dict[str, str]:
             if not path.is_file():
                 continue
             rel = path.relative_to(root)
-            if "__pycache__" in rel.parts or path.suffix == ".pyc":
+            if any(part.startswith(".") or part == "__pycache__" for part in rel.parts) or path.suffix == ".pyc":
                 continue
             hashes[str(rel)] = hashlib.sha256(path.read_bytes()).hexdigest()
     return hashes
@@ -185,18 +182,13 @@ def start_case(
         (target / sub).mkdir()
         (target / sub / ".gitkeep").touch()
 
-    manifest = {
-        "hywaves_version": __version__,
-        "schema_version": SCHEMA_VERSION,
-        "source": source.name if from_case else f"hywaves-template@{__version__}",
-        "created": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "notebooks": copied_notebooks,
-        "engine_files": _file_hashes(target, SYNCED_DIRS),
-    }
-    manifest_dir = target / ".hywaves"
-    manifest_dir.mkdir()
-    (manifest_dir / "manifest.json").write_text(
-        json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+    write_manifest(
+        target,
+        hywaves_version=__version__,
+        source=source.name if from_case else f"hywaves-template@{__version__}",
+        created=now(),
+        bluemath_tk=bluemath_tk_revision(),
+        notebooks=copied_notebooks,
+        engine_files=_file_hashes(target, ENGINE_DIRS),
     )
-
     return target

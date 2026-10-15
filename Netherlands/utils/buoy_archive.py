@@ -434,31 +434,6 @@ def build_buoys(
     return pd.DataFrame(rows)
 
 
-def inside_grid(buoys: pd.DataFrame, model: str | None = None) -> np.ndarray:
-    """
-    Whether each buoy lies inside the model grid (outside it the model writes no values).
-
-    Parameters
-    ----------
-    buoys
-        Table with ``lon`` and ``lat``.
-    model
-        Default ``simulations.model``.
-
-    Returns
-    -------
-    numpy.ndarray
-        Boolean per row.
-    """
-    import matplotlib.tri as mtri
-
-    from utils.wind import read_grid
-
-    x, y, triangles, _, _ = read_grid(model)
-    finder = mtri.Triangulation(x, y, triangles).get_trifinder()
-    return finder(buoys["lon"].to_numpy(float), buoys["lat"].to_numpy(float)) >= 0
-
-
 def observations_dict(buoys: pd.DataFrame, min_hours: int = 24 * 30) -> dict[str, dict[str, Any]]:
     """
     Notebook-03 ``observations`` entries for buoys with at least *min_hours* of ``hs``.
@@ -473,7 +448,9 @@ def observations_dict(buoys: pd.DataFrame, min_hours: int = 24 * 30) -> dict[str
     Returns
     -------
     dict
-        ``{instrument_id: {lon, lat, type, institution, recording, depth, name}}``.
+        ``{instrument_id: {lon, lat, type, institution, recording, measured_depth, name}}``
+        (``measured_depth`` from the station metadata; the model uses the mesh
+        depth, see :func:`utils.geometry.output_sites`).
     """
     out = {}
     for r in buoys[buoys.n_hs >= min_hours].sort_values("instrument_id").itertuples():
@@ -483,7 +460,7 @@ def observations_dict(buoys: pd.DataFrame, min_hours: int = 24 * 30) -> dict[str
             "type": "waves",
             "institution": "Rijkswaterstaat / CMEMS",
             "recording": f"{r.start} to {r.end}",
-            "depth": None if np.isnan(r.depth) else float(r.depth),
+            "measured_depth": None if np.isnan(r.depth) else float(r.depth),
             "name": r.name,
         }
     return out
@@ -491,7 +468,6 @@ def observations_dict(buoys: pd.DataFrame, min_hours: int = 24 * 30) -> dict[str
 
 __all__ = [
     "LEGACY_RWS",
-    "inside_grid",
     "build_buoys",
     "catalog",
     "cmems_platforms",

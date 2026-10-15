@@ -1,4 +1,4 @@
-"""HyGloW case contract validator (see CONTRACT.md).
+"""What a HyGloW case must provide: these checks are the rules (no separate spec).
 
 Self-contained and stdlib-only on purpose: copy this single file into any
 repository and run it against a case folder, no installs required::
@@ -12,6 +12,12 @@ Or through the CLI when the hywaves package is available::
 Development mode reports incomplete-but-expected gaps (missing inputs,
 TODO placeholders, no outputs yet) as warnings. ``--publish`` escalates
 them to errors: a publish-clean case is ready for the portal.
+
+Checked, in order: the case config ``{Case}/{Case}.json`` (identity, paths,
+TODOs), the goals JSON, the observations GeoJSON, the offshore catalog, the
+holdout metrics in ``outputs/``, the ``metamodel`` / ``simulations`` /
+``forcing`` / ``satellite`` blocks, the output sites (config and
+``outputs/output_sites_{model}.csv``) and whether ``portal/`` is up to date.
 """
 
 from __future__ import annotations
@@ -37,14 +43,8 @@ REQUIRED_METRICS_COLUMNS = {
     "r2",
 }
 
-# Written by every engine since hywaves 0.6.0, when metrics moved to the
-# reference-first convention (R² normalised by the reference, not the
-# estimate). A metrics CSV without it predates that fix: still contract-valid,
-# but its r2 should be recomputed.
-CONVENTION_MARKER_COLUMN = "rrmse"
-
 # Numerical models (``simulations.model``) and the keys of their
-# ``simulations.<model>`` block (since hywaves 0.11.0).
+# ``simulations.<model>`` block.
 SIMULATION_MODELS = ("snapwave", "swan")
 # Optional met-ocean forcing of the dynamic runs / reconstruction (``forcing``).
 FORCING_KINDS = ("wind", "water_level")
@@ -55,6 +55,8 @@ MODEL_BLOCK_KEYS = (
     "metamodel_cases",
     "dynamic_cases",
 )
+# Site selectors that take every site of one source (``metamodel.sets``).
+SITE_UMBRELLAS = ("buoy", "isobath", "mesh")
 
 ERROR = "ERROR"
 WARN = "WARN"
@@ -101,22 +103,16 @@ class _Report:
 
 
 def find_case_config(case_dir: Path) -> Path | None:
-    """Locate the case config JSON inside *case_dir*.
+    """The case config JSON, ``{Case}/{Case}.json``, or ``None`` if missing."""
+    path = case_dir / f"{case_dir.name}.json"
+    return path if path.is_file() else None
 
-    Convention: ``{Case}/{Case}.json`` (case-insensitive fallback). If exactly
-    one other top-level JSON exists that is not a goals/observations file, it
-    is accepted as a fallback. Returns ``None`` if no config can be resolved.
-    """
-    name = case_dir.name
-    for candidate in (case_dir / f"{name}.json", case_dir / f"{name.lower()}.json"):
-        if candidate.is_file():
-            return candidate
-    fallbacks = sorted(
-        p
-        for p in case_dir.glob("*.json")
-        if "goals" not in p.name.lower() and "observations" not in p.name.lower()
-    )
-    return fallbacks[0] if len(fallbacks) == 1 else None
+
+def model_block(config: dict) -> dict:
+    """The ``simulations.<model>`` block of ``simulations.model`` (``{}`` if missing)."""
+    sim = config.get("simulations", {})
+    block = sim.get(sim.get("model"))
+    return block if isinstance(block, dict) else {}
 
 
 def _load_json(path: Path, report: _Report, code: str) -> Any | None:
@@ -270,15 +266,27 @@ def _check_observations(case_dir: Path, config: dict, report: _Report) -> None:
 
 
 def _check_offshore(config: dict, report: _Report) -> None:
-    """Check ``offshore_waves`` is a list (or single dict) of entries each with a ``name``."""
-    block = config.get("offshore_waves", [])
-    entries = [block] if isinstance(block, dict) else block
+    """Check ``offshore_waves`` is a list of entries each with a ``name``."""
+    entries = config.get("offshore_waves", [])
     if not isinstance(entries, list):
         report.error("offshore.structure", "'offshore_waves' must be a list")
         return
+    names = {e.get("name") for e in entries if isinstance(e, dict)}
     for i, entry in enumerate(entries):
         if not isinstance(entry, dict) or not entry.get("name"):
             report.error("offshore.name", f"offshore_waves[{i}] must have a 'name'")
+            continue
+        hindcast = entry.get("hindcast")
+        if hindcast is not None and not (isinstance(hindcast, str) and hindcast):
+            report.error(
+                "offshore.hindcast",
+                f"offshore_waves[{i}].hindcast must be the name of the goals JSON hindcast",
+            )
+        elif hindcast is not None and hindcast not in names:
+            report.warn(
+                "offshore.hindcast",
+                f"offshore_waves[{i}].hindcast {hindcast!r} is not another offshore_waves entry",
+            )
 
 
 def _check_outputs(case_dir: Path, report: _Report) -> None:
@@ -314,45 +322,10 @@ def _check_outputs(case_dir: Path, report: _Report) -> None:
         report.info(
             "outputs.ok", f"{len(metrics_files)} validation_metrics.csv file(s)"
         )
-    _check_metrics_convention(case_dir, metrics_files, report)
 
     figures = sorted((case_dir / "outputs" / "gui_figures").glob("fig*.png"))
     if not figures and report.publish:
         report.warn("outputs.figures", "no portal figures in outputs/gui_figures/")
-
-
-def _check_metrics_convention(
-    case_dir: Path, metrics_files: list[Path], report: _Report
-) -> None:
-    """Warn about metrics CSVs written before the reference-first fix (hywaves 0.6.0).
-
-    Covers the §4 holdout files and the optional §5 linear-summation and buoy
-    summaries; see :data:`CONVENTION_MARKER_COLUMN`.
-    """
-    outputs = case_dir / "outputs"
-    candidates = [
-        *metrics_files,
-        *sorted((outputs / "metamodel_validation").glob("*.csv")),
-        *sorted((outputs / "buoy_validation").glob("*_summary_*.csv")),
-    ]
-    legacy = []
-    for path in candidates:
-        try:
-            with path.open(encoding="utf-8", newline="") as f:
-                header = next(csv.reader(f), [])
-        except OSError:
-            continue  # unreadable files are reported by the caller
-        if CONVENTION_MARKER_COLUMN not in header:
-            legacy.append(path.relative_to(outputs).as_posix())
-    if legacy:
-        report.warn(
-            "outputs.metrics_legacy",
-            f"{len(legacy)} metrics CSV(s) predate the hywaves 0.6.0 metrics fix "
-            f"(no {CONVENTION_MARKER_COLUMN!r} column; r2 was normalised by the "
-            "estimate) — re-run notebooks 06/09/10 save cells: "
-            + ", ".join(legacy[:5])
-            + (" …" if len(legacy) > 5 else ""),
-        )
 
 
 def _sha256(path: Path) -> str:
@@ -505,12 +478,21 @@ def _check_engine(case_dir: Path, config: dict, report: _Report) -> None:
     if not isinstance(site_filter, dict):
         report.error("engine.site_filter", "metamodel.site_filter must be a dict")
     else:
-        for key in site_filter:
+        for key, value in site_filter.items():
             if not (key.endswith("_max") or key.endswith("_min")):
                 report.error(
                     "engine.site_filter",
-                    f"site_filter key {key!r} must end with '_max', '_ratio_max' "
-                    "or '_min'",
+                    f"site_filter key {key!r} must end with '_max', '_ratio_max', "
+                    "'_nan_max' or '_min'",
+                )
+            elif key.endswith("_nan_max") and not (
+                isinstance(value, (int, float))
+                and not isinstance(value, bool)
+                and 0 <= float(value) <= 1
+            ):
+                report.error(
+                    "engine.site_filter",
+                    f"site_filter {key!r} is a fraction of cases, in [0, 1]",
                 )
 
     sets = mm.get("sets")
@@ -645,6 +627,37 @@ def _check_engine(case_dir: Path, config: dict, report: _Report) -> None:
         elif not (case_dir / path).exists():
             report.warn("engine.forcing", f"forcing.{kind}.data_path missing: {path}")
 
+    satellite = config.get("satellite")
+    if satellite is not None:
+        if not isinstance(satellite, dict):
+            report.error("engine.satellite", "satellite must be a dict")
+        else:
+            path = satellite.get("data_path")
+            if not isinstance(path, str) or not path:
+                report.error("engine.satellite", "satellite.data_path must be a path or URL")
+            elif "://" not in path and not (case_dir / path).exists():
+                report.warn("engine.satellite", f"satellite.data_path missing: {path}")
+            checks = {
+                "radius_km": lambda v: _is_number(v) and v > 0,
+                "min_depth": lambda v: _is_number(v) and v >= 0,
+                "train_fraction": lambda v: _is_number(v) and 0 < v <= 1,
+                "min_points": lambda v: isinstance(v, int) and not isinstance(v, bool) and v >= 1,
+                "flags": lambda v: isinstance(v, list)
+                and all(isinstance(f, int) and not isinstance(f, bool) for f in v),
+                "split": lambda v: v in ("random", "time"),
+            }
+            expected = {
+                "radius_km": "a positive number (km)",
+                "min_depth": "a number >= 0 (m)",
+                "train_fraction": "in (0, 1]",
+                "min_points": "an integer >= 1",
+                "flags": "a list of integers",
+                "split": "'random' or 'time'",
+            }
+            for key, ok in checks.items():
+                if key in satellite and not ok(satellite[key]):
+                    report.error("engine.satellite", f"satellite.{key} must be {expected[key]}")
+
     sim = config.get("simulations", {})
     bounds = sim.get("bounds", {})
     for name in inputs:
@@ -696,13 +709,80 @@ def _check_engine(case_dir: Path, config: dict, report: _Report) -> None:
         )
 
 
+def _check_output_sites(case_dir: Path, config: dict, report: _Report) -> None:
+    """Check ``simulations.output_sites_config``, ``min_depth`` and the saved sites table.
+
+    The table, ``outputs/output_sites_{model}.csv`` (notebook 03), must have
+    been built on ``simulations.<model>.grid_file`` (its ``# grid:`` line),
+    and every ``metamodel.sets`` selector must name ``ok`` sites in it.
+    """
+    sim = config.get("simulations", {})
+    cfg = sim.get("output_sites_config")
+    if not isinstance(cfg, dict):
+        report.error("sites.config", "simulations.output_sites_config must be a dict")
+        cfg = {}
+    for i, spec in enumerate(cfg.get("isobaths") or []):
+        if not isinstance(spec, dict) or not _is_number(spec.get("level")):
+            report.error("sites.isobaths", f"output_sites_config.isobaths[{i}] needs a numeric 'level'")
+            continue
+        for key in ("smooth_m", "min_length_m", "spacing_m"):
+            if key in spec and not (_is_number(spec[key]) and spec[key] > 0):
+                report.error("sites.isobaths", f"output_sites_config.isobaths[{i}].{key} must be > 0 (m)")
+    for i, spec in enumerate(cfg.get("polygons") or []):
+        if not isinstance(spec, dict) or not spec.get("name") or not spec.get("file"):
+            report.error("sites.polygons", f"output_sites_config.polygons[{i}] needs 'name' and 'file'")
+            continue
+        if not (case_dir / spec["file"]).is_file():
+            report.warn("sites.polygons", f"polygon file missing: {spec['file']}")
+        fraction = spec.get("fraction")
+        if fraction is not None and not (_is_number(fraction) and 0 < fraction <= 1):
+            report.error("sites.polygons", f"output_sites_config.polygons[{i}].fraction must be in (0, 1]")
+    for key in ("include_buoys", "clip_to_aoi"):
+        if key in cfg and not isinstance(cfg[key], bool):
+            report.error("sites.config", f"output_sites_config.{key} must be a bool")
+    if "min_depth" in sim and not (_is_number(sim["min_depth"]) and sim["min_depth"] >= 0):
+        report.error("sites.min_depth", "simulations.min_depth must be a number >= 0 (m)")
+
+    model = sim.get("model")
+    rel = f"outputs/output_sites_{model}.csv"
+    path = case_dir / rel
+    if not path.is_file():
+        report.gap("sites.table", f"{rel} does not exist yet — build it in notebook 03")
+        return
+    with path.open(encoding="utf-8", newline="") as f:
+        grid = f.readline().removeprefix("# grid:").strip()
+        rows = list(csv.DictReader(f))
+    if grid != model_block(config).get("grid_file"):
+        report.error(
+            "sites.table",
+            f"{rel} was built on {grid!r}, not simulations.{model}.grid_file — "
+            "rebuild it (output_sites(recompute=True)) and re-run the model cases",
+        )
+    ok = [row for row in rows if row.get("status") == "ok"]
+    report.info("sites.ok", f"{len(ok)} of {len(rows)} output sites ok in {rel}")
+
+    selectors = set(SITE_UMBRELLAS)
+    selectors |= {row["source_label"] for row in ok if row["source"] != "buoy"}
+    selectors |= {row["source_id"] for row in ok}
+    sets = config.get("metamodel", {}).get("sets")
+    for name, spec in (sets if isinstance(sets, dict) else {}).items():
+        chosen = spec.get("sites") if isinstance(spec, dict) else None
+        chosen = [chosen] if isinstance(chosen, str) else chosen or []
+        unknown = [s for s in chosen if s not in selectors]
+        if unknown:
+            report.error(
+                "sites.sets",
+                f"metamodel.sets[{name!r}] selects no ok site: {unknown[:5]}",
+            )
+
+
 # ----------------------------------------------------------------------
 # Entry points
 # ----------------------------------------------------------------------
 
 
 def validate_case(case_dir: str | Path, *, publish: bool = False) -> list[Finding]:
-    """Validate one case folder against the contract (see ``CONTRACT.md``).
+    """Validate one case folder (the checks of this module).
 
     Runs the Level 1 portal checks (identity, paths, goals, observations,
     offshore catalog, outputs) and, if the config declares a ``metamodel``
@@ -752,6 +832,8 @@ def validate_case(case_dir: str | Path, *, publish: bool = False) -> list[Findin
     _check_offshore(config, report)
     _check_outputs(case_dir, report)
     _check_engine(case_dir, config, report)
+    if isinstance(config.get("metamodel"), dict):
+        _check_output_sites(case_dir, config, report)
     _check_portal(case_dir, report)
     return report.findings
 
@@ -765,7 +847,7 @@ def main(argv: list[str] | None = None) -> int:
         ``0`` if there were no errors, ``1`` otherwise (warnings never fail).
     """
     parser = argparse.ArgumentParser(
-        description="Validate a HyGloW case folder against the case contract."
+        description="Check what a HyGloW case folder must provide."
     )
     parser.add_argument("case_dir", help="Path to the case folder")
     parser.add_argument(
@@ -787,7 +869,7 @@ def main(argv: list[str] | None = None) -> int:
         f"{len(warnings)} warning(s) [{mode} mode]"
     )
     if not errors:
-        print("Contract check PASSED" + ("" if args.publish else " (development mode)"))
+        print("Case check PASSED" + ("" if args.publish else " (development mode)"))
     return 1 if errors else 0
 
 

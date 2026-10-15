@@ -1,7 +1,7 @@
 {
-  "hywaves_version": "0.11.0",
+  "hywaves_version": "0.15.0",
   "schema_version": 1,
-  "source": "hywaves-template@0.11.0",
+  "source": "hywaves-template@0.15.0",
   "created": "2026-09-22T07:06:18+00:00",
   "notebooks": [
     "01_Generate_tiff_from_GEBCO.ipynb",
@@ -20,20 +20,20 @@
   ],
   "engine_files": {
     "utils/__init__.py": "e67e21b00a58c9bd83407d426a468e1ff02a1f52888d47a4488e8cd97fb3361b",
-    "utils/config.py": "cf04cff3f4bb6423443e23a8756d13c19f742c0e0d5ab1573f5f075a8908d483",
-    "utils/geometry.py": "cf4ee5e0fc22836ff7c263f4b8af1a7125cdbcf962c2b05f88cfc7409feffd32",
-    "utils/onshore_sites.py": "ac0fe1cf8c9d6bf27db8a75427fdce7b29f2b4dc6eb2a8b9cee5bad3951951b1",
-    "utils/simulation.py": "125e1ebcba379530c4e67882d8d49fd733e434f7b4fecdb238cfba351534d2e6",
-    "utils/validation.py": "69d68158c4e592199ef6b5df10c14e5e2e170c1fe7f0fecb2c415d4a892cc3fe",
-    "utils/viz.py": "05f935b3acf4bf13255f4ae5308e660e6ce3937dd898c5288cbce680407fcd6a",
-    "utils/wind.py": "1e3c1b3b0db8aa0bacd8e20811b91b2ebe5657c60414b9858649726d96a64c1a",
-    "tests/test_geometry.py": "bb971347a47121f0c890388b322b9fe9132e4df0a60397737a5475ca9e0b0e78",
-    "tests/test_logging_config.py": "b4c558ed4eed2eb07d824dc0b321afe33d3735c4c9235d101edc76881e170744",
-    "tests/test_metamodel_helpers.py": "4dc2b381d369b4b8923a1171e1126bf7cad4f7dc185c7927c13b1fe4d90f3f01",
-    "tests/test_onshore_sites.py": "604cef1774032b497214439f64f3141fb0b5f0190342d6e587f009ee7cb2eecf",
-    "tests/test_simulation.py": "c02c45dc372f16e4fb4a48c2247bcc964f7c9219c71fad3fba94d181c8e82c73",
-    "tests/test_validation_helpers.py": "4bf54e6f3490af972a9faf34c47d945c8a0e600a23c0b8e586438fca5d83e4a1",
-    "tests/test_wind.py": "57d4fcc2065f20839a5f6bc9fc3b827a1a227f7756f220fd1b4a6fe09da7381e"
+    "utils/calibration.py": "81aaec24b2684fa7bb061a7d6bab76876fa116841271bcafb361284e9a729457",
+    "utils/config.py": "3b9ae68ca1540ecab1b3ec3535720df177d8ec09faabdb6617633e5716413dee",
+    "utils/geometry.py": "af1883c8cc8ec50621f8659b45fddb833794fb58f1a1a718b043ba690b8f11a5",
+    "utils/onshore_sites.py": "8d4afa06663bcbde06c85a7b68877c5ed2530232bea644565fe85152771554ca",
+    "utils/simulation.py": "06e9233e7dd2a40e1c3d064dd26e531de2e975d308e12e103a144023c068bec6",
+    "utils/validation.py": "8f2f1f1c63c8e737dfad12dbff673d79f471f64b3db1ede1fda757e093557994",
+    "utils/viz.py": "e5fac8729bb2ab9ddfdea7fa464419b838f2098802b41b6e386647037f705a56",
+    "utils/wind.py": "5f7a30da56f2f26610298637c34c085daef8e2161f9d09438b0103b243d90192"
   },
-  "updated": "2026-10-09T10:13:44+00:00"
+  "updated": "2026-10-15T09:33:06+00:00",
+  "bluemath_tk": {
+    "version": "1.3.dev49",
+    "commit": "0a1e3c878b5c01eade6d371afa2acc689b27c9cc",
+    "branch": "hywaves/mesh-sites",
+    "dirty": true
+  }
 }

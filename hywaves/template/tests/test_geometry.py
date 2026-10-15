@@ -3,16 +3,25 @@
 from __future__ import annotations
 
 import unittest
+from unittest import mock
 
 import numpy as np
+import pandas as pd
 import xarray as xr
+from bluemath_tk.topo_bathy.mesh import Mesh
 
 from utils.geometry import (
+    SITE_META,
     attach_site_meta,
+    buoy_depth_check,
+    check_model_sites,
+    compute_output_sites,
+    sites_summary,
     find_group,
     metric_groups,
     per_site_coord,
     resolve_sites,
+    site_meta,
 )
 
 
@@ -124,32 +133,109 @@ class TestResolveSites(unittest.TestCase):
             resolve_sites(self.ds, "not-a-group")
 
 
-class TestAttachSiteMeta(unittest.TestCase):
-    def test_copies_shared_metadata(self) -> None:
-        template = xr.Dataset(
-            {"hs": (("sites",), [1.0, 2.0])},
-            coords={
-                "sites": ["a", "b"],
-                "site_source": ("sites", ["buoy", "isobath"]),
-                "site_label": ("sites", ["buoy_a", "10m"]),
-                "site_depth": ("sites", [-5.0, -10.0]),
-                "site_longitude": ("sites", [1.0, 2.0]),
-                "site_latitude": ("sites", [3.0, 4.0]),
-            },
-        )
-        ds = xr.Dataset({"hs": (("sites",), [9.0])}, coords={"sites": ["a"]})
-        out = attach_site_meta(ds, template)
+class TestSiteMeta(unittest.TestCase):
+    """Site metadata comes from the ok rows of the output-sites table."""
+
+    TABLE = pd.DataFrame(
+        {
+            "lon": [1.0, 2.0],
+            "lat": [3.0, 4.0],
+            "source": ["buoy", "isobath"],
+            "source_id": ["buoy_a", "10m_0"],
+            "source_label": ["waves", "10m"],
+            "nominal_depth": [5.0, 10.0],
+            "name": ["a", None],
+            "mesh_depth": [5.2, 10.1],
+            "status": ["ok", "ok"],
+        }
+    )
+
+    def test_attach_site_meta(self) -> None:
+        ds = xr.Dataset({"hs": (("sites",), [9.0])}, coords={"sites": ["buoy_a"]})
+        with mock.patch("utils.geometry.output_sites", return_value=self.TABLE):
+            out = attach_site_meta(ds)
         self.assertEqual(str(out["site_source"].values[0]), "buoy")
         self.assertEqual(float(out["site_longitude"].values[0]), 1.0)
+        self.assertEqual(float(out["site_mesh_depth"].values[0]), 5.2)
+        self.assertEqual(set(out.coords) - {"sites"}, set(SITE_META))
 
-    def test_no_overlap_returns_unchanged(self) -> None:
-        template = xr.Dataset(
-            {"hs": (("sites",), [1.0])},
-            coords={"sites": ["a"], "site_source": ("sites", ["buoy"])},
+    def test_site_meta_order_and_unknown(self) -> None:
+        with mock.patch("utils.geometry.output_sites", return_value=self.TABLE):
+            self.assertEqual(list(site_meta().sites.values), ["buoy_a", "10m_0"])
+            self.assertEqual(list(site_meta(["10m_0"]).site_label.values), ["10m"])
+            with self.assertRaises(KeyError):
+                site_meta(["nope"])
+
+
+class TestModelSites(unittest.TestCase):
+    """Sites get the mesh depth and a status; summary and buoy check."""
+
+    def setUp(self) -> None:
+        mesh = Mesh(
+            x=np.array([0.0, 1.0, 0.0, 1.0]),
+            y=np.array([0.0, 0.0, 1.0, 1.0]),
+            faces=np.array([[0, 1, 3, 2]]),
+            z=np.array([0.0, -20.0, 0.0, -20.0]),  # 20 m deeper eastward
         )
-        ds = xr.Dataset({"hs": (("sites",), [9.0])}, coords={"sites": ["z"]})
-        out = attach_site_meta(ds, template)
-        self.assertNotIn("site_source", out.coords)
+        sites = pd.DataFrame(
+            {
+                "lon": [0.9, 0.1, 2.0, 0.5, 0.75],
+                "lat": [0.5, 0.5, 0.5, 0.5, 0.5],
+                "source": ["isobath", "isobath", "buoy", "buoy", "buoy"],
+                "source_id": ["10m_0", "5m_0", "buoy_out", "buoy_ok", "buoy_far"],
+                "source_label": ["10m", "5m", "x", "x", "x"],
+                "nominal_depth": [10.0, 5.0, 8.0, 9.0, 4.0],
+                "name": [None, None, "Out", "Ok", "Far"],
+            }
+        )
+        self.mesh = mesh
+        sim = {"bounds": {"wl": [-3.5, 3.5]}, "min_depth": 0.1}
+        with mock.patch.dict("utils.geometry.SIMULATIONS", sim, clear=True):
+            self.sites = check_model_sites(sites, mesh)
+
+    def test_status(self) -> None:
+        self.assertEqual(
+            self.sites["status"].tolist(), ["ok", "can_dry", "outside_mesh", "ok", "ok"]
+        )
+        self.assertAlmostEqual(float(self.sites["mesh_depth"].iloc[0]), 18.0)
+
+    def test_summary(self) -> None:
+        summary = sites_summary(self.sites)
+        self.assertEqual(summary.index.tolist(), ["10m", "5m", "buoy", "total"])
+        self.assertEqual(summary.loc["buoy", ["sites", "ok", "outside_mesh"]].tolist(), [3, 2, 1])
+        self.assertEqual(summary.loc["total", "can_dry"], 1)
+        self.assertEqual(summary.loc["buoy", "median"], 12.5)
+
+    def test_polygon_nodes(self) -> None:
+        """Every model-mesh node inside a polygon is a site; dry nodes are flagged."""
+        import geopandas as gpd
+        from shapely.geometry import box
+
+        poly = gpd.GeoDataFrame(geometry=[box(-0.1, -0.1, 1.1, 0.5)], crs="EPSG:4326")
+        cfg = {"isobaths": [], "polygons": [{"name": "Port", "file": "port.shp"}],
+               "include_buoys": False, "clip_to_aoi": False}
+        sim = {"bounds": {"wl": [-3.5, 3.5]}, "min_depth": 0.1}
+        with mock.patch.dict("utils.geometry.SIMULATIONS", sim, clear=True), \
+                mock.patch("utils.geometry.model_grid", return_value=self.mesh), \
+                mock.patch("utils.geometry.gpd.read_file", return_value=poly):
+            sites = compute_output_sites(config=cfg)
+        self.assertEqual(sites["source_id"].tolist(), ["Port_0", "Port_1"])  # southern nodes
+        self.assertTrue((sites["source"] == "mesh").all())
+        self.assertEqual(sites["nominal_depth"].tolist(), [0.0, 20.0])
+        self.assertEqual(sites["status"].tolist(), ["can_dry", "ok"])
+
+        cfg["polygons"][0].update(fraction=0.5)
+        with mock.patch.dict("utils.geometry.SIMULATIONS", sim, clear=True), \
+                mock.patch("utils.geometry.model_grid", return_value=self.mesh), \
+                mock.patch("utils.geometry.gpd.read_file", return_value=poly):
+            sites = compute_output_sites(config=cfg)
+        self.assertEqual(sites["source_id"].tolist(), ["Port_1"])  # only wet nodes sampled
+
+    def test_buoy_depth_check(self) -> None:
+        check = buoy_depth_check(self.sites).set_index("source_id")
+        self.assertFalse(check.loc["buoy_ok", "flag"])  # 10 m vs 9 m
+        self.assertTrue(check.loc["buoy_far", "flag"])  # 15 m vs 4 m
+        self.assertEqual(check.loc["buoy_far", "difference"], 11.0)
 
 
 if __name__ == "__main__":

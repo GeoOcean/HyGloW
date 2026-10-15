@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import contextlib
-import importlib.util
 import io
 import json
 import os
@@ -15,10 +14,6 @@ from pathlib import Path
 from hywaves.cli import main
 from hywaves.contract.validate import WARN, validate_case
 from hywaves.publish import PublishError, publish_case
-
-
-def _has(module: str) -> bool:
-    return importlib.util.find_spec(module) is not None
 
 
 METRICS_HEADER = "goal,metamodel,mda_candidate,group,variable,n,bias,rmse,r2"
@@ -125,6 +120,9 @@ class TestPublishBasics(_CaseFixture):
         self.assertIn("outputs/goal_01/isobaths/validation_metrics.csv", manifest["sources"])
         self.assertIn("outputs/goal_*/*/validation_metrics.csv", manifest["source_patterns"])
         self.assertEqual(manifest["skipped"], result.skipped)
+        self.assertIn("commit", manifest["bluemath_tk"])
+        case_manifest = json.loads((self.case_dir / ".hywaves" / "manifest.json").read_text())
+        self.assertEqual(case_manifest["bluemath_tk"], manifest["bluemath_tk"])
 
     def test_metrics_are_merged_with_union_of_columns(self) -> None:
         self._write_metrics(
@@ -199,7 +197,6 @@ class TestPublishBasics(_CaseFixture):
         self.assertIn("jupyter-book is not installed", result.skipped["book"])
 
 
-@unittest.skipUnless(_has("PIL"), "Pillow not installed")
 class TestPublishImages(_CaseFixture):
     def _png(self, rel: str, size: tuple[int, int]) -> None:
         from PIL import Image
@@ -221,7 +218,6 @@ class TestPublishImages(_CaseFixture):
         self.assertEqual(small.read_bytes(), src.read_bytes())
 
 
-@unittest.skipUnless(_has("shapefile"), "pyshp not installed")
 class TestPublishAoi(_CaseFixture):
     def test_shapefile_becomes_geojson(self) -> None:
         import shapefile
@@ -245,12 +241,41 @@ class TestPublishAoi(_CaseFixture):
         self.assertIn("inputs/AoI_Polygons/PubCase_AoI.dbf", self._manifest()["sources"])
 
 
-@unittest.skipUnless(
-    all(_has(m) for m in ("rioxarray", "contourpy", "xarray", "numpy")),
-    "raster/NetCDF stack not installed",
-)
+#: A two-triangle ADCIRC grid covering [-0.1, 1.1]² (the raster of the isobath test).
+SQUARE_GRID = """square
+2 4
+1 -0.1 -0.1 10.0
+2 1.1 -0.1 10.0
+3 1.1 1.1 10.0
+4 -0.1 1.1 10.0
+1 3 1 2 3
+2 3 1 3 4
+0 = open boundaries
+0 = open boundary nodes
+0 = land boundaries
+0 = land boundary nodes
+"""
+
+SITES_CSV = """# grid: inputs/GRID/mesh.grd
+lon,lat,source,source_id,source_label,nominal_depth,name,mesh_depth,status
+1.0,4.0,isobath,10m_0,10m,10.0,,9.8,ok
+2.0,5.0,mesh,Bay_7,Bay,6.0,,6.0,ok
+2.5,5.5,isobath,10m_1,10m,10.0,,,outside_mesh
+3.0,6.0,buoy,buoy_B1,waves,12.0,B1,11.0,ok
+"""
+
+
 class TestPublishMapLayers(_CaseFixture):
-    def test_isobaths_are_contoured_from_the_raster(self) -> None:
+    def setUp(self) -> None:
+        super().setUp()
+        grid = self.case_dir / "inputs" / "GRID" / "mesh.grd"
+        grid.parent.mkdir(parents=True)
+        grid.write_text(SQUARE_GRID)
+        self.config["simulations"].update(
+            model="snapwave", snapwave={"grid_file": "inputs/GRID/mesh.grd"}
+        )
+
+    def test_isobaths_are_contoured_from_the_raster_inside_the_mesh(self) -> None:
         import numpy as np
         import rioxarray  # noqa: F401 — registers the .rio accessor
         import xarray as xr
@@ -277,64 +302,24 @@ class TestPublishMapLayers(_CaseFixture):
         # The -10 m contour sits at x=0.25 along the whole domain.
         xs = [pt[0] for seg in isobaths[0]["segments"] for pt in seg]
         self.assertTrue(xs and all(abs(v - 0.25) < 1e-6 for v in xs))
+        self.assertIn("inputs/GRID/mesh.grd", self._manifest()["sources"])
 
-    def test_output_sites_exclude_buoys(self) -> None:
-        import numpy as np
-        import xarray as xr
-
-        ds = xr.Dataset(
-            {
-                "site_longitude": ("site", np.array([1.0, 2.0, 3.0])),
-                "site_latitude": ("site", np.array([4.0, 5.0, 6.0])),
-                "site_source": ("site", np.array(["isobath", "mesh", "buoy"])),
-                "site_label": ("site", np.array(["10m", "", "B1"])),
-            }
-        )
-        cases = self.case_dir / "SnapWave_CASES_Metamodel"
-        cases.mkdir()
-        ds.to_netcdf(cases / "output_sites_1.nc")
-        self.config["simulations"].update(
-            model="snapwave", snapwave={"metamodel_cases": "SnapWave_CASES_Metamodel"}
-        )
+    def test_output_sites_are_the_ok_sites_of_the_table_without_buoys(self) -> None:
+        (self.case_dir / "outputs" / "output_sites_snapwave.csv").write_text(SITES_CSV)
         self._write_config()
 
         self._publish()
         sites = json.loads((self.portal / "output_sites.json").read_text())
         self.assertEqual(sites["source"], ["isobath", "mesh"])
+        self.assertEqual(sites["label"], ["10m", "Bay"])
         self.assertEqual(sites["lon"], [1.0, 2.0])
+        self.assertIn("outputs/output_sites_snapwave.csv", self._manifest()["sources"])
 
-    def test_missing_declared_source_is_skipped_not_fatal(self) -> None:
-        self.config["simulations"].update(
-            model="snapwave", snapwave={"metamodel_cases": "/definitely/not/here"}
-        )
+    def test_missing_source_is_skipped_not_fatal(self) -> None:
         self._write_config()
         result = self._publish()
-        self.assertIn("no output_sites_*.nc", result.skipped["output_sites"])
-
-    def test_output_sites_fall_back_to_same_named_folder_in_case(self) -> None:
-        import numpy as np
-        import xarray as xr
-
-        local = self.case_dir / "SnapWave_CASES_Metamodel"
-        local.mkdir()
-        xr.Dataset(
-            {
-                "site_longitude": ("site", np.array([7.0])),
-                "site_latitude": ("site", np.array([8.0])),
-                "site_source": ("site", np.array(["isobath"])),
-            }
-        ).to_netcdf(local / "output_sites_1.nc")
-        # Declared path lives on another machine; only the .nc were copied here.
-        self.config["simulations"].update(
-            model="snapwave", snapwave={"metamodel_cases": "/elsewhere/PubCase/SnapWave_CASES_Metamodel"}
-        )
-        self._write_config()
-
-        result = self._publish()
-        self.assertNotIn("output_sites", result.skipped)
-        sites = json.loads((self.portal / "output_sites.json").read_text())
-        self.assertEqual(sites["lon"], [7.0])
-        self.assertIn("SnapWave_CASES_Metamodel/output_sites_1.nc", self._manifest()["sources"])
+        self.assertIn("output_sites_snapwave.csv not found", result.skipped["output_sites"])
+        self.assertIn("isobaths declared", result.skipped["isobaths"])
 
 
 class TestPortalStaleness(_CaseFixture):
