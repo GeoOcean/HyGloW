@@ -59,6 +59,7 @@ from utils import viz
 from utils.config import (
     PATHS,
     SIMULATIONS,
+    display_title,
     goals_for_snapwave,
     load_goals,
     model_config,
@@ -66,7 +67,7 @@ from utils.config import (
     resolve,
     simulation_model,
 )
-from utils.geometry import min_depth, output_sites
+from utils.geometry import SITE_COORDS, min_depth, output_sites
 
 #: Metamodel LHS parameters, stored as ``{name}_forcing`` on postprocessed output.
 FORCING_VARS = ("hs", "tp", "dir", "spr", "wl")
@@ -136,17 +137,6 @@ def generate_cases(goals: Mapping[str, Mapping]) -> pd.DataFrame:
     cases.insert(1, "active_node", cases["goal"].astype(int))
     return cases
 
-
-#: HyGloW site coordinate -> output-sites table column.
-SITE_COORDS = {
-    "sites": "source_id",
-    "site_source": "source",
-    "site_label": "source_label",
-    "site_mesh_depth": "mesh_depth",
-    "site_nominal_depth": "nominal_depth",
-    "site_longitude": "lon",
-    "site_latitude": "lat",
-}
 
 #: Output-points file written into every case (SnapWave ``obsfile``, SWAN ``POINTS``).
 SITES_FILENAME = "output_sites.txt"
@@ -524,13 +514,10 @@ class HyWavesWrapperSetup:
         """The enclosure buffer (m) when the model uses the enclosure (SnapWave), else None."""
         return self.enclosure_buffer_m if self.model == "snapwave" else None
 
-    def plot_metamodel_configuration(
-        self, cases_df: pd.DataFrame, **kwargs: Any
-    ) -> Figure:
+    def plot_metamodel_configuration(self, cases_df: pd.DataFrame, **kwargs: Any) -> Figure:
         """Metamodel pre-run diagnostic (see :func:`utils.viz.plot_metamodel_configuration`)."""
         return viz.plot_metamodel_configuration(
             **self._plot_common(
-                aoi_gdf=self.aoi_gdf,
                 cases_df=cases_df,
                 bounds=SIMULATIONS.get("bounds"),
                 num_samples_per_goal=SIMULATIONS.get("num_samples_per_goal"),
@@ -540,15 +527,6 @@ class HyWavesWrapperSetup:
                 title=f"Metamodel pre-run diagnostic ({self.model})",
                 **kwargs,
             )
-        )
-
-    def plot_metamodel_configuration_map(
-        self, cases_df: pd.DataFrame, **kwargs: Any
-    ) -> Figure:
-        """Large map-only view (see :func:`utils.viz.plot_metamodel_configuration_map`)."""
-        kwargs.setdefault("title", "Metamodel configuration map")
-        return viz.plot_metamodel_configuration_map(
-            **self._plot_common(cases_df=cases_df, **kwargs)
         )
 
     def plot_dynamic_configuration(
@@ -568,7 +546,6 @@ class HyWavesWrapperSetup:
         """
         return viz.plot_dynamic_configuration(
             **self._plot_common(
-                aoi_gdf=self.aoi_gdf,
                 offshore=offshore,
                 offshore_name=offshore_name,
                 mesh_file=str(grid_file(self.model)),
@@ -589,35 +566,25 @@ class HyWavesWrapperSetup:
         *,
         wind: xr.Dataset | None = None,
         water_level: xr.DataArray | None = None,
-        **kwargs: Any,
     ) -> Figure:
-        """Wind and water level of the dynamic cases (see :func:`utils.viz.plot_dynamic_forcing`).
-
-        The wind-wave angle panel shades the wind correction's training range
-        (``metamodel.wind_correction.wind_wave_angle``).
+        """Wind and water level of the dynamic cases (see
+        :func:`bluemath_tk.waves.hywaves.plots.plot_dynamic_forcing`); the
+        wind-wave angle panel shades the wind correction's training range.
         """
+        from bluemath_tk.waves.hywaves.plots import plot_dynamic_forcing
+
         from utils.wind import config as wind_config
 
-        return viz.plot_dynamic_forcing(
-            aoi_gdf=self.aoi_gdf,
-            goals_config=self.goals_config,
-            offshore=offshore,
+        return plot_dynamic_forcing(
+            self.aoi_gdf,
+            self.goals_config,
+            offshore,
             wind=wind,
             water_level=water_level,
             angle_range=tuple(wind_config()["wind_wave_angle"]),
             wind_name=_forcing_name("wind"),
             water_level_name=_forcing_name("water_level"),
-            title=f"Dynamic met-ocean forcing ({self.model})",
-            **kwargs,
-        )
-
-    def plot_dynamic_configuration_map(
-        self, offshore: xr.Dataset, **kwargs: Any
-    ) -> Figure:
-        """Large map-only view (see :func:`utils.viz.plot_dynamic_configuration_map`)."""
-        kwargs.setdefault("title", "Dynamic configuration map")
-        return viz.plot_dynamic_configuration_map(
-            **self._plot_common(offshore=offshore, **kwargs)
+            title=display_title(f"Dynamic met-ocean forcing ({self.model})"),
         )
 
 
@@ -627,7 +594,6 @@ __all__ = [
     "FORCING_VARS",
     "HyWavesWrapperSetup",
     "SITES_FILENAME",
-    "SITE_COORDS",
     "WRAPPERS",
     "cases_dir",
     "dynamic_parameters",

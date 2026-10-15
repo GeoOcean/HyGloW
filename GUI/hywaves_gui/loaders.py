@@ -124,7 +124,7 @@ def load_coastal_buffer_line() -> list[list[tuple[float, float]]]:
 
 # ----------------------------------------------------------------------
 # Case data — read only from each case's published bundle, ``{Case}/portal/``
-# (built by ``python -m hywaves publish``; see hywaves/contract/CONTRACT.md §6).
+# (built by ``python -m hywaves publish``, see hywaves/publish.py).
 # Every loader degrades to an empty result when its file is absent — a
 # not-yet-published case, or a layer the publish step skipped — so the GUI
 # shows a "not generated yet" message instead of failing.
@@ -297,10 +297,8 @@ def load_metamodel_validation(case: dict) -> pd.DataFrame:
 def load_buoy_validation(case: dict) -> pd.DataFrame:
     """Buoy validation summaries (``portal/buoy_validation/*_summary_*.csv``).
 
-    Written by the case's ``10*_Validate_*_Buoys.ipynb`` notebook(s) — a case
-    with one buoy network only has one such file (e.g. the template's
-    ``10a``/``10b`` split collapsed to a single ``10_...`` notebook), a case
-    with two writes both. Adds a ``buoy_type`` column ("offshore"/"onshore")
+    Written by the case's ``10_Validate_Buoys.ipynb`` (older cases: one file per
+    buoy network). Adds a ``buoy_type`` column ("offshore"/"onshore")
     from each file's name so any subsets present can be shown together in one
     table.
     """
@@ -327,7 +325,7 @@ def book_dir(case: dict) -> Path:
 def available_buoy_figures(case: dict) -> set[str]:
     """Site ids with a published summary PNG (``portal/buoy_validation/figures/<site>.png``).
 
-    Written by the ``val.plot_buoy_summary`` save cell in ``10a``/``10b``.
+    Written by the ``val.plot_buoy_summary`` save cell of notebook 10.
     """
     return {p.stem for p in buoy_figures_dir(case).glob("*.png")}
 

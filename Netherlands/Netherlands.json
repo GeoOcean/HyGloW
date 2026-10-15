@@ -144,10 +144,7 @@
             }
         },
         "mda_candidates": [
-            50,
             100,
-            200,
-            350,
             550
         ],
         "mda_inputs": [
@@ -167,12 +164,7 @@
                 ],
                 "pca_variance": 0.99
             },
-            "tp": {
-                "vars_to_stack": [
-                    "tp"
-                ],
-                "pca_variance": 0.99
-            },
+            "tp": "raw",
             "dir": {
                 "vars_to_stack": [
                     "dir_u",

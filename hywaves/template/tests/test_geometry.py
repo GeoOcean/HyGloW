@@ -11,6 +11,7 @@ import xarray as xr
 from bluemath_tk.topo_bathy.mesh import Mesh
 
 from utils.geometry import (
+    SITE_META,
     attach_site_meta,
     buoy_depth_check,
     check_model_sites,
@@ -20,6 +21,7 @@ from utils.geometry import (
     metric_groups,
     per_site_coord,
     resolve_sites,
+    site_meta,
 )
 
 
@@ -131,32 +133,38 @@ class TestResolveSites(unittest.TestCase):
             resolve_sites(self.ds, "not-a-group")
 
 
-class TestAttachSiteMeta(unittest.TestCase):
-    def test_copies_shared_metadata(self) -> None:
-        template = xr.Dataset(
-            {"hs": (("sites",), [1.0, 2.0])},
-            coords={
-                "sites": ["a", "b"],
-                "site_source": ("sites", ["buoy", "isobath"]),
-                "site_label": ("sites", ["buoy_a", "10m"]),
-                "site_depth": ("sites", [-5.0, -10.0]),
-                "site_longitude": ("sites", [1.0, 2.0]),
-                "site_latitude": ("sites", [3.0, 4.0]),
-            },
-        )
-        ds = xr.Dataset({"hs": (("sites",), [9.0])}, coords={"sites": ["a"]})
-        out = attach_site_meta(ds, template)
+class TestSiteMeta(unittest.TestCase):
+    """Site metadata comes from the ok rows of the output-sites table."""
+
+    TABLE = pd.DataFrame(
+        {
+            "lon": [1.0, 2.0],
+            "lat": [3.0, 4.0],
+            "source": ["buoy", "isobath"],
+            "source_id": ["buoy_a", "10m_0"],
+            "source_label": ["waves", "10m"],
+            "nominal_depth": [5.0, 10.0],
+            "name": ["a", None],
+            "mesh_depth": [5.2, 10.1],
+            "status": ["ok", "ok"],
+        }
+    )
+
+    def test_attach_site_meta(self) -> None:
+        ds = xr.Dataset({"hs": (("sites",), [9.0])}, coords={"sites": ["buoy_a"]})
+        with mock.patch("utils.geometry.output_sites", return_value=self.TABLE):
+            out = attach_site_meta(ds)
         self.assertEqual(str(out["site_source"].values[0]), "buoy")
         self.assertEqual(float(out["site_longitude"].values[0]), 1.0)
+        self.assertEqual(float(out["site_mesh_depth"].values[0]), 5.2)
+        self.assertEqual(set(out.coords) - {"sites"}, set(SITE_META))
 
-    def test_no_overlap_returns_unchanged(self) -> None:
-        template = xr.Dataset(
-            {"hs": (("sites",), [1.0])},
-            coords={"sites": ["a"], "site_source": ("sites", ["buoy"])},
-        )
-        ds = xr.Dataset({"hs": (("sites",), [9.0])}, coords={"sites": ["z"]})
-        out = attach_site_meta(ds, template)
-        self.assertNotIn("site_source", out.coords)
+    def test_site_meta_order_and_unknown(self) -> None:
+        with mock.patch("utils.geometry.output_sites", return_value=self.TABLE):
+            self.assertEqual(list(site_meta().sites.values), ["buoy_a", "10m_0"])
+            self.assertEqual(list(site_meta(["10m_0"]).site_label.values), ["10m"])
+            with self.assertRaises(KeyError):
+                site_meta(["nope"])
 
 
 class TestModelSites(unittest.TestCase):

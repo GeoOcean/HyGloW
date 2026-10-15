@@ -178,25 +178,6 @@ class TestValidateCase(unittest.TestCase):
         findings = validate_case(self.case_dir)
         self.assertIn("outputs.metrics", [f.code for f in _errors(findings)])
 
-    def test_pre_060_metrics_csv_is_flagged_legacy(self) -> None:
-        header = "goal,metamodel,mda_candidate,group,variable,n,bias,rmse,r2"
-        metrics_dir = self.case_dir / "outputs" / "goal_01" / "isobaths"
-        metrics_dir.mkdir(parents=True)
-        (metrics_dir / "validation_metrics.csv").write_text(
-            f"{header}\n1,isobaths,50,5m,hs,10,0,0.1,0.9\n"
-        )
-        buoy_dir = self.case_dir / "outputs" / "buoy_validation"
-        buoy_dir.mkdir(parents=True)
-        (buoy_dir / "onshore_summary_2010.csv").write_text(f"{header},rrmse\n")
-        self._write_config(_minimal_config())
-
-        findings = validate_case(self.case_dir)
-        legacy = [f for f in _warnings(findings) if f.code == "outputs.metrics_legacy"]
-        self.assertEqual(len(legacy), 1)
-        self.assertIn("goal_01/isobaths/validation_metrics.csv", legacy[0].message)
-        self.assertNotIn("onshore_summary", legacy[0].message)
-        self.assertEqual(_errors(findings), [])
-
     def test_metamodel_absent_skips_engine_checks(self) -> None:
         self._write_config(_minimal_config())
         findings = validate_case(self.case_dir)
@@ -304,6 +285,69 @@ class TestValidateCase(unittest.TestCase):
         self.assertFalse(any("simulations.swan.grid_file must" in m for m in messages))
         self.assertIn("engine.tp_raw", {f.code for f in findings})
 
+SITES_HEADER = "lon,lat,source,source_id,source_label,nominal_depth,name,mesh_depth,status"
+
+
+class TestOutputSites(unittest.TestCase):
+    """``simulations.output_sites_config`` and ``outputs/output_sites_{model}.csv``."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.case_dir = Path(self._tmp.name) / "TestCase"
+        (self.case_dir / "outputs").mkdir(parents=True)
+        self.config = _minimal_config(
+            simulations={
+                "model": "snapwave",
+                "snapwave": {"grid_file": "inputs/GRID/mesh.nc"},
+                "output_sites_config": {"isobaths": [{"name": "10m", "level": -10}]},
+            },
+            metamodel={"sets": {"buoys": {"sites": "buoy"}, "iso": {"sites": "10m"}}},
+        )
+
+    def _validate(self, rows: list[str] | None = None, grid: str = "inputs/GRID/mesh.nc"):
+        if rows is not None:
+            text = "\n".join([f"# grid: {grid}", SITES_HEADER, *rows]) + "\n"
+            (self.case_dir / "outputs" / "output_sites_snapwave.csv").write_text(text)
+        (self.case_dir / "TestCase.json").write_text(json.dumps(self.config))
+        return validate_case(self.case_dir)
+
+    def test_missing_table_is_a_gap(self) -> None:
+        findings = self._validate()
+        self.assertIn("sites.table", [f.code for f in _warnings(findings)])
+
+    def test_table_counts_ok_sites_and_resolves_sets(self) -> None:
+        findings = self._validate(
+            ["1,2,isobath,10m_0,10m,10,,9.9,ok", "1,2,buoy,buoy_B,waves,8,B,,outside_mesh"]
+        )
+        self.assertIn("1 of 2 output sites ok", " ".join(f.message for f in findings))
+        self.assertNotIn("sites.sets", [f.code for f in _errors(findings)])
+
+    def test_table_on_another_grid_is_an_error(self) -> None:
+        findings = self._validate(["1,2,isobath,10m_0,10m,10,,9.9,ok"], grid="old_mesh.nc")
+        self.assertIn("sites.table", [f.code for f in _errors(findings)])
+
+    def test_set_selecting_no_ok_site_is_an_error(self) -> None:
+        self.config["metamodel"]["sets"]["bay"] = {"sites": ["Bay", "10m_0"]}
+        findings = self._validate(["1,2,isobath,10m_0,10m,10,,9.9,ok"])
+        errors = [f.message for f in _errors(findings) if f.code == "sites.sets"]
+        self.assertEqual(len(errors), 1)
+        self.assertIn("'Bay'", errors[0])
+
+    def test_bad_site_config_values_are_errors(self) -> None:
+        self.config["simulations"]["min_depth"] = -1
+        self.config["simulations"]["output_sites_config"] = {
+            "isobaths": [{"name": "5m"}, {"level": -10, "smooth_m": 0}],
+            "polygons": [{"name": "Bay", "file": "Bay.shp", "fraction": 1.5}, {"file": "x.shp"}],
+            "clip_to_aoi": "yes",
+        }
+        codes = [f.code for f in _errors(self._validate())]
+        self.assertEqual(codes.count("sites.isobaths"), 2)
+        self.assertEqual(codes.count("sites.polygons"), 2)
+        self.assertIn("sites.config", codes)
+        self.assertIn("sites.min_depth", codes)
+
+
 class TestFindCaseConfig(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
@@ -315,18 +359,9 @@ class TestFindCaseConfig(unittest.TestCase):
         (self.case_dir / "TestCase.json").write_text("{}")
         self.assertEqual(find_case_config(self.case_dir), self.case_dir / "TestCase.json")
 
-    def test_finds_lowercase_fallback(self) -> None:
+    def test_other_names_are_not_the_config(self) -> None:
         (self.case_dir / "testcase.json").write_text("{}")
-        self.assertEqual(find_case_config(self.case_dir), self.case_dir / "testcase.json")
-
-    def test_ignores_goals_and_observations_json(self) -> None:
-        (self.case_dir / "Goals.json").write_text("{}")
-        (self.case_dir / "observations.json").write_text("{}")
-        self.assertIsNone(find_case_config(self.case_dir))
-
-    def test_returns_none_when_ambiguous(self) -> None:
-        (self.case_dir / "one.json").write_text("{}")
-        (self.case_dir / "two.json").write_text("{}")
+        (self.case_dir / "config.json").write_text("{}")
         self.assertIsNone(find_case_config(self.case_dir))
 
 

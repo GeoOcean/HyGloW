@@ -23,7 +23,10 @@ def _cmd_start(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
+    from .manifest import describe_revision, read_manifest
+
     print(f"Created case: {target}")
+    print(f"Toolkit     : {describe_revision(read_manifest(target)['bluemath_tk'])}")
     print(
         f"""
 Next steps (see {target.name}/README.md):
@@ -50,7 +53,7 @@ def _cmd_update(args: argparse.Namespace) -> int:
 
 
 def _cmd_validate(args: argparse.Namespace) -> int:
-    """Handle ``hywaves validate``: run the case contract validator."""
+    """Handle ``hywaves validate``: check what the case is missing."""
     from .contract.validate import main as validate_main
 
     argv = [args.case_dir] + (["--publish"] if args.publish else [])
@@ -116,7 +119,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Scaffold a new self-contained case folder",
         description=(
             "Create a new case folder with the vendored engine, notebooks "
-            "(outputs stripped), SnapWave templates, tests, and a config "
+            "(outputs stripped), SnapWave/SWAN templates and a config "
             "skeleton. No data is downloaded — fill in inputs via the notebooks."
         ),
     )
@@ -139,11 +142,11 @@ def main(argv: list[str] | None = None) -> int:
         "update",
         help="Re-sync a case's vendored engine from the template",
         description=(
-            "Update the case's engine files (utils/, tests/) to the current "
-            "hywaves/template/ versions. Locally modified files are kept "
-            "unless --force. Notebooks and SnapWave templates are never "
-            "touched. Orphaned files (e.g. a legacy vendored bluemesh2d/ or "
-            "pymesh2d/, now pip dependencies) are reported, never deleted."
+            "Update the case's engine files (utils/) to the current "
+            "hywaves/template/ versions and record the bluemath_tk revision "
+            "in the case manifest. Locally modified files are kept unless "
+            "--force. Notebooks and model templates are never touched. "
+            "Orphaned files are reported, never deleted."
         ),
     )
     p_update.add_argument("case_dir", help="Path to the case folder")
@@ -157,8 +160,8 @@ def main(argv: list[str] | None = None) -> int:
 
     p_validate = sub.add_parser(
         "validate",
-        help="Check a case folder against the case contract",
-        description="Validate a case against hywaves/contract/CONTRACT.md.",
+        help="Check what a case folder is missing",
+        description="Check a case folder (config, inputs, outputs, portal); see hywaves/contract/validate.py.",
     )
     p_validate.add_argument("case_dir", help="Path to the case folder")
     p_validate.add_argument(
@@ -176,7 +179,7 @@ def main(argv: list[str] | None = None) -> int:
             "set of files the portal (GUI) reads — contract files, "
             "pre-computed map layers (AoI, depth contours, output sites), "
             "merged metrics, web-sized figures, and a manifest. Replaces any "
-            "previous bundle. See CONTRACT.md §6."
+            "previous bundle."
         ),
     )
     p_publish.add_argument("case_dir", help="Path to the case folder")
@@ -210,7 +213,7 @@ def main(argv: list[str] | None = None) -> int:
         description=(
             "Copy the published portal bundle (built book included) to "
             "{Case}/portal_<tag>/ so this version stays browsable in the GUI "
-            "after the case is re-run and re-published. See CONTRACT.md §6."
+            "after the case is re-run and re-published."
         ),
     )
     p_snapshot.add_argument("case_dir", help="Path to the case folder")

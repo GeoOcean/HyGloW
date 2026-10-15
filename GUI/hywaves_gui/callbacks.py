@@ -213,7 +213,7 @@ def _render_buoy_validation(case: dict):
     if buoys.empty:
         return dbc.Alert(
             "No buoy validation published for this case yet. Run "
-            "10a_Validate_Offshore_Buoys.ipynb / 10b_Validate_Onshore_Buoys.ipynb "
+            "10_Validate_Buoys.ipynb "
             "(with their save-summary cells), then `python -m hywaves publish`.",
             color="warning",
             className="drawer-alert",
@@ -510,7 +510,7 @@ def register_callbacks(app):
             if key not in available_buoy_figures(case):
                 body = dbc.Alert(
                     "No validation summary generated yet for this buoy. Run "
-                    "10a_Validate_Offshore_Buoys.ipynb / 10b_Validate_Onshore_Buoys.ipynb "
+                    "10_Validate_Buoys.ipynb "
                     "(with their save-summary-PNG cell), then `python -m hywaves publish`.",
                     color="secondary",
                     className="drawer-alert",

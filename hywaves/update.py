@@ -1,46 +1,32 @@
 """Re-sync a case's vendored engine from the canonical template.
 
 ``python -m hywaves update MyCase/`` compares the case's engine files
-(``utils/``, ``tests/``) against ``hywaves/template/`` using the hashes
+(``utils/``) against ``hywaves/template/`` using the hashes
 recorded in ``.hywaves/manifest.json``:
 
 - files the user never touched are updated to the template version;
 - files with local modifications are reported and left alone
-  (``--force`` overwrites them — the polite message is: if your fix is
-  good, PR it to the template so everyone benefits);
-- files present in the case but gone from the template (e.g. a legacy
-  vendored ``bluemesh2d/`` or ``pymesh2d/``, now pip dependencies) are
-  reported as orphaned, never deleted.
+  (``--force`` overwrites them — if your fix is good, PR it to the template);
+- files present in the case but gone from the template are reported as
+  orphaned, never deleted.
 
-Cases created before the manifest existed are handled conservatively:
-without a shipped-state record, every differing file counts as locally
-modified. Notebooks and model (SnapWave/SWAN) templates are user-owned and
-never synced.
+Notebooks and model (SnapWave/SWAN) templates are user-owned and never synced.
+The manifest then records the new hywaves version and the bluemath_tk
+revision of the environment (see :mod:`hywaves.manifest`).
 """
 
 from __future__ import annotations
 
-import json
 import shutil
-from datetime import datetime, timezone
 from pathlib import Path
 
-from . import SCHEMA_VERSION, __version__
-from .scaffold import SYNCED_DIRS, TEMPLATE_DIR, _file_hashes
-
-MANIFEST_REL = Path(".hywaves") / "manifest.json"
+from . import __version__
+from .manifest import bluemath_tk_revision, describe_revision, now, read_manifest, write_manifest
+from .scaffold import ENGINE_DIRS, TEMPLATE_DIR, _file_hashes
 
 
 class UpdateError(RuntimeError):
     """Raised when a case cannot be updated."""
-
-
-def _load_manifest(case_dir: Path) -> dict | None:
-    """Read ``.hywaves/manifest.json`` from *case_dir*, or ``None`` if absent."""
-    path = case_dir / MANIFEST_REL
-    if not path.is_file():
-        return None
-    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def plan_update(case_dir: Path) -> dict[str, list[str]]:
@@ -49,35 +35,34 @@ def plan_update(case_dir: Path) -> dict[str, list[str]]:
     Parameters
     ----------
     case_dir
-        Case folder to compare against ``hywaves/template/``.
+        Case folder (with a manifest) to compare against ``hywaves/template/``.
 
     Returns
     -------
     dict[str, list[str]]
         Case-relative paths keyed by action: ``up_to_date``, ``update``
         (differs but untouched since shipping — safe to sync), ``add`` (new
-        in the template), ``modified`` (differs and locally edited, or of
-        unknown provenance), ``orphaned`` (in the case but gone from the
-        template — reported, never synced or deleted).
+        in the template), ``modified`` (differs and locally edited),
+        ``orphaned`` (in the case but gone from the template — never synced
+        or deleted).
 
     Raises
     ------
     UpdateError
-        If the template itself has no engine files to compare against.
+        If the case has no manifest.
     """
-    template = _file_hashes(TEMPLATE_DIR, SYNCED_DIRS)
-    if not template:
-        raise UpdateError(f"Template has no engine files under {TEMPLATE_DIR}")
-    case = _file_hashes(case_dir, SYNCED_DIRS)
-    manifest = _load_manifest(case_dir)
-    shipped = (manifest or {}).get("engine_files", {})
+    manifest = read_manifest(case_dir)
+    if manifest is None:
+        raise UpdateError(
+            f"{case_dir.name} has no .hywaves/manifest.json; scaffold a new case with "
+            "`python -m hywaves start` and move its inputs there"
+        )
+    template = _file_hashes(TEMPLATE_DIR, ENGINE_DIRS)
+    case = _file_hashes(case_dir, ENGINE_DIRS)
+    shipped = manifest.get("engine_files", {})
 
     plan: dict[str, list[str]] = {
-        "up_to_date": [],
-        "update": [],   # differs, but untouched since shipping → safe to sync
-        "add": [],      # new in template, absent in case
-        "modified": [], # differs AND locally modified (or unknown provenance)
-        "orphaned": [], # in case, not in template (legacy dirs, local additions)
+        "up_to_date": [], "update": [], "add": [], "modified": [], "orphaned": []
     }
     for rel, template_hash in template.items():
         case_hash = case.get(rel)
@@ -93,47 +78,10 @@ def plan_update(case_dir: Path) -> dict[str, list[str]]:
     return plan
 
 
-def _summarize_orphans(orphaned: list[str]) -> list[str]:
-    """Collapse orphaned top-level dirs with many files (e.g. pymesh2d/) to one line."""
-    by_top: dict[str, int] = {}
-    for rel in orphaned:
-        top = rel.split("/", 1)[0]
-        by_top[top] = by_top.get(top, 0) + 1
-    collapsed = {top for top, count in by_top.items() if count > 3}
-    lines = [f"{top}/ ({by_top[top]} file(s))" for top in sorted(collapsed)]
-    lines += [rel for rel in orphaned if rel.split("/", 1)[0] not in collapsed]
-    return lines
-
-
-def _write_manifest(case_dir: Path, synced_hashes: dict[str, str]) -> None:
-    """Update ``.hywaves/manifest.json`` with the shipped-state hashes for synced files.
-
-    Preserves the manifest's original ``created`` timestamp and merges in
-    the current hywaves/schema version, an ``updated`` timestamp, and
-    *synced_hashes* as the new ``engine_files`` record.
-    """
-    manifest = _load_manifest(case_dir) or {}
-    manifest.setdefault(
-        "created", datetime.now(timezone.utc).isoformat(timespec="seconds")
-    )
-    manifest.update(
-        {
-            "hywaves_version": __version__,
-            "schema_version": SCHEMA_VERSION,
-            "source": f"hywaves-template@{__version__}",
-            "updated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "engine_files": synced_hashes,
-        }
-    )
-    path = case_dir / MANIFEST_REL
-    path.parent.mkdir(exist_ok=True)
-    path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
-
-
 def update_case(
     case_dir: str | Path, *, force: bool = False, dry_run: bool = False
 ) -> int:
-    """Sync the case's engine from the template, printing a human-readable plan.
+    """Sync the case's engine from the template, printing the plan.
 
     Parameters
     ----------
@@ -147,13 +95,13 @@ def update_case(
     Returns
     -------
     int
-        CLI exit code (always ``0`` — sync problems are reported per-file,
-        not treated as failures).
+        CLI exit code (always ``0``; sync problems are reported per file).
 
     Raises
     ------
     UpdateError
-        If *case_dir* is not a directory, or it is the template itself.
+        If *case_dir* is not a directory, is the template itself, or has no
+        manifest.
     """
     case_dir = Path(case_dir).resolve()
     if not case_dir.is_dir():
@@ -161,18 +109,13 @@ def update_case(
     if case_dir == TEMPLATE_DIR:
         raise UpdateError("Refusing to update the template from itself")
 
-    has_manifest = _load_manifest(case_dir) is not None
-    if not has_manifest:
-        print(
-            "note: no .hywaves/manifest.json — this case predates scaffolding, "
-            "so every differing file is treated as locally modified."
-        )
-
     plan = plan_update(case_dir)
     to_sync = plan["update"] + plan["add"] + (plan["modified"] if force else [])
+    revision = bluemath_tk_revision()
 
     print(f"Template : hywaves-template@{__version__}")
     print(f"Case     : {case_dir.name}")
+    print(f"Toolkit  : {describe_revision(revision)}")
     print(f"  up to date : {len(plan['up_to_date'])}")
     for action in ("update", "add"):
         for rel in plan[action]:
@@ -180,27 +123,30 @@ def update_case(
     for rel in plan["modified"]:
         tag = "force-sync" if force else "KEPT (locally modified)"
         print(f"  {tag:<10} : {rel}")
-    for line in _summarize_orphans(plan["orphaned"]):
-        print(f"  orphaned   : {line} (not in template; left alone)")
+    for rel in plan["orphaned"]:
+        print(f"  orphaned   : {rel} (not in template; left alone)")
 
     if dry_run:
         print("\nDry run — nothing written.")
         return 0
 
     for rel in to_sync:
-        source = TEMPLATE_DIR / rel
         target = case_dir / rel
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target)
+        shutil.copy2(TEMPLATE_DIR / rel, target)
 
-    # Manifest records shipped-state hashes only for files that now match the
-    # template; skipped modified files stay unrecorded → flagged again next run.
-    template_hashes = _file_hashes(TEMPLATE_DIR, SYNCED_DIRS)
-    case_hashes = _file_hashes(case_dir, SYNCED_DIRS)
-    synced = {
-        rel: h for rel, h in template_hashes.items() if case_hashes.get(rel) == h
-    }
-    _write_manifest(case_dir, synced)
+    # Shipped-state hashes only for files that now match the template; kept
+    # modified files stay unrecorded, so they are flagged again next run.
+    template_hashes = _file_hashes(TEMPLATE_DIR, ENGINE_DIRS)
+    case_hashes = _file_hashes(case_dir, ENGINE_DIRS)
+    write_manifest(
+        case_dir,
+        hywaves_version=__version__,
+        source=f"hywaves-template@{__version__}",
+        updated=now(),
+        bluemath_tk=revision,
+        engine_files={rel: h for rel, h in template_hashes.items() if case_hashes.get(rel) == h},
+    )
 
     kept = 0 if force else len(plan["modified"])
     print(f"\nSynced {len(to_sync)} file(s); kept {kept} locally modified file(s).")

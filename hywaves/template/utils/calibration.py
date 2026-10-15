@@ -17,8 +17,8 @@ direction sector). This module is the case layer, driven by the
   to be added to ``offshore_waves`` (e.g. ``WHACS_cal``) and used by the
   dynamic runs and the reconstruction like any other offshore source.
 
-Notebook ``07b_Satellite_Calibration.ipynb``; method and choices in
-``hywaves/docs/satellite_calibration.md``.
+Notebook ``07b_Satellite_Calibration.ipynb``; method in
+:mod:`bluemath_tk.waves.calibration` and :mod:`bluemath_tk.waves.altimetry`.
 """
 
 from __future__ import annotations

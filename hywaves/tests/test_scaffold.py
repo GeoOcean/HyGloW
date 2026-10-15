@@ -11,7 +11,6 @@ from pathlib import Path
 from hywaves.scaffold import (
     ENGINE_DIRS,
     SUPPORT_DIRS,
-    SYNCED_DIRS,
     TEMPLATE_DIR,
     ScaffoldError,
     _file_hashes,
@@ -30,7 +29,7 @@ class TestStartCase(unittest.TestCase):
 
         self.assertEqual(target, self.dest / "MyCase")
         self.assertTrue((target / "utils").is_dir())
-        self.assertTrue((target / "tests").is_dir())
+        self.assertFalse((target / "tests").exists())
         for model in ("snapwave", "swan"):
             for kind in ("metamodel", "dynamic"):
                 self.assertTrue((target / f"templates-{model}-{kind}").is_dir())
@@ -85,9 +84,10 @@ class TestStartCase(unittest.TestCase):
         target = start_case("Lagoon", self.dest)
 
         manifest = json.loads((target / ".hywaves" / "manifest.json").read_text())
-        expected = _file_hashes(TEMPLATE_DIR, SYNCED_DIRS)
+        expected = _file_hashes(TEMPLATE_DIR, ENGINE_DIRS)
         self.assertEqual(manifest["engine_files"], expected)
         self.assertTrue(expected, "template has no engine files to hash")
+        self.assertEqual(set(manifest["bluemath_tk"]), {"version", "commit", "branch", "dirty"})
 
     def test_invalid_name_rejected(self) -> None:
         for bad in ("", "1Case", "My Case", "../escape", "Case/Sub"):
@@ -99,9 +99,9 @@ class TestStartCase(unittest.TestCase):
         with self.assertRaises(ScaffoldError):
             start_case("Duplicate", self.dest)
 
-    def test_engine_and_support_dirs_are_disjoint_and_cover_synced_dirs(self) -> None:
-        self.assertEqual(SYNCED_DIRS, ENGINE_DIRS + ("tests",))
-        self.assertIn("tests", SUPPORT_DIRS)
+    def test_engine_and_support_dirs_are_disjoint(self) -> None:
+        self.assertEqual(ENGINE_DIRS, ("utils",))
+        self.assertFalse(set(ENGINE_DIRS) & set(SUPPORT_DIRS))
 
 
 class TestStartCaseFromExistingCase(unittest.TestCase):

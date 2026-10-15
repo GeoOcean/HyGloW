@@ -458,14 +458,49 @@ def output_sites(
 # Site metadata, groups and selection
 # ---------------------------------------------------------------------------
 
-SITE_META = (
-    "site_source",
-    "site_label",
-    "site_mesh_depth",
-    "site_nominal_depth",
-    "site_longitude",
-    "site_latitude",
-)
+#: Site coordinate of the model outputs -> column of the output-sites table.
+SITE_COORDS = {
+    "sites": "source_id",
+    "site_source": "source",
+    "site_label": "source_label",
+    "site_mesh_depth": "mesh_depth",
+    "site_nominal_depth": "nominal_depth",
+    "site_longitude": "lon",
+    "site_latitude": "lat",
+}
+#: Metadata coordinates carried by every dataset on ``sites``.
+SITE_META = tuple(name for name in SITE_COORDS if name != "sites")
+
+
+def site_meta(site_ids: Iterable[str] | None = None) -> xr.Dataset:
+    """
+    Metadata coordinates of the ``ok`` output sites (:func:`output_sites`).
+
+    Parameters
+    ----------
+    site_ids
+        Sites to return, in this order; default every ``ok`` site.
+
+    Returns
+    -------
+    xarray.Dataset
+        No variables; ``sites`` and the :data:`SITE_META` coordinates.
+
+    Raises
+    ------
+    KeyError
+        If a site is not an ``ok`` output site.
+    """
+    table = output_sites().set_index("source_id")
+    ids = list(table.index) if site_ids is None else [str(s) for s in site_ids]
+    missing = [s for s in ids if s not in table.index]
+    if missing:
+        raise KeyError(f"Not ok output sites: {missing[:8]}")
+    rows = table.loc[ids]
+    return xr.Dataset(
+        coords={"sites": ids}
+        | {name: ("sites", rows[col].to_numpy()) for name, col in SITE_COORDS.items() if name != "sites"}
+    )
 
 
 def per_site_coord(ds: xr.Dataset, name: str, default: str = "") -> dict[str, str]:
@@ -638,32 +673,25 @@ def resolve_sites(
     return out
 
 
-def attach_site_meta(ds: xr.Dataset, template: xr.Dataset) -> xr.Dataset:
+def attach_site_meta(ds: xr.Dataset) -> xr.Dataset:
     """
-    Copy SnapWave site metadata coordinates from *template* onto *ds*.
+    Add the :data:`SITE_META` coordinates of the output sites to *ds*.
 
     Parameters
     ----------
     ds
-        Dataset to annotate (e.g. offshore hindcast at buoys).
-    template
-        Reference dataset with ``SITE_META`` coordinates (typically LHS cases).
+        Dataset on ``sites`` (output sites, e.g. buoys or a reconstruction).
 
     Returns
     -------
     xarray.Dataset
-        *ds* with shared metadata coords when sites overlap *template*.
+        *ds* with the site metadata coordinates.
     """
-    site_ids = [str(s) for s in ds.sites.values]
-    shared = [s for s in site_ids if s in template.sites.values]
-    if not shared:
-        return ds
-    ref = template.sel(sites=site_ids)
-    meta = {name: ref[name] for name in SITE_META if name in ref.coords}
-    return ds.assign_coords(meta)
+    return ds.assign_coords(site_meta(ds.sites.values).coords)
 
 
 __all__ = [
+    "SITE_COORDS",
     "SITE_META",
     "attach_site_meta",
     "compute_output_sites",
@@ -671,4 +699,5 @@ __all__ = [
     "metric_groups",
     "per_site_coord",
     "resolve_sites",
+    "site_meta",
 ]

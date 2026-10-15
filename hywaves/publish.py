@@ -1,11 +1,11 @@
 """``hywaves publish``: export a case's portal bundle to ``{Case}/portal/``.
 
-The bundle is the only thing the portal (GUI) reads — see CONTRACT.md §6.
+The bundle is the only thing the portal (GUI) reads.
 It holds small, self-describing files: the contract files copied under fixed
-names, the heavy map layers (depth contours from the topobathy raster,
-output sites from the metamodel NetCDF, the AoI shapefile) pre-computed into
-light JSON, and web-sized figures. A deployment then needs the bundle alone,
-never the raw inputs or ``outputs/``.
+names, the heavy map layers (depth contours from the topobathy raster, the
+output sites of ``outputs/output_sites_{model}.csv``, the AoI shapefile)
+pre-computed into light JSON, and web-sized figures. A deployment then needs
+the bundle alone, never the raw inputs or ``outputs/``.
 
 Workflow::
 
@@ -19,12 +19,12 @@ re-executed) in the case's git-ignored ``tmp/book/``: no ``book/`` folder in
 the case. Its links are absolute, for the route the GUI serves it under
 (``{HYGLOW_URL_BASE}/case-book/{case id}``).
 
-Only the stdlib is needed to build a bare bundle. The pre-computed layers
-use the case environment's scientific stack (``pyshp`` for the AoI,
-``rioxarray`` + ``contourpy`` for depth contours, ``xarray`` for output
-sites, ``Pillow`` for downscaling figures), each imported lazily — a missing
-package or source file skips just that layer, with the reason recorded in
-the manifest, rather than failing the whole publish.
+Publishing runs in the case environment (``pyshp`` for the AoI,
+``rioxarray`` + ``contourpy`` + bluemath_tk for depth contours, ``Pillow``
+for figures). A missing *source file* skips just that layer, with the reason
+recorded in the manifest; the portal shows it as "not published yet". The
+manifest, and the case manifest, record the bluemath_tk revision the
+published results were made with.
 """
 
 from __future__ import annotations
@@ -42,12 +42,11 @@ from pathlib import Path
 from typing import Callable
 
 from . import __version__
-from .contract.validate import ERROR, find_case_config, validate_case
+from .contract.validate import ERROR, find_case_config, model_block, validate_case
+from .manifest import bluemath_tk_revision, write_manifest
 
 PORTAL_DIRNAME = "portal"
 MANIFEST_NAME = "manifest.json"
-# Manifest format version — bump when its keys change shape.
-MANIFEST_SCHEMA = 1
 
 # Longest side, in pixels, of any published PNG. The GUI shows figures at
 # most ~1140 CSS px wide; 2400 keeps them sharp on 2x displays while
@@ -61,9 +60,6 @@ ISOBATH_DISPLAY_SPACING_DEG = 0.02
 
 # ~1 m at the equator — far below anything visible on the map.
 COORD_DECIMALS = 5
-
-_RASTER_X_NAMES = ("x", "lon", "longitude")
-_RASTER_Y_NAMES = ("y", "lat", "latitude")
 
 
 class PublishError(RuntimeError):
@@ -163,10 +159,7 @@ def _publish_aoi(bundle: _Bundle, config: dict) -> None:
     path = bundle.case_path(rel)
     if not path.is_file():
         raise LayerSkipped(f"AoI file not found: {rel}")
-    try:
-        import shapefile
-    except ImportError:
-        raise LayerSkipped("pyshp is not installed") from None
+    import shapefile
 
     bundle.source(path)
     for sidecar in (".shx", ".dbf", ".prj"):
@@ -223,9 +216,10 @@ def _publish_isobaths(bundle: _Bundle, config: dict) -> None:
     ``[[lon, lat], ...]`` lines (a level can have several disjoint contours,
     e.g. one per island).
 
-    A spec's ``smooth_m`` / ``min_length_m`` are applied as for the output
-    sites (via ``bluemath_tk.waves.hywaves.output_points``), so the drawn lines
-    are the contours the sites sit on.
+    As for the output sites (``utils.geometry.compute_output_sites``), the
+    raster is blanked outside the model mesh and each spec's ``smooth_m`` /
+    ``min_length_m`` are applied, so the drawn lines are the contours the
+    sites sit on.
     """
     rel = config.get("paths", {}).get("topobathy_file")
     specs = config.get("simulations", {}).get("output_sites_config", {}).get("isobaths") or []
@@ -236,17 +230,20 @@ def _publish_isobaths(bundle: _Bundle, config: dict) -> None:
     path = bundle.case_path(rel)
     if not path.is_file():
         raise LayerSkipped(f"topobathy raster not found: {rel}")
+    grid_rel = model_block(config).get("grid_file", "")
+    grid = bundle.case_path(grid_rel)
+    if not grid.is_file():
+        raise LayerSkipped(f"model grid not found: {grid_rel}")
     import contourpy
     import numpy as np
     import rioxarray
+    from bluemath_tk.topo_bathy.mesh import mask_raster_to_mesh, read_mesh
     from bluemath_tk.waves.hywaves.output_points import polyline_length_m, smooth_raster
 
     bundle.source(path)
+    bundle.source(grid)
     da = rioxarray.open_rasterio(path).squeeze("band", drop=True)
-    xname = next((n for n in _RASTER_X_NAMES if n in da.coords), None)
-    yname = next((n for n in _RASTER_Y_NAMES if n in da.coords), None)
-    if xname is None or yname is None:
-        raise LayerSkipped(f"no x/y (or lon/lat) coordinates in {rel}")
+    da = mask_raster_to_mesh(da, read_mesh(grid))
 
     generators: dict = {}
 
@@ -255,8 +252,8 @@ def _publish_isobaths(bundle: _Bundle, config: dict) -> None:
         if smooth_m not in generators:
             raster = smooth_raster(da, float(smooth_m)) if smooth_m else da
             generators[smooth_m] = contourpy.contour_generator(
-                x=raster[xname].values,
-                y=raster[yname].values,
+                x=raster["x"].values,
+                y=raster["y"].values,
                 z=np.asarray(raster.values, dtype=float),
                 line_type=contourpy.LineType.Separate,
             )
@@ -283,57 +280,29 @@ def _publish_isobaths(bundle: _Bundle, config: dict) -> None:
 
 
 def _publish_output_sites(bundle: _Bundle, config: dict) -> None:
-    """Isobath/mesh output-site coordinates → ``output_sites.json``.
+    """The ``ok`` isobath/mesh sites of ``outputs/output_sites_{model}.csv`` → ``output_sites.json``.
 
-    Site layout is shared across every goal, so one ``output_sites_*.nc``
-    gives the case-wide table. Buoy sites are excluded — the observations
-    GeoJSON already carries them. Written column-wise
-    (``{"lon": [...], "lat": [...], "source": [...], "label": [...]}``) —
-    thousands of sites, so no per-row key repetition.
+    Buoys are left out (the observations GeoJSON already carries them).
+    Written column-wise (``{"lon": [...], "lat": [...], "source": [...],
+    "label": [...]}``) — thousands of sites, so no per-row key repetition.
     """
-    sim = config.get("simulations", {})
-    model = sim.get("model")
-    rel = (sim.get(model) or {}).get("metamodel_cases") if model else None
-    if not isinstance(rel, str) or not rel:
-        raise LayerSkipped(f"simulations.{model}.metamodel_cases is not declared")
-    # The declared folder first; failing that, a same-named folder inside the
-    # case — for when the model runs live elsewhere (e.g. an HPC scratch
-    # path in the config) and only the output_sites_*.nc were copied locally.
-    candidates = [bundle.case_path(rel), bundle.case_dir / Path(rel).name]
-    nc_files = next(
-        (found for d in candidates if d.is_dir() and (found := sorted(d.glob("output_sites_*.nc")))),
-        None,
-    )
-    if not nc_files:
-        raise LayerSkipped(
-            f"no output_sites_*.nc under {rel} or {Path(rel).name}/ in the case folder"
-        )
-    try:
-        import xarray as xr
-    except ImportError:
-        raise LayerSkipped("xarray is not installed") from None
-
-    bundle.source(nc_files[0])
-    with xr.open_dataset(nc_files[0]) as ds:
-        required = {"site_longitude", "site_latitude", "site_source"}
-        if not required.issubset(ds.coords.keys() | ds.data_vars.keys()):
-            raise LayerSkipped(f"{nc_files[0].name} lacks {sorted(required)}")
-        lons = ds["site_longitude"].values
-        lats = ds["site_latitude"].values
-        sources = ds["site_source"].values.astype(str)
-        labels = (
-            ds["site_label"].values.astype(str)
-            if "site_label" in ds.variables
-            else [""] * len(lons)
-        )
-    keep = [i for i, s in enumerate(sources) if s != "buoy"]
+    rel = f"outputs/output_sites_{config.get('simulations', {}).get('model')}.csv"
+    path = bundle.case_path(rel)
+    if not path.is_file():
+        raise LayerSkipped(f"{rel} not found (notebook 03)")
+    with bundle.source(path).open(encoding="utf-8", newline="") as f:
+        rows = [
+            row
+            for row in csv.DictReader(line for line in f if not line.startswith("#"))
+            if row["status"] == "ok" and row["source"] != "buoy"
+        ]
     _write_json(
         bundle.staging / "output_sites.json",
         {
-            "lon": [_round(lons[i]) for i in keep],
-            "lat": [_round(lats[i]) for i in keep],
-            "source": [str(sources[i]) for i in keep],
-            "label": [str(labels[i]) for i in keep],
+            "lon": [_round(row["lon"]) for row in rows],
+            "lat": [_round(row["lat"]) for row in rows],
+            "source": [row["source"] for row in rows],
+            "label": [row["source_label"] for row in rows],
         },
     )
 
@@ -370,23 +339,16 @@ def _publish_csvs(bundle: _Bundle, pattern: str, dest_dir: str) -> None:
 
 
 def _publish_images(
-    bundle: _Bundle, pattern: str, dest_dir: str, max_px: int, log: Callable[[str], None]
+    bundle: _Bundle, pattern: str, dest_dir: str, max_px: int
 ) -> None:
     """Copy PNGs, downscaling any whose longest side exceeds *max_px*."""
+    from PIL import Image
+
     files = bundle.glob(pattern)
     if not files:
         raise LayerSkipped(f"no {pattern}")
-    try:
-        from PIL import Image
-    except ImportError:
-        Image = None
-        log("  ! Pillow is not installed — figures copied at full size")
-
     for path in files:
         rel = f"{dest_dir}/{path.name}"
-        if Image is None:
-            bundle.copy(path, rel)
-            continue
         bundle.source(path)
         dest = bundle.staging / rel
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -583,13 +545,13 @@ def publish_case(
             (
                 "buoy_figures",
                 lambda: _publish_images(
-                    bundle, "outputs/buoy_validation/figures/*.png", "buoy_validation/figures", max_image_px, log
+                    bundle, "outputs/buoy_validation/figures/*.png", "buoy_validation/figures", max_image_px
                 ),
             ),
             (
                 "gui_figures",
                 lambda: _publish_images(
-                    bundle, "outputs/gui_figures/*.png", "gui_figures", max_image_px, log
+                    bundle, "outputs/gui_figures/*.png", "gui_figures", max_image_px
                 ),
             ),
         ]
@@ -614,9 +576,10 @@ def publish_case(
                 continue
             result.files[rel] = {"size": path.stat().st_size, "sha256": sha256_file(path)}
 
+        revision = bluemath_tk_revision()
         manifest = {
-            "schema": MANIFEST_SCHEMA,
             "hywaves_version": __version__,
+            "bluemath_tk": revision,
             "case": config.get("name", case_dir.name),
             "model": config.get("simulations", {}).get("model"),
             "published_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -641,4 +604,5 @@ def publish_case(
         os.replace(portal, retired)
     os.replace(staging, portal)
     shutil.rmtree(retired, ignore_errors=True)
+    write_manifest(case_dir, bluemath_tk=revision)
     return result

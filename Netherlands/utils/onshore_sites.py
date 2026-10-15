@@ -7,9 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import geopandas as gpd
-import numpy as np
 import pandas as pd
-import xarray as xr
 
 from utils.config import ONSHORE_WAVES, resolve
 
@@ -106,59 +104,16 @@ def instrument_id(snapwave_site: str) -> str:
 
 
 def list_snapwave_buoy_sites(*, role: str | None = None) -> list[str]:
-    """Return SnapWave buoy site ids defined in the onshore-waves GeoJSON."""
-    return [snapwave_site_id(iid) for iid in get_coordinates(role=role)]
+    """Return the modelled buoy site ids, in onshore-waves GeoJSON order.
 
-
-def attach_buoy_site_meta(ds: xr.Dataset, site_id: str) -> xr.Dataset:
-    """Attach SnapWave site metadata coords from the onshore-waves GeoJSON.
-
-    Parameters
-    ----------
-    ds
-        Buoy dataset on ``(time, sites)`` with one or more ``buoy_*`` site labels.
-    site_id
-        SnapWave site id (e.g. ``buoy_Aunuu_Buoy``).
-
-    Returns
-    -------
-    xarray.Dataset
-        *ds* with ``site_source``, ``site_label``, ``site_longitude``,
-        ``site_latitude``, ``site_mesh_depth`` (from the saved output sites,
-        NaN if the buoy is not one) and ``site_nominal_depth`` (the measured
-        depth) coordinates.
-
-    Raises
-    ------
-    KeyError
-        If *site_id* is not listed in the observations JSON.
-    ValueError
-        If *site_id* is not present on the ``sites`` dimension.
+    Only buoys that are ``ok`` output sites (:func:`utils.geometry.output_sites`)
+    are returned; those outside the mesh or that can dry have no model output.
     """
-    site_id = snapwave_site_id(site_id)
-    if site_id not in [str(s) for s in ds.sites.values]:
-        raise ValueError(f"site {site_id!r} not on dataset sites dimension")
-
-    iid = instrument_id(site_id)
-    meta = get_coordinates().get(iid)
-    if meta is None:
-        raise KeyError(
-            f"Buoy {site_id!r} not in onshore-waves GeoJSON (instrument {iid!r})"
-        )
-
     from utils.geometry import output_sites
 
-    n = int(ds.sizes["sites"])
-    measured = meta.get("measured_depth")
-    sites = output_sites().set_index("source_id")["mesh_depth"]
-    return ds.assign_coords(
-        site_source=("sites", ["buoy"] * n),
-        site_label=("sites", [iid] * n),
-        site_longitude=("sites", [float(meta["lon"])] * n),
-        site_latitude=("sites", [float(meta["lat"])] * n),
-        site_mesh_depth=("sites", [float(sites.get(site_id, np.nan))] * n),
-        site_nominal_depth=("sites", [float(measured) if measured is not None else np.nan] * n),
-    )
+    modelled = set(output_sites()["source_id"].astype(str))
+    sites = [snapwave_site_id(iid) for iid in get_coordinates(role=role)]
+    return [s for s in sites if s in modelled]
 
 
 def dict_to_geojson(observations: dict[str, dict]) -> dict:
@@ -272,7 +227,6 @@ def save_geojson(
 __all__ = [
     "COORD_KEYS",
     "REQUIRED_KEYS",
-    "attach_buoy_site_meta",
     "dict_to_gdf",
     "dict_to_geojson",
     "geojson_path",

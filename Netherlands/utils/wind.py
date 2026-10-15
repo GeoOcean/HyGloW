@@ -144,8 +144,8 @@ def fetch_table(
     Parameters
     ----------
     sites
-        Output sites (``source_id``, ``lon``, ``lat``); default the case's
-        (:func:`utils.geometry.compute_output_sites`). Only used to compute.
+        Output sites (``source_id``, ``lon``, ``lat``); default the saved ``ok``
+        sites (:func:`utils.geometry.output_sites`). Only used to compute.
     model
         Model whose grid is used; default ``simulations.model``.
     recompute
@@ -156,17 +156,29 @@ def fetch_table(
     xarray.Dataset
         On ``(sites, dir)``: ``fetch``, ``fetch_eff`` (Saville), ``mean_depth``
         and ``open_exit``; ``site_depth`` on ``sites``.
+
+    Raises
+    ------
+    ValueError
+        If the cached table is older than the output-sites table (site ids are
+        positional, so rebuilt sites may keep their ids at other places).
     """
+    from utils.geometry import output_sites, output_sites_path
+
     model = simulation_model(model)
     path = fetch_table_path(model)
     if path.is_file() and not recompute:
+        sites_file = output_sites_path(model)
+        if sites_file.is_file() and sites_file.stat().st_mtime > path.stat().st_mtime:
+            raise ValueError(
+                f"{path.name} is older than {sites_file.name}; "
+                "rebuild it with fetch_table(recompute=True)."
+            )
         with xr.open_dataset(path) as cached:
             return cached.load()
 
     if sites is None:
-        from utils.simulation import HyWavesWrapperSetup
-
-        sites = HyWavesWrapperSetup.from_case(model=model).output_sites_df
+        sites = output_sites(model)
     cfg = config()["fetch"]
     from utils.geometry import model_grid
 

@@ -10,6 +10,7 @@ bottom scaffolds from the *real* template to guard against actual breakage.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import io
 import json
 import tempfile
@@ -25,6 +26,14 @@ from hywaves.update import UpdateError, plan_update, update_case
 def _write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
+
+
+def _sha(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def _write_manifest(case_dir: Path, engine_files: dict[str, str]) -> None:
+    _write(case_dir / ".hywaves" / "manifest.json", json.dumps({"engine_files": engine_files}))
 
 
 def _quiet_update_case(*args, **kwargs):
@@ -44,7 +53,6 @@ class TestPlanUpdate(unittest.TestCase):
         self.template_dir = self.root / "template"
         _write(self.template_dir / "utils" / "a.py", "A = 1\n")
         _write(self.template_dir / "utils" / "b.py", "B = 1\n")
-        _write(self.template_dir / "tests" / "test_a.py", "# test a\n")
 
         patcher = mock.patch.object(update_mod, "TEMPLATE_DIR", self.template_dir)
         patcher.start()
@@ -53,18 +61,19 @@ class TestPlanUpdate(unittest.TestCase):
         self.case_dir = self.root / "MyCase"
         _write(self.case_dir / "utils" / "a.py", "A = 1\n")
         _write(self.case_dir / "utils" / "b.py", "B = 1\n")
-        _write(self.case_dir / "tests" / "test_a.py", "# test a\n")
-
-    def _write_manifest(self, engine_files: dict[str, str]) -> None:
-        manifest = {"engine_files": engine_files}
-        _write(
-            self.case_dir / ".hywaves" / "manifest.json",
-            json.dumps(manifest),
+        _write_manifest(
+            self.case_dir,
+            {"utils/a.py": _sha("A = 1\n"), "utils/b.py": _sha("B = 1\n")},
         )
+
+    def test_case_without_manifest_raises(self) -> None:
+        (self.case_dir / ".hywaves" / "manifest.json").unlink()
+        with self.assertRaises(UpdateError):
+            plan_update(self.case_dir)
 
     def test_all_up_to_date_when_identical(self) -> None:
         plan = plan_update(self.case_dir)
-        self.assertEqual(sorted(plan["up_to_date"]), ["tests/test_a.py", "utils/a.py", "utils/b.py"])
+        self.assertEqual(sorted(plan["up_to_date"]), ["utils/a.py", "utils/b.py"])
         self.assertEqual(plan["update"], [])
         self.assertEqual(plan["add"], [])
         self.assertEqual(plan["modified"], [])
@@ -81,41 +90,18 @@ class TestPlanUpdate(unittest.TestCase):
         self.assertEqual(plan["orphaned"], ["utils/legacy.py"])
 
     def test_untouched_file_that_diverged_from_template_is_update(self) -> None:
-        # No manifest: without shipped-state provenance every diverging file
-        # is treated conservatively as locally modified, never auto-synced.
+        # The case file still matches its shipped hash: safe to auto-sync.
         _write(self.template_dir / "utils" / "a.py", "A = 2\n")
-        plan = plan_update(self.case_dir)
-        self.assertEqual(plan["modified"], ["utils/a.py"])
-
-        # With a manifest recording the shipped hash for the *old* content,
-        # and the case file still matching that shipped hash (untouched by
-        # the user), the file is safe to auto-sync.
-        import hashlib
-
-        old_hash = hashlib.sha256(b"A = 1\n").hexdigest()
-        self._write_manifest({"utils/a.py": old_hash, "utils/b.py": hashlib.sha256(b"B = 1\n").hexdigest()})
         plan = plan_update(self.case_dir)
         self.assertEqual(plan["update"], ["utils/a.py"])
 
-    def test_locally_modified_file_is_modified_even_with_manifest(self) -> None:
-        import hashlib
-
-        shipped_hash = hashlib.sha256(b"A = 1\n").hexdigest()
-        self._write_manifest({"utils/a.py": shipped_hash, "utils/b.py": hashlib.sha256(b"B = 1\n").hexdigest()})
-
+    def test_locally_modified_file_is_modified(self) -> None:
         # Template moved on AND the user edited their local copy too.
         _write(self.template_dir / "utils" / "a.py", "A = 2\n")
         _write(self.case_dir / "utils" / "a.py", "A = 99  # user tweak\n")
 
         plan = plan_update(self.case_dir)
         self.assertEqual(plan["modified"], ["utils/a.py"])
-
-    def test_empty_template_raises(self) -> None:
-        empty_template = self.root / "empty_template"
-        empty_template.mkdir()
-        with mock.patch.object(update_mod, "TEMPLATE_DIR", empty_template):
-            with self.assertRaises(UpdateError):
-                plan_update(self.case_dir)
 
     def test_not_a_directory_raises(self) -> None:
         with self.assertRaises(UpdateError):
@@ -141,29 +127,26 @@ class TestUpdateCase(unittest.TestCase):
 
         self.case_dir = self.root / "MyCase"
         _write(self.case_dir / "utils" / "a.py", "A = 1\n")
+        _write_manifest(self.case_dir, {"utils/a.py": _sha("A = 1\n")})
+        self.manifest_path = self.case_dir / ".hywaves" / "manifest.json"
 
     def test_dry_run_writes_nothing(self) -> None:
         _write(self.template_dir / "utils" / "a.py", "A = 2\n")
+        before = self.manifest_path.read_text()
         _quiet_update_case(self.case_dir, dry_run=True)
         self.assertEqual((self.case_dir / "utils" / "a.py").read_text(), "A = 1\n")
-        self.assertFalse((self.case_dir / ".hywaves" / "manifest.json").exists())
+        self.assertEqual(self.manifest_path.read_text(), before)
 
-    def test_syncs_untouched_file_and_writes_manifest(self) -> None:
-        import hashlib
-
-        shipped_hash = hashlib.sha256(b"A = 1\n").hexdigest()
-        _write(
-            self.case_dir / ".hywaves" / "manifest.json",
-            json.dumps({"engine_files": {"utils/a.py": shipped_hash}}),
-        )
+    def test_syncs_untouched_file_and_records_toolkit(self) -> None:
         _write(self.template_dir / "utils" / "a.py", "A = 2\n")
 
         _quiet_update_case(self.case_dir)
 
         self.assertEqual((self.case_dir / "utils" / "a.py").read_text(), "A = 2\n")
-        manifest = json.loads((self.case_dir / ".hywaves" / "manifest.json").read_text())
-        new_hash = hashlib.sha256(b"A = 2\n").hexdigest()
-        self.assertEqual(manifest["engine_files"]["utils/a.py"], new_hash)
+        manifest = json.loads(self.manifest_path.read_text())
+        self.assertEqual(manifest["engine_files"]["utils/a.py"], _sha("A = 2\n"))
+        self.assertIn("version", manifest["bluemath_tk"])
+        self.assertIn("commit", manifest["bluemath_tk"])
 
     def test_keeps_locally_modified_file_without_force(self) -> None:
         _write(self.case_dir / "utils" / "a.py", "A = 99  # my tweak\n")
