@@ -22,7 +22,7 @@ from shapely.geometry import box
 
 from utils import simulation as sws
 
-CASE_DIR = Path(__file__).resolve().parents[1]
+from utils.config import CASE_DIR  # the case these tests run in
 
 
 def _sites() -> pd.DataFrame:

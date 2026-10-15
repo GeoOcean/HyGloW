@@ -1,4 +1,6 @@
-"""The case manifest, ``{Case}/.hywaves/manifest.json``: what a case runs with.
+"""Helpers shared by the hywaves commands: template layout, case config, case manifest.
+
+The case manifest, ``{Case}/.hywaves/manifest.json``, records what a case runs with.
 
 A case vendors its own ``utils/``, so it keeps working while the template and
 bluemath_tk move on. The manifest records the pair that works for it: the
@@ -10,6 +12,7 @@ case is one that ran.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.metadata
 import importlib.util
 import json
@@ -18,7 +21,39 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
+TEMPLATE_DIR = Path(__file__).resolve().parent / "template"
+#: Vendored into every case, hashed in its manifest and kept in sync by ``update``.
+ENGINE_DIRS = ("utils",)
 MANIFEST_REL = Path(".hywaves") / "manifest.json"
+
+
+def find_case_config(case_dir: Path) -> Path | None:
+    """The case config JSON, ``{Case}/{Case}.json``, or ``None`` if missing."""
+    path = case_dir / f"{case_dir.name}.json"
+    return path if path.is_file() else None
+
+
+def model_block(config: dict) -> dict:
+    """The ``simulations.<model>`` block of ``simulations.model`` (``{}`` if missing)."""
+    sim = config.get("simulations", {})
+    block = sim.get(sim.get("model"))
+    return block if isinstance(block, dict) else {}
+
+
+def file_hashes(root: Path, dirs: tuple[str, ...]) -> dict[str, str]:
+    """sha256 of every file under *dirs* of *root* (hidden files and caches skipped)."""
+    hashes: dict[str, str] = {}
+    for dirname in dirs:
+        base = root / dirname
+        if not base.is_dir():
+            continue
+        for path in sorted(base.rglob("*")):
+            rel = path.relative_to(root)
+            hidden = any(part.startswith(".") or part == "__pycache__" for part in rel.parts)
+            if path.is_file() and not hidden and path.suffix != ".pyc":
+                hashes[str(rel)] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashes
 
 
 def now() -> str:

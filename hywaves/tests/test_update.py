@@ -19,7 +19,7 @@ from pathlib import Path
 from unittest import mock
 
 from hywaves import update as update_mod
-from hywaves.scaffold import start_case
+from hywaves.start import start_case
 from hywaves.update import UpdateError, plan_update, update_case
 
 

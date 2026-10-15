@@ -59,21 +59,6 @@ class TestConfigAndPaths(unittest.TestCase):
 
 
 class TestReconstructionHelpers(unittest.TestCase):
-    def test_periods(self) -> None:
-        offshore = xr.Dataset(coords={"time": pd.date_range("2013-11-30", "2013-12-02", freq="h")})
-        self.assertEqual(list(mm._periods(slice("2013-11-30", "2013-12-01"), offshore)), ["2013-11", "2013-12"])
-        self.assertEqual(mm._periods("2013-12-01", offshore), {"2013-12-01": "2013-12-01"})
-        one = mm._periods(slice("2013-12-01T03:00", "2013-12-01T09:00"), offshore)
-        self.assertEqual(list(one.values()), [slice("2013-12-01T03:00", "2013-12-01T09:00")])
-
-    def test_cache_path_depends_on_every_key(self) -> None:
-        key = {"metamodel": "buoys", "n": 100, "spectral": False, "sites": ["a"]}
-        base = mm._cache_path(key, "2013-12")
-        self.assertEqual(base, mm._cache_path(dict(key), "2013-12"))
-        self.assertNotEqual(base, mm._cache_path({**key, "sites": ["b"]}, "2013-12"))
-        self.assertTrue(base.name.startswith("buoys_n100_bulk_2013-12_"))
-        self.assertTrue(mm._cache_path(key, "2013-12", spectra=True).name.endswith("_spectra.nc"))
-
     def test_sum_contributions(self) -> None:
         times = pd.date_range("2020-01-01", periods=2, freq="h")
         chunks = [
@@ -92,6 +77,61 @@ class TestReconstructionHelpers(unittest.TestCase):
         self.assertEqual(set(bulk.data_vars), {"hs", "tp", "dir", "spr"})
         self.assertAlmostEqual(float(bulk["hs"].isel(time=0, sites=0)), np.sqrt(2.0), places=1)
         self.assertEqual(set(spec.dims), {"time", "sites", "freq", "dir"})
+
+
+class TestReconstructionStore(unittest.TestCase):
+    def test_store_name(self) -> None:
+        with mock.patch("utils.metamodel.simulation_model", return_value="snapwave"):
+            self.assertEqual(
+                mm._store_name(550, "buoys", False, 0.0, False, None, False),
+                "buoys_mda550_snapwave_bulk_wl-0_wind-off",
+            )
+            self.assertEqual(
+                mm._store_name(100, "isobaths", True, "forcing", True, ["1", "2"], True),
+                "isobaths_mda100_snapwave_spectral_wl-forcing_wind-on_goals-1-2_spectra",
+            )
+
+    def test_fingerprint_follows_the_files(self) -> None:
+        import os
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            model = Path(tmp) / "gp_model.pkl"
+            store = Path(tmp) / "offshore.zarr"
+            model.write_text("a")
+            store.mkdir()
+            (store / "zarr.json").write_text("{}")
+            first = mm._fingerprint([model, store, Path(tmp) / "missing.nc"])
+            self.assertEqual(first, mm._fingerprint([model, store, Path(tmp) / "missing.nc"]))
+            os.utime(store / "zarr.json", ns=(1, 1))
+            self.assertNotEqual(first, mm._fingerprint([model, store, Path(tmp) / "missing.nc"]))
+
+    def test_cache_report_and_clear(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        from bluemath_tk.waves.hywaves.store import ReconstructionStore
+
+        times = pd.date_range("2020-01-01", "2020-02-29 23:00", freq="h")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            store = ReconstructionStore(
+                root / "tmp/reconstruct/WHACS/buoys_mda100_x.zarr", times, ["a", "b"], {"hs": ()},
+                key={"metamodel": "buoys", "n": 100},
+            )
+            jan = times[times.month == 1]
+            store.write(
+                xr.Dataset({"hs": (("time", "sites"), np.ones((len(jan), 1)))},
+                           coords={"time": jan, "sites": ["a"]}),
+                ["2020-01"],
+            )
+            with mock.patch("utils.metamodel.resolve", side_effect=lambda p: root / p):
+                report = mm.reconstruction_cache()
+                self.assertEqual(report.loc[0, "store"], "buoys_mda100_x")
+                self.assertEqual((report.loc[0, "months"], report.loc[0, "site_months"]), (1, 1))
+                self.assertEqual(len(mm.clear_reconstruction_cache("buoys_*")), 1)
+                self.assertTrue(mm.reconstruction_cache().empty)
 
 
 if __name__ == "__main__":

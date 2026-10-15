@@ -2,7 +2,7 @@
 
 Guide for maintainers and coding agents. User docs: `README.md`,
 `hywaves/README.md` (the method), the case README. Case rules:
-`hywaves/contract/validate.py`.
+`hywaves/validate.py`.
 
 ## What it is
 
@@ -13,11 +13,11 @@ nearshore series (bulk or spectra) is the **linear sum of the goal spectra**.
 
 | Repo / path | Role |
 | --- | --- |
-| `hywaves/` | Case template (`template/`), case checks (`contract/validate.py`), CLI (`start/validate/publish/snapshot/update`) |
+| `hywaves/` | One module per command (`start`, `validate` = the case rules, `publish`, `snapshot`, `update`), `common.py` (shared helpers, case manifest), `cli.py`, the case `template/` |
 | `Netherlands/` | Reference case, latest code. `Samoa/`, `NewSouthWales/`: older code (0.9.0), migrate when next touched |
 | `GUI/` | Dash results explorer, reads only `{Case}/portal/` |
 | `presentation/` | Static deck, numbers from the `portal/` bundles |
-| `~/BlueMath_tk` | **bluemath_tk**: all generic code (HyWaves in `waves/hywaves/`, wrappers in `wrappers/{snapwave,swan}/` holding only `_wrapper/_utils/_plots.py`). Now on branch `hywaves/mesh-sites`, uncommitted, PR to `develop` |
+| `~/BlueMath_tk` | **bluemath_tk**: all generic code (HyWaves in `waves/hywaves/`, wrappers in `wrappers/{snapwave,swan}/` holding only `_wrapper/_utils/_plots.py`) |
 | `~/BlueMath` | Examples (`climate_services/hindcast/HyWaves_Netherlands`, branch `hywaves/netherlands`) |
 
 ## Environment and commands
@@ -37,8 +37,8 @@ python -m hywaves validate <Case>/ [--publish]
 python -m hywaves publish  <Case>/                 # -> portal/, commit it (book/ is git-ignored)
 python -m hywaves snapshot <Case>/ <tag> --note "…"  # portal/ -> portal_<tag>/ before a re-publish
 python -m hywaves update   <Case>/ [--dry-run]     # case utils/ <- template
-python -m unittest discover -s hywaves/tests -t .  # engine + template tests (on a scaffolded case)
-cd Netherlands && PYTHONPATH=. python -m unittest discover -s ../hywaves/template/tests -t ../hywaves/template/tests
+python -m unittest discover -s hywaves/tests -t .  # all hywaves tests (case_utils/ run inside a started case)
+cd Netherlands && PYTHONPATH=. python -m unittest discover -s ../hywaves/tests/case_utils -t ../hywaves/tests/case_utils
 cd ~/BlueMath_tk && python -m unittest tests.waves.test_hywaves tests.waves.test_hywaves_plots tests.core.test_core_metrics
 cd GUI && python app.py                            # http://localhost:8050
 ```
@@ -51,13 +51,12 @@ cd GUI && python app.py                            # http://localhost:8050
    reproducible through their vendored `utils/` and the bluemath_tk commit in
    `.hywaves/manifest.json`. Small, simple functions; generic code goes to
    bluemath_tk, HyGloW keeps the JSON/case layer.
-2. **`hywaves/template/` is canonical.** General fixes go there (and to its
-   tests), then `python -m hywaves update <Case>/`. Case-only code stays in
+2. **`hywaves/template/` is canonical.** General fixes go there (tests in
+   `hywaves/tests/case_utils/`), then `python -m hywaves update <Case>/`. Case-only code stays in
    the case (`Netherlands/utils/buoy_archive.py`, `rijkswaterstaat.py`). Say
    which copy you edit. Netherlands' only drift: `metamodel.py` GPU batch 12
    months / 64 GiB (re-apply after `update --force`).
-3. **Case rules live in `validate.py`** (stdlib-only, standalone; no spec
-   document). Changing what a case provides: `validate.py`, `publish.py`,
+3. **Case rules live in `hywaves/validate.py`** (no spec document). Changing what a case provides: `validate.py`, `publish.py`,
    `hywaves/tests/` and the reference below together.
 4. **The GUI reads only `portal/`**: extend `publish.py`, never make the GUI
    read `outputs/` or inputs.
@@ -77,8 +76,8 @@ cd GUI && python app.py                            # http://localhost:8050
 9. **Honest numbers**: quote what was computed, with period, MDA size and
    set; flag doubts about physics or data.
 
-**Git**: PRs to `main` of `GeoOcean/HyGloW` from branches (`netherlands/swan`
-now); messages `[JTH] short lowercase description`; commit only when asked;
+**Git**: PRs to `main` of `GeoOcean/HyGloW` from branches; 
+messages `[JTH] short lowercase description`; commit only when asked;
 after publishing, commit `portal/`.
 
 ## How a case works
@@ -118,12 +117,14 @@ after publishing, commit `portal/`.
   index name); `predict_goal(offshore, goal, n, metamodel=, sites=,
   partition=, wl=)`; `goal_contributions` + `sum_contributions` =
   `reconstruct(time, n, metamodel=, spectral=, wl=0|"forcing",
-  wind_correction=, ...)`, cached per month in `tmp/reconstruct`
-  (`{set}_n{n}_{mode}_{period}_{hash}.nc`, hash of model, offshore, goals,
-  wl, sites, variables, wind, config; `CACHE_VERSION`; `recompute=True` after
-  re-fitting), returns exactly the requested times; `reconstruction_sites(set,
-  selector)`; `require_models(set, n)`; `load_reconstruction_spectra`. PCA
-  variance only from `vars_to_predict`.
+  wind_correction=, save_spectra=, ...)`: reads `reconstruction_store(...)`
+  (one zarr per setup in `tmp/reconstruct/{offshore}/{set}_mda{n}_{model}_
+  {bulk|spectral}_wl-{wl}_wind-{on|off}[_spectra].zarr`, chunk = 1 site x
+  1 month, rebuilt when the setup or an input file changes), computes only
+  missing site-months (whole months), returns exactly the requested times;
+  `reconstruction_cache()` lists stores, `clear_reconstruction_cache(pattern)`
+  deletes them; `reconstruction_sites(set, selector)`; `require_models(set,
+  n)`; `load_reconstruction_spectra`. PCA variance only from `vars_to_predict`.
 - **Validation** (`utils/validation.py`): `validate` / `sweep_all` /
   `plot_sweep` (holdout); `compare(reference, estimate)` / `compare_all` ->
   `Comparison` (`metrics`, `groups`, `plot`, `plot_all`, `plot_scatter`,
@@ -209,6 +210,27 @@ Earlier results (2012-2013, MDA 550, `buoys`, median over 27 buoys, before
 the 0.14 sites): bulk metamodel Hs bias −0.10 / RMSE 0.31 / R² 0.78, with
 wind correction +0.08 / 0.29 / 0.83; WHACS closest goal +0.19 / 0.41; dynamic
 SnapWave +0.19 / 0.42; Tp R² negative everywhere (`tp` raw).
+
+**Reconstruction store (done 2026-10-15, branches HyGloW `reconstruct-store`,
+bluemath_tk `hywaves/reconstruct-store`, uncommitted).** bluemath_tk
+`waves/hywaves/store.py` `ReconstructionStore`: one zarr per setup on
+`(month, step, sites)`, chunk = 1 site x 1 month, bulk sharded per month
+(one file per variable and month; zarr 3.1.5 cannot write scattered sites
+into a shard, so writes read-modify-write the month under a file lock),
+spectra one file per site-month (~6 MB; only with `save_spectra`); `done`
+mask; setup `key` + input `fingerprint` in the attrs, any change rebuilds.
+float32. Hours with no energy from any goal are NaN (bulk and spectra; none
+for the Netherlands buoys in Nov 2013): nothing is invented. Checked on
+Netherlands (n=100, WHACS_cal, Dec 2013) against the earlier results: bulk
+within 1e-4 m Hs / 1e-3 deg (GP float32 batching), served sub-selections in
+~1 s instead of ~25 s, rebuild on a touched input; with the wind correction
+one site-hour jumped K 1.243 -> 1.262 (GBM threshold, a 1e-4 input change).
+Cost seen: bulk sum of a month for 1,875 sites ~11 min on one process (14
+site batches x 45 s), the input for the resources work
+(`OPTIMIZE_RESOURCES.md`: a `get_reconstruction_guidance()` from the
+machine's cores, RAM, GPU and `save_spectra`; discuss before changing).
+Old `tmp/reconstruct/reconstruct-v8__*` files (3.6 GB) can be deleted when
+the user agrees.
 
 **Next (user)**: re-run Netherlands 09-12 on the new code (reconstruction
 caches are rebuilt), publish, snapshot; notebook 11 still has the template

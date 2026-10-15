@@ -10,7 +10,7 @@ from . import __version__
 
 def _cmd_start(args: argparse.Namespace) -> int:
     """Handle ``hywaves start``: scaffold a new case folder and print next steps."""
-    from .scaffold import ScaffoldError, start_case
+    from .start import StartError, start_case
 
     try:
         target = start_case(
@@ -19,11 +19,11 @@ def _cmd_start(args: argparse.Namespace) -> int:
             from_case=args.from_case,
             notebooks=not args.no_notebooks,
         )
-    except ScaffoldError as exc:
+    except StartError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    from .manifest import describe_revision, read_manifest
+    from .common import describe_revision, read_manifest
 
     print(f"Created case: {target}")
     print(f"Toolkit     : {describe_revision(read_manifest(target)['bluemath_tk'])}")
@@ -54,7 +54,7 @@ def _cmd_update(args: argparse.Namespace) -> int:
 
 def _cmd_validate(args: argparse.Namespace) -> int:
     """Handle ``hywaves validate``: check what the case is missing."""
-    from .contract.validate import main as validate_main
+    from .validate import main as validate_main
 
     argv = [args.case_dir] + (["--publish"] if args.publish else [])
     return validate_main(argv)
@@ -161,7 +161,7 @@ def main(argv: list[str] | None = None) -> int:
     p_validate = sub.add_parser(
         "validate",
         help="Check what a case folder is missing",
-        description="Check a case folder (config, inputs, outputs, portal); see hywaves/contract/validate.py.",
+        description="Check a case folder (config, inputs, outputs, portal); see hywaves/validate.py.",
     )
     p_validate.add_argument("case_dir", help="Path to the case folder")
     p_validate.add_argument(

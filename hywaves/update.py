@@ -12,7 +12,7 @@ recorded in ``.hywaves/manifest.json``:
 
 Notebooks and model (SnapWave/SWAN) templates are user-owned and never synced.
 The manifest then records the new hywaves version and the bluemath_tk
-revision of the environment (see :mod:`hywaves.manifest`).
+revision of the environment (see :mod:`hywaves.common`).
 """
 
 from __future__ import annotations
@@ -21,8 +21,16 @@ import shutil
 from pathlib import Path
 
 from . import __version__
-from .manifest import bluemath_tk_revision, describe_revision, now, read_manifest, write_manifest
-from .scaffold import ENGINE_DIRS, TEMPLATE_DIR, _file_hashes
+from .common import (
+    ENGINE_DIRS,
+    TEMPLATE_DIR,
+    bluemath_tk_revision,
+    describe_revision,
+    file_hashes,
+    now,
+    read_manifest,
+    write_manifest,
+)
 
 
 class UpdateError(RuntimeError):
@@ -57,8 +65,8 @@ def plan_update(case_dir: Path) -> dict[str, list[str]]:
             f"{case_dir.name} has no .hywaves/manifest.json; scaffold a new case with "
             "`python -m hywaves start` and move its inputs there"
         )
-    template = _file_hashes(TEMPLATE_DIR, ENGINE_DIRS)
-    case = _file_hashes(case_dir, ENGINE_DIRS)
+    template = file_hashes(TEMPLATE_DIR, ENGINE_DIRS)
+    case = file_hashes(case_dir, ENGINE_DIRS)
     shipped = manifest.get("engine_files", {})
 
     plan: dict[str, list[str]] = {
@@ -137,8 +145,8 @@ def update_case(
 
     # Shipped-state hashes only for files that now match the template; kept
     # modified files stay unrecorded, so they are flagged again next run.
-    template_hashes = _file_hashes(TEMPLATE_DIR, ENGINE_DIRS)
-    case_hashes = _file_hashes(case_dir, ENGINE_DIRS)
+    template_hashes = file_hashes(TEMPLATE_DIR, ENGINE_DIRS)
+    case_hashes = file_hashes(case_dir, ENGINE_DIRS)
     write_manifest(
         case_dir,
         hywaves_version=__version__,

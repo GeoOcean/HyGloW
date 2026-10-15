@@ -1,13 +1,6 @@
 """What a HyGloW case must provide: these checks are the rules (no separate spec).
 
-Self-contained and stdlib-only on purpose: copy this single file into any
-repository and run it against a case folder, no installs required::
-
-    python validate.py path/to/MyCase [--publish]
-
-Or through the CLI when the hywaves package is available::
-
-    python -m hywaves validate MyCase/ --publish
+``python -m hywaves validate MyCase/ [--publish]``
 
 Development mode reports incomplete-but-expected gaps (missing inputs,
 TODO placeholders, no outputs yet) as warnings. ``--publish`` escalates
@@ -30,6 +23,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from .common import find_case_config, model_block
 
 REQUIRED_METRICS_COLUMNS = {
     "goal",
@@ -102,19 +97,6 @@ class _Report:
 # ----------------------------------------------------------------------
 
 
-def find_case_config(case_dir: Path) -> Path | None:
-    """The case config JSON, ``{Case}/{Case}.json``, or ``None`` if missing."""
-    path = case_dir / f"{case_dir.name}.json"
-    return path if path.is_file() else None
-
-
-def model_block(config: dict) -> dict:
-    """The ``simulations.<model>`` block of ``simulations.model`` (``{}`` if missing)."""
-    sim = config.get("simulations", {})
-    block = sim.get(sim.get("model"))
-    return block if isinstance(block, dict) else {}
-
-
 def _load_json(path: Path, report: _Report, code: str) -> Any | None:
     """Parse *path* as JSON, reporting *code* as an error (not raising) on failure."""
     try:
@@ -143,7 +125,7 @@ def _is_number(value: Any) -> bool:
 
 
 # ----------------------------------------------------------------------
-# Level 1 — portal contract
+# Level 1 — what every case provides (portal)
 # ----------------------------------------------------------------------
 
 
@@ -387,12 +369,12 @@ def _check_portal(case_dir: Path, report: _Report) -> None:
 
 
 # ----------------------------------------------------------------------
-# Level 2 — engine contract
+# Level 2 — the HyWaves engine settings
 # ----------------------------------------------------------------------
 
 
 def _check_engine(case_dir: Path, config: dict, report: _Report) -> None:
-    """Level 2 checks: validate the ``metamodel`` section against the engine contract.
+    """Level 2 checks: the ``metamodel`` section and the engine settings.
 
     Skipped entirely (with an info finding) when ``metamodel`` is absent —
     only cases that opt into the metamodel workflow need to satisfy this.

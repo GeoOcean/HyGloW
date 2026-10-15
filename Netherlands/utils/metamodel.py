@@ -4,7 +4,8 @@ The method is :mod:`bluemath_tk.waves.hywaves` (``metamodel``: MDA, PCA, GP
 and prediction per goal; ``reconstruction``: the linear spectral sum). This
 module is the case layer: it reads ``metamodel`` from the case JSON, keeps the
 fitted artefacts in ``outputs/goal_XX`` (``mda.pkl``, ``split.json``, PCA/GP
-pickles) and caches reconstructions month by month in ``tmp/reconstruct``.
+pickles) and caches reconstructions in ``tmp/reconstruct`` (one zarr store
+per setup, one chunk per site and month).
 
 Metamodel sets (``metamodel.sets``) are PCA + GP models on a group of output
 sites (``{"buoys": {"sites": "buoy"}, ...}``). They share each goal's model
@@ -14,8 +15,9 @@ cases and MDA, and every call names its set (``metamodel="buoys"``).
 - Prediction: :func:`predict` (forcing rows -> nearshore fields of one goal),
   :func:`predict_goal` (one goal and offshore partition of a hindcast).
 - Reconstruction: :func:`goal_contributions` (every goal x partition),
-  :func:`sum_contributions` (spectral sum), :func:`reconstruct` (both, with the
-  monthly cache), :func:`load_reconstruction_spectra`.
+  :func:`sum_contributions` (spectral sum), :func:`reconstruct` (both, cached
+  per site and calendar month in :func:`reconstruction_store`),
+  :func:`load_reconstruction_spectra`.
 
 Site selection and metadata: :mod:`utils.geometry`.
 """
@@ -37,10 +39,13 @@ from bluemath_tk.core.io import load_model
 from bluemath_tk.core.logging import get_file_logger
 from bluemath_tk.waves.hywaves import metamodel as hw
 from bluemath_tk.waves.hywaves import reconstruction as hwr
+from bluemath_tk.waves.hywaves.store import ReconstructionStore
 
 from utils.config import (
+    FORCING,
     METAMODEL,
     forcing_columns,
+    get_offshore_wave,
     goal_water_level,
     load_goals,
     model_config,
@@ -48,7 +53,7 @@ from utils.config import (
     resolve,
     simulation_model,
 )
-from utils.geometry import output_sites, resolve_sites, site_meta
+from utils.geometry import output_sites, output_sites_path, resolve_sites, site_meta
 
 LOGGER_NAME = "hywaves.metamodel"
 logger = get_file_logger(
@@ -100,7 +105,7 @@ WAVESPECTRA_MEMORY_BUDGET_BYTES = (
 )  # 64 GiB; tuned to this host
 
 #: Bump to invalidate every reconstruction cache.
-CACHE_VERSION = 9
+CACHE_VERSION = 10
 
 
 class ModelsNotFittedError(FileNotFoundError):
@@ -738,46 +743,85 @@ def sum_contributions(
     )
 
 
-def _periods(time: str | slice, offshore: xr.Dataset) -> dict[str, str | slice]:
-    """
-    Cache units of a time selection, ``{label: selection}``.
+def _wind_correction_on(wind_correction: bool | None) -> bool:
+    """*wind_correction*, or ``metamodel.wind_correction.enabled`` when None."""
+    if wind_correction is not None:
+        return bool(wind_correction)
+    from utils.wind import enabled
 
-    Its calendar months (``{"2013-12": "2013-12", ...}``), or the selection
-    itself when it lies within one month.
-    """
-    months = pd.DatetimeIndex(offshore["time"].sel(time=time).values).to_period("M").unique()
-    if len(months) > 1:
-        return {str(m): str(m) for m in months}
-    if isinstance(time, slice):
-        fmt = lambda t: "" if t is None else pd.Timestamp(t).strftime("%Y%m%dT%H%M")  # noqa: E731
-        return {f"{fmt(time.start)}-{fmt(time.stop)}": time}
-    return {str(time).replace(":", ""): time}
+    return enabled()
 
 
-def _cache_path(key: Mapping[str, Any], period: str, spectra: bool = False) -> Path:
-    """``tmp/reconstruct/{set}_n{n}_{bulk|spectral}_{period}_{hash}[_spectra].nc``."""
-    digest = hashlib.sha1(json.dumps(key, sort_keys=True, default=str).encode()).hexdigest()[:12]
-    mode = "spectral" if key["spectral"] else "bulk"
-    stem = f"{key['metamodel']}_n{key['n']}_{mode}_{period}_{digest}"
-    return resolve("tmp/reconstruct") / f"{stem}{'_spectra' if spectra else ''}.nc"
+def _input_files(
+    metamodel: str, n: int, goals: list[str], offshore_name: str, wl: WaterLevel, wind_correction: bool
+) -> list[Path]:
+    """Files a reconstruction depends on: fitted models, splits, sites, offshore and forcing stores."""
+    files = [output_sites_path(), resolve(get_offshore_wave(offshore_name)["data_path"])]
+    for goal in goals:
+        files += [split_path(goal), gp_model_path(goal, metamodel, n)]
+        files += [pca_model_path(goal, metamodel, n, name, var) for name, var, _ in PCA_TARGETS]
+    if wl == WL_FROM_FORCING:
+        files.append(resolve(FORCING["water_level"]["data_path"]))
+    if wind_correction:
+        from utils import wind
+
+        files += [wind.correction_path(), wind.fetch_table_path()]
+        if wind.config()["wind"] == "forcing":
+            files.append(resolve(FORCING["wind"]["data_path"]))
+    return files
 
 
-def _cache_key(
+def _fingerprint(files: Iterable[Path]) -> str:
+    """Hash of the size and modification time of *files* (a zarr store by its metadata)."""
+    stats = []
+    for path in files:
+        meta = next((path / m for m in ("zarr.json", ".zmetadata") if (path / m).is_file()), path)
+        st = meta.stat() if meta.exists() else None
+        stats.append((str(path), st.st_size if st else -1, st.st_mtime_ns if st else -1))
+    return hashlib.sha1(json.dumps(stats).encode()).hexdigest()
+
+
+def _store_name(
+    n: int, metamodel: str, spectral: bool, wl: WaterLevel, wind: bool,
+    goals: list[str] | None, spectra: bool,
+) -> str:
+    """``{set}_mda{n}_{model}_{bulk|spectral}_wl-{wl}_wind-{on|off}[_goals-..][_spectra]``."""
+    return (
+        f"{metamodel}_mda{n}_{simulation_model()}_{'spectral' if spectral else 'bulk'}"
+        f"_wl-{wl if isinstance(wl, str) else f'{wl:g}'}_wind-{'on' if wind else 'off'}"
+        + (f"_goals-{'-'.join(goals)}" if goals else "")
+        + ("_spectra" if spectra else "")
+    )
+
+
+def reconstruction_store(
     n: int,
     *,
     metamodel: str,
-    spectral: bool,
-    offshore_name: str,
-    goals: list[str],
-    wl: WaterLevel,
-    sites: list[str],
-    variables: Mapping[str, str],
-    wind_correction: bool,
-) -> dict[str, Any]:
-    """Everything a cached reconstruction depends on (besides the fitted models)."""
-    from utils.wind import config as wind_config
+    spectral: bool = True,
+    offshore_name: str = "WHACS",
+    goals: Iterable[str | int] | None = None,
+    wl: WaterLevel = 0.0,
+    variables: Mapping[str, str] | None = None,
+    wind_correction: bool | None = None,
+    spectra: bool = False,
+) -> ReconstructionStore:
+    """
+    The cache of one reconstruction setup (bulk, or ``spectra=True`` for ``efth``).
 
-    return {
+    ``tmp/reconstruct/{offshore}/{set}_mda{n}_{model}_{bulk|spectral}_wl-{wl}_wind-{on|off}[_goals-..][_spectra].zarr``,
+    holding every site of the set (kept in every goal) on the whole offshore
+    time axis, one chunk per site and calendar month (see
+    :class:`bluemath_tk.waves.hywaves.store.ReconstructionStore`). It is
+    rebuilt when the setup or any input file (fitted models, ``split.json``,
+    sites table, offshore and forcing stores, wind correction) changes. Its
+    attributes record the setup and the PCs per goal.
+    """
+    goals = _goals(goals)
+    variables = dict(variables or RECONSTRUCTION["variables"])
+    wind = _wind_correction_on(wind_correction)
+    name = _store_name(n, metamodel, spectral, wl, wind, goals if goals != _goals() else None, spectra)
+    key = {
         "version": CACHE_VERSION,
         "model": simulation_model(),
         "offshore": offshore_name,
@@ -786,20 +830,34 @@ def _cache_key(
         "spectral": bool(spectral),
         "goals": goals,
         "wl": wl,
-        "sites": sites,
-        "variables": dict(variables),
-        "wind": {k: wind_config()[k] for k in ("wind", "added_tp")} if wind_correction else None,
+        "variables": variables,
+        "wind": None if not wind else {k: v for k, v in METAMODEL.get("wind_correction", {}).items() if k != "enabled"},
         "config": {k: METAMODEL.get(k) for k in ("mda_inputs", "vars_to_predict", "site_filter", "pca_preprocessing")},
     }
+    if spectra:
+        store_vars = {"efth": ("freq", "dir")}
+        coords = {"freq": hwr.SPECTRAL_FREQ, "dir": hwr.SPECTRAL_DIR}
+    else:
+        store_vars = {v: () for v in [*variables, *(["wind_k"] if wind else [])]}
+        coords = {}
 
+    def pcs() -> dict[str, Any]:
+        return {"pcs": {
+            goal: {name: int(load_model(pca_model_path(goal, metamodel, n, name, var)).pca.n_components_)
+                   for name, var, _ in PCA_TARGETS}
+            for goal in goals
+        }}
 
-def _wind_correction_on(wind_correction: bool | None) -> bool:
-    """*wind_correction*, or ``metamodel.wind_correction.enabled`` when None."""
-    if wind_correction is not None:
-        return bool(wind_correction)
-    from utils.wind import enabled
-
-    return enabled()
+    return ReconstructionStore(
+        resolve("tmp/reconstruct") / offshore_name / f"{name}.zarr",
+        open_offshore_waves(offshore_name)["time"].values,
+        reconstruction_sites(metamodel, None, goals),
+        store_vars,
+        coords=coords,
+        key=key,
+        fingerprint=_fingerprint(_input_files(metamodel, n, goals, offshore_name, wl, wind)),
+        attrs=pcs,
+    )
 
 
 def reconstruct(
@@ -823,16 +881,15 @@ def reconstruct(
     """
     Nearshore waves from the offshore hindcast: goal contributions, summed.
 
-    The selection is split into calendar months (a selection within one month
-    is one unit), each cached in ``tmp/reconstruct``; uncached months are
-    predicted in batches of :data:`RECONSTRUCT_GPU_BATCH_MONTHS_CAP` and
-    every requested time step is returned.
+    Results are cached per site and calendar month (:func:`reconstruction_store`):
+    a request reads what is stored and computes only the missing site-months,
+    whole months at a time, in batches of :data:`RECONSTRUCT_GPU_BATCH_MONTHS_CAP`.
 
     Parameters
     ----------
     time
         Time selection of the offshore hindcast (``"2013-12"``, ``"2013"``,
-        a slice, ...).
+        ``"2013-12-05"``, a slice, ...).
     n
         MDA size; the models must be fitted for every goal.
     metamodel
@@ -851,15 +908,15 @@ def reconstruct(
         Output name -> wavespectra stat; default
         ``metamodel.reconstruction.variables``.
     save_spectra
-        Cache the summed spectra too (:func:`load_reconstruction_spectra`);
+        Store the summed spectra too (:func:`load_reconstruction_spectra`);
         default ``metamodel.reconstruction.save_spectra``.
     wind_correction
         Add the local wind sea (see :mod:`utils.wind`); the output then has
         ``wind_k``. Default ``metamodel.wind_correction.enabled``.
     use_cache
-        Read and write the monthly cache.
+        Read and write the cache (``False``: compute the selection only).
     recompute
-        Ignore cached months (after re-fitting the models).
+        Recompute the requested site-months even if stored.
     device
         PyTorch device for GP inference (``"cpu"`` when CUDA runs out of memory).
     workers
@@ -868,89 +925,71 @@ def reconstruct(
     Returns
     -------
     xarray.Dataset
-        The requested variables on ``(time, sites)``.
+        The requested variables on ``(time, sites)``; NaN at hours with no
+        wave energy from any goal.
 
     Raises
     ------
     ModelsNotFittedError
         If a goal lacks its fitted models.
-    ValueError
-        If the selection has no offshore time steps.
     """
     goals = _goals(goals)
     require_models(metamodel, n, goals)
     site_ids = reconstruction_sites(metamodel, sites, goals)
     variables = dict(variables or RECONSTRUCTION["variables"])
     save_spectra = RECONSTRUCTION["save_spectra"] if save_spectra is None else save_spectra
-    wind_correction = _wind_correction_on(wind_correction)
-    key = _cache_key(
-        n, metamodel=metamodel, spectral=spectral, offshore_name=offshore_name, goals=goals,
-        wl=wl, sites=site_ids, variables=variables, wind_correction=wind_correction,
-    )
-
+    wind = _wind_correction_on(wind_correction)
     offshore = open_offshore_waves(offshore_name)
-    periods = _periods(time, offshore)
-    done: dict[str, xr.Dataset] = {}
-    todo: list[str] = []
-    for period in periods:
-        path = _cache_path(key, period)
-        cached = path.is_file() and (not save_spectra or _cache_path(key, period, True).is_file())
-        if use_cache and not recompute and cached:
-            with xr.open_dataset(path) as ds:
-                done[period] = ds.load()
-        else:
-            todo.append(period)
 
-    logger.info(
-        "Reconstruct %r: %d period(s), %d cached, set %s n=%d, %d goals, %d sites",
-        time, len(periods), len(done), metamodel, n, len(goals), len(site_ids),
-    )
-    for i in range(0, len(todo), RECONSTRUCT_GPU_BATCH_MONTHS_CAP):
-        batch = [p for p in todo[i : i + RECONSTRUCT_GPU_BATCH_MONTHS_CAP]
-                 if offshore["time"].sel(time=periods[p]).size]
-        if not batch:
-            continue
-        off = xr.concat([offshore.sel(time=periods[p]) for p in batch], dim="time")
+    def compute(off: xr.Dataset, sites_: list[str]) -> tuple[xr.Dataset, xr.Dataset | None]:
         chunks = goal_contributions(
-            off, n, metamodel=metamodel, sites=site_ids, spectral=spectral, goals=goals,
-            wl=wl, device=device, wind_sea=wind_correction,
+            off, n, metamodel=metamodel, sites=sites_, spectral=spectral, goals=goals,
+            wl=wl, device=device, wind_sea=wind,
         )
-        bulk, spectra = sum_contributions(
-            chunks, site_ids, variables=variables, save_spectra=save_spectra,
-            wind_correction=wind_correction, workers=workers,
+        return sum_contributions(
+            chunks, sites_, variables=variables, save_spectra=save_spectra,
+            wind_correction=wind, workers=workers,
         )
-        for period in batch:
-            done[period] = bulk.sel(time=periods[period])
-            if use_cache:
-                path = _cache_path(key, period)
-                path.parent.mkdir(parents=True, exist_ok=True)
-                done[period].to_netcdf(path)
-                if spectra is not None:
-                    spectra.sel(time=periods[period]).to_netcdf(_cache_path(key, period, True))
 
-    if not done:
-        raise ValueError(f"No offshore time steps in {time!r}")
-    out = xr.concat([done[p] for p in periods if p in done], dim="time")
-    return out.sel(time=time).assign_coords(site_meta(out.sites.values).coords)
+    if not use_cache:
+        bulk, _ = compute(offshore.sel(time=time), site_ids)
+        return bulk.assign_coords(site_meta(site_ids).coords)
+
+    setup = dict(metamodel=metamodel, spectral=spectral, offshore_name=offshore_name,
+                 goals=goals, wl=wl, variables=variables, wind_correction=wind)
+    stores = [reconstruction_store(n, **setup)]
+    if save_spectra:
+        stores.append(reconstruction_store(n, **setup, spectra=True))
+    if recompute:
+        for store in stores:
+            store.invalidate(time, site_ids)
+    todo: dict[str, set[str]] = {}
+    for store in stores:
+        for month, missing in store.missing(time, site_ids).items():
+            todo.setdefault(month, set()).update(missing)
+    months = [m for m in stores[0].months if m in todo]
+    logger.info(
+        "Reconstruct %r: set %s n=%d, %d sites, %d site-month(s) to compute in %d month(s)",
+        time, metamodel, n, len(site_ids), sum(len(v) for v in todo.values()), len(months),
+    )
+    for i in range(0, len(months), RECONSTRUCT_GPU_BATCH_MONTHS_CAP):
+        batch = months[i : i + RECONSTRUCT_GPU_BATCH_MONTHS_CAP]
+        needed = set().union(*(todo[m] for m in batch))
+        sites_ = [s for s in stores[0].sites if s in needed]
+        bulk, spectra = compute(xr.concat([offshore.sel(time=m) for m in batch], dim="time"), sites_)
+        stores[0].write(bulk, batch)
+        if save_spectra:
+            stores[1].write(spectra, batch)
+    return stores[0].read(time, site_ids).assign_coords(site_meta(site_ids).coords)
 
 
-def load_reconstruction_spectra(
-    time: str | slice,
-    n: int,
-    *,
-    metamodel: str,
-    spectral: bool = True,
-    offshore_name: str = "WHACS",
-    goals: Iterable[str | int] | None = None,
-    wl: WaterLevel = 0.0,
-    sites: str | Iterable[str] | None = None,
-    variables: Mapping[str, str] | None = None,
-    wind_correction: bool | None = None,
-) -> xr.Dataset:
+def load_reconstruction_spectra(time: str | slice, n: int, *, sites: str | Iterable[str] | None = None,
+                                **setup: Any) -> xr.Dataset:
     """
-    Summed spectra cached by a :func:`reconstruct` call with ``save_spectra=True``.
+    Summed spectra stored by :func:`reconstruct` with ``save_spectra=True``.
 
-    Takes the same arguments as that call.
+    *setup*: the same ``metamodel``, ``spectral``, ``offshore_name``, ``goals``,
+    ``wl``, ``variables``, ``wind_correction`` as that call.
 
     Returns
     -------
@@ -959,23 +998,57 @@ def load_reconstruction_spectra(
 
     Raises
     ------
-    FileNotFoundError
-        If a period of *time* has no cached spectra.
+    KeyError
+        If some requested site-months have no stored spectra.
     """
-    goals = _goals(goals)
-    site_ids = reconstruction_sites(metamodel, sites, goals)
-    key = _cache_key(
-        n, metamodel=metamodel, spectral=spectral, offshore_name=offshore_name, goals=goals,
-        wl=wl, sites=site_ids, variables=dict(variables or RECONSTRUCTION["variables"]),
-        wind_correction=_wind_correction_on(wind_correction),
-    )
-    parts = []
-    for period in _periods(time, open_offshore_waves(offshore_name)):
-        path = _cache_path(key, period, spectra=True)
-        if not path.is_file():
-            raise FileNotFoundError(
-                f"No cached spectra for {period} ({path.name}); run reconstruct(..., save_spectra=True)"
-            )
-        with xr.open_dataset(path) as ds:
-            parts.append(ds.load())
-    return xr.concat(parts, dim="time").sel(time=time)
+    site_ids = reconstruction_sites(setup["metamodel"], sites, setup.get("goals"))
+    return reconstruction_store(n, **setup, spectra=True).read(time, site_ids)
+
+
+def reconstruction_cache() -> pd.DataFrame:
+    """
+    The reconstruction stores of this case (``tmp/reconstruct``).
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per store: ``offshore``, ``store``, ``metamodel``, ``n``,
+        ``months`` and ``site_months`` stored, ``sites``, ``size_mb``.
+    """
+    import zarr
+
+    rows = []
+    for path in sorted(resolve("tmp/reconstruct").glob("*/*.zarr")):
+        group = zarr.open_group(path, mode="r")
+        key = json.loads(group.attrs["key"])
+        done = group["done"][:]
+        rows.append({
+            "offshore": path.parent.name,
+            "store": path.stem,
+            "metamodel": key["metamodel"],
+            "n": key["n"],
+            "months": int(done.any(axis=1).sum()),
+            "site_months": int(done.sum()),
+            "sites": done.shape[1],
+            "size_mb": round(sum(f.stat().st_size for f in path.rglob("*") if f.is_file()) / 1e6, 1),
+        })
+    return pd.DataFrame(rows)
+
+
+def clear_reconstruction_cache(pattern: str = "*") -> list[Path]:
+    """
+    Delete the reconstruction stores matching *pattern* (e.g. ``"isobaths_*"``).
+
+    Returns
+    -------
+    list[Path]
+        The deleted stores.
+    """
+    import shutil
+
+    paths = sorted(resolve("tmp/reconstruct").glob(f"*/{pattern}.zarr"))
+    for path in paths:
+        shutil.rmtree(path)
+        path.with_suffix(".lock").unlink(missing_ok=True)
+    return paths
+
