@@ -56,11 +56,21 @@ so the sum of single-goal runs equals a run with every goal forced.
 ## Commands
 
 ```bash
-python -m hywaves start --name MyCase        # a new case from template/
-python -m hywaves validate MyCase/ [--publish]
-python -m hywaves publish MyCase/            # MyCase/portal/, read by the GUI
-python -m hywaves snapshot MyCase/ <tag>     # keep this portal as a version
-python -m hywaves update MyCase/             # bring the case's utils/ to the template
+python -m hywaves start --name MyCase   # start a new case
+python -m hywaves validate MyCase/      # check the shape and data of the case
+python -m hywaves publish MyCase/       # build its portal (MyCase/portal/, read by the GUI)
+python -m hywaves snapshot MyCase/ v1   # keep the current portal under a tag
+python -m hywaves update MyCase/        # bring the case code (utils/) to the template
 ```
 
-`python -m hywaves <command> --help` explains each one.
+One file per command in this folder (`start.py`, `validate.py`,
+`publish.py`, `snapshot.py`, `update.py`), plus `common.py` for what they
+share; `template/` is what `start` copies. `--help` on any command explains
+its options.
+
+Tests (all in `tests/`; `tests/case_utils/` checks the template's `utils/`
+inside a freshly started case):
+
+```bash
+python -m unittest discover -s hywaves/tests -t .
+```

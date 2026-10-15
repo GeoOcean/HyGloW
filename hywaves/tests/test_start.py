@@ -1,4 +1,4 @@
-"""Unit tests for ``hywaves.scaffold`` (the ``start`` command)."""
+"""Unit tests for ``hywaves.start`` (the ``start`` command)."""
 
 from __future__ import annotations
 
@@ -8,14 +8,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from hywaves.scaffold import (
-    ENGINE_DIRS,
-    SUPPORT_DIRS,
-    TEMPLATE_DIR,
-    ScaffoldError,
-    _file_hashes,
-    start_case,
-)
+from hywaves.common import ENGINE_DIRS, TEMPLATE_DIR, file_hashes
+from hywaves.start import SUPPORT_DIRS, StartError, start_case
 
 
 class TestStartCase(unittest.TestCase):
@@ -84,19 +78,19 @@ class TestStartCase(unittest.TestCase):
         target = start_case("Lagoon", self.dest)
 
         manifest = json.loads((target / ".hywaves" / "manifest.json").read_text())
-        expected = _file_hashes(TEMPLATE_DIR, ENGINE_DIRS)
+        expected = file_hashes(TEMPLATE_DIR, ENGINE_DIRS)
         self.assertEqual(manifest["engine_files"], expected)
         self.assertTrue(expected, "template has no engine files to hash")
         self.assertEqual(set(manifest["bluemath_tk"]), {"version", "commit", "branch", "dirty"})
 
     def test_invalid_name_rejected(self) -> None:
         for bad in ("", "1Case", "My Case", "../escape", "Case/Sub"):
-            with self.assertRaises(ScaffoldError):
+            with self.assertRaises(StartError):
                 start_case(bad, self.dest)
 
     def test_existing_target_rejected(self) -> None:
         start_case("Duplicate", self.dest)
-        with self.assertRaises(ScaffoldError):
+        with self.assertRaises(StartError):
             start_case("Duplicate", self.dest)
 
     def test_engine_and_support_dirs_are_disjoint(self) -> None:
@@ -154,11 +148,11 @@ class TestStartCaseFromExistingCase(unittest.TestCase):
         self.assertEqual(manifest["source"], "SourceCase")
 
     def test_unknown_source_case_raises(self) -> None:
-        with self.assertRaises(ScaffoldError):
+        with self.assertRaises(StartError):
             start_case("Clone2", self.root / "out", from_case="NoSuchCase")
 
     def test_source_equals_target_rejected(self) -> None:
-        with self.assertRaises(ScaffoldError):
+        with self.assertRaises(StartError):
             start_case("SourceCase", self.root, from_case="SourceCase")
 
 

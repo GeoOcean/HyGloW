@@ -1,4 +1,4 @@
-"""Unit tests for ``hywaves.contract.validate`` (the ``validate`` command)."""
+"""Unit tests for ``hywaves.validate`` (the ``validate`` command)."""
 
 from __future__ import annotations
 
@@ -7,8 +7,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from hywaves.contract.validate import ERROR, WARN, find_case_config, validate_case
-from hywaves.scaffold import start_case
+from hywaves.common import find_case_config
+from hywaves.start import start_case
+from hywaves.validate import ERROR, WARN, validate_case
 
 
 def _errors(findings):

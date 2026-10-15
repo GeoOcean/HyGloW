@@ -1,4 +1,4 @@
-"""Scaffold a new self-contained HyGloW case folder.
+"""``python -m hywaves start``: a new self-contained HyGloW case folder.
 
 ``python -m hywaves start --name Cantabria`` creates a case from the built-in
 template (``hywaves/template/``): vendored engine code (``utils/``),
@@ -12,27 +12,28 @@ in your environment; see the generated ``README.md`` for the exact list.
 
 Deliberately minimal: no data download, no tiff generation. The user starts,
 then fights (with the notebooks as the guide). The case manifest
-(``.hywaves/manifest.json``, see :mod:`hywaves.manifest`) records the hywaves
+(``.hywaves/manifest.json``, see :mod:`hywaves.common`) records the hywaves
 version and the bluemath_tk revision the case starts with.
 """
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 import shutil
 from pathlib import Path
 
 from . import __version__
-from .manifest import bluemath_tk_revision, now, write_manifest
+from .common import (
+    ENGINE_DIRS,
+    REPO_ROOT,
+    TEMPLATE_DIR,
+    bluemath_tk_revision,
+    file_hashes,
+    now,
+    write_manifest,
+)
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-TEMPLATE_DIR = Path(__file__).resolve().parent / "template"
-
-# Vendored into every new case, hashed in the manifest and kept in sync by
-# `hywaves update`.
-ENGINE_DIRS = ("utils",)
 # Copied once; user-owned after scaffolding (never synced), like the notebooks.
 SUPPORT_DIRS = (
     "templates-snapwave-metamodel",
@@ -47,7 +48,7 @@ _IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc", ".*")
 _NAME_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]*")
 
 
-class ScaffoldError(RuntimeError):
+class StartError(RuntimeError):
     """Raised when a new case cannot be created."""
 
 
@@ -58,14 +59,14 @@ def _resolve_source_case(from_case: str) -> Path:
 
     Raises
     ------
-    ScaffoldError
+    StartError
         If no directory named *from_case* with a ``utils/`` subfolder is found.
     """
     for base in (Path.cwd(), REPO_ROOT):
         candidate = (base / from_case).resolve()
         if (candidate / "utils").is_dir():
             return candidate
-    raise ScaffoldError(
+    raise StartError(
         f"Reference case {from_case!r} not found (looked in {Path.cwd()} and {REPO_ROOT})"
     )
 
@@ -85,23 +86,6 @@ def _render_template(template_name: str, target: Path, name: str) -> None:
     """Copy ``TEMPLATE_DIR / template_name`` to *target*, substituting ``__CASE_NAME__``."""
     text = (TEMPLATE_DIR / template_name).read_text(encoding="utf-8")
     target.write_text(text.replace("__CASE_NAME__", name), encoding="utf-8")
-
-
-def _file_hashes(root: Path, dirs: tuple[str, ...]) -> dict[str, str]:
-    """sha256 per vendored engine file, used by `hywaves update` for diffing."""
-    hashes: dict[str, str] = {}
-    for dirname in dirs:
-        base = root / dirname
-        if not base.is_dir():
-            continue
-        for path in sorted(base.rglob("*")):
-            if not path.is_file():
-                continue
-            rel = path.relative_to(root)
-            if any(part.startswith(".") or part == "__pycache__" for part in rel.parts) or path.suffix == ".pyc":
-                continue
-            hashes[str(rel)] = hashlib.sha256(path.read_bytes()).hexdigest()
-    return hashes
 
 
 def start_case(
@@ -136,21 +120,21 @@ def start_case(
 
     Raises
     ------
-    ScaffoldError
+    StartError
         If *name* is invalid, the target already exists, *from_case* can't
         be resolved, or source and target would be the same folder.
     """
     if not _NAME_RE.fullmatch(name):
-        raise ScaffoldError(
+        raise StartError(
             f"Invalid case name {name!r}: use letters, digits, '_' or '-', "
             "starting with a letter"
         )
     source = _resolve_source_case(from_case) if from_case else TEMPLATE_DIR
     target = (Path(dest) / name).resolve()
     if target.exists():
-        raise ScaffoldError(f"Target already exists: {target}")
+        raise StartError(f"Target already exists: {target}")
     if source == target:
-        raise ScaffoldError("Source and target case are the same folder")
+        raise StartError("Source and target case are the same folder")
 
     target.mkdir(parents=True)
 
@@ -189,6 +173,6 @@ def start_case(
         created=now(),
         bluemath_tk=bluemath_tk_revision(),
         notebooks=copied_notebooks,
-        engine_files=_file_hashes(target, ENGINE_DIRS),
+        engine_files=file_hashes(target, ENGINE_DIRS),
     )
     return target

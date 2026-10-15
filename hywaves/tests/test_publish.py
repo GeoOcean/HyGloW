@@ -12,7 +12,7 @@ import unittest
 from pathlib import Path
 
 from hywaves.cli import main
-from hywaves.contract.validate import WARN, validate_case
+from hywaves.validate import WARN, validate_case
 from hywaves.publish import PublishError, publish_case
 
 
