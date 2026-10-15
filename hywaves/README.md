@@ -57,10 +57,10 @@ so the sum of single-goal runs equals a run with every goal forced.
 
 ```bash
 python -m hywaves start --name MyCase   # start a new case
-python -m hywaves validate MyCase/      # check the shape and data of the case
+python -m hywaves validate MyCase/      # check the structure and data of the case
 python -m hywaves publish MyCase/       # build its portal (MyCase/portal/, read by the GUI)
 python -m hywaves snapshot MyCase/ v1   # keep the current portal under a tag
-python -m hywaves update MyCase/        # bring the case code (utils/) to the template
+python -m hywaves update MyCase/        # bring the templates code (utils/) to the case
 ```
 
 One file per command in this folder (`start.py`, `validate.py`,
