@@ -1,7 +1,7 @@
 # CLAUDE.md — HyGloW
 
 Guide for maintainers and coding agents. User docs: `README.md`,
-`hywaves/README.md` (the method), the case README. Case rules:
+`hywaves/README.md` (the method, resources and timings), the case README. Case rules:
 `hywaves/validate.py`.
 
 ## What it is
@@ -39,7 +39,7 @@ python -m hywaves snapshot <Case>/ <tag> --note "…"  # portal/ -> portal_<tag>
 python -m hywaves update   <Case>/ [--dry-run]     # case utils/ <- template
 python -m unittest discover -s hywaves/tests -t .  # all hywaves tests (case_utils/ run inside a started case)
 cd Netherlands && PYTHONPATH=. python -m unittest discover -s ../hywaves/tests/case_utils -t ../hywaves/tests/case_utils
-cd ~/BlueMath_tk && python -m unittest tests.waves.test_hywaves tests.waves.test_hywaves_plots tests.core.test_core_metrics
+cd ~/BlueMath_tk && python -m unittest tests.waves.test_hywaves tests.waves.test_hywaves_plots tests.waves.test_hywaves_store tests.waves.test_hywaves_resources tests.core.test_resources tests.core.test_core_metrics
 cd GUI && python app.py                            # http://localhost:8050
 ```
 
@@ -54,8 +54,8 @@ cd GUI && python app.py                            # http://localhost:8050
 2. **`hywaves/template/` is canonical.** General fixes go there (tests in
    `hywaves/tests/case_utils/`), then `python -m hywaves update <Case>/`. Case-only code stays in
    the case (`Netherlands/utils/buoy_archive.py`, `rijkswaterstaat.py`). Say
-   which copy you edit. Netherlands' only drift: `metamodel.py` GPU batch 12
-   months / 64 GiB (re-apply after `update --force`).
+   which copy you edit. Netherlands has no drift in `utils/` (machine
+   settings are passed as resources, never hard-coded).
 3. **Case rules live in `hywaves/validate.py`** (no spec document). Changing what a case provides: `validate.py`, `publish.py`,
    `hywaves/tests/` and the reference below together.
 4. **The GUI reads only `portal/`**: extend `publish.py`, never make the GUI
@@ -67,7 +67,7 @@ cd GUI && python app.py                            # http://localhost:8050
    prepare them.
 6. **Refactors are checked numerically**: snapshot outputs on Netherlands
    data before, compare after (rebuild the script in the scratchpad).
-7. **Docs stay minimal**: root README, `hywaves/README.md` (brief physics),
+7. **Docs stay minimal**: root README, `hywaves/README.md` (brief physics, resources + timings table: update it when timings are re-measured),
    the case README (one line per notebook + JSON keys), notebook markdown,
    short GUI/presentation READMEs. Method details go in bluemath_tk
    docstrings, maintainer facts here. No contract or method-note files.
@@ -112,8 +112,14 @@ after publishing, commit `portal/`.
 - **Metamodel** (`utils/metamodel.py`): inputs `hs, tp, dir, spr, wl` (LHS,
   steep seas dropped by `max_steepness`); predicts absolute nearshore fields.
   **Sets** (`metamodel.sets`: `buoys`, `isobaths`, ...) = PCA + GP per site
-  group on the same cases and MDA; every call names its set. API:
-  `fit_all()`; `predict(goal, n, forcing, metamodel=)` (row dim = forcing
+  group on the same cases and MDA; every call names its set. **Resources:
+  the user decides**: `fit_resources()` / `reconstruction_resources(<same
+  args as reconstruct>)` print the machine and a proposal (<= 75% of it,
+  never SLURM) and return an editable `FitResources` /
+  `ReconstructionResources`, passed as `resources=` (required) to
+  `fit_all` / `reconstruct` / `goal_contributions` / `sum_contributions`.
+  Notebooks: one resources cell before the first heavy call. API:
+  `fit_all(resources=)`; `predict(goal, n, forcing, metamodel=)` (row dim = forcing
   index name); `predict_goal(offshore, goal, n, metamodel=, sites=,
   partition=, wl=)`; `goal_contributions` + `sum_contributions` =
   `reconstruct(time, n, metamodel=, spectral=, wl=0|"forcing",
@@ -225,10 +231,29 @@ Netherlands (n=100, WHACS_cal, Dec 2013) against the earlier results: bulk
 within 1e-4 m Hs / 1e-3 deg (GP float32 batching), served sub-selections in
 ~1 s instead of ~25 s, rebuild on a touched input; with the wind correction
 one site-hour jumped K 1.243 -> 1.262 (GBM threshold, a 1e-4 input change).
-Cost seen: bulk sum of a month for 1,875 sites ~11 min on one process (14
-site batches x 45 s), the input for the resources work
-(`OPTIMIZE_RESOURCES.md`: a `get_reconstruction_guidance()` from the
-machine's cores, RAM, GPU and `save_spectra`; discuss before changing).
+Cost seen: bulk sum of a month for 1,875 sites ~11 min on one process.
+
+**Resources (done 2026-10-16, same uncommitted branches).** bluemath_tk
+`core/resources.py` (`machine()`, `USAGE` 0.75, `limit_threads`,
+`child_threads`, `run_processes` = spawn pool, 1 thread each) and
+`waves/hywaves/resources.py` (`plan_fit`, `plan_reconstruction`,
+`call_memory`, `sum_budget`, `hours`; measured constants in the module).
+Fits: MDAs, then every (goal, set, n) as its own single-thread process,
+largest sets first (36 threads gave 1.9x one thread; a fit <= 1.2 GiB;
+pooled = in-process fit exactly). Reconstruction: GP + PCA threaded in the
+calling process; the spectral sum in worker processes over site x time
+blocks (`batch_shape`), 0.5-2 GiB of blocks + ~0.75 GiB per worker, so a
+call can hold 12 months whatever the sites; the sum computes only the
+requested stats (1.4x). Measured on this node (n=100, WHACS_cal): sum peak
+6.55x the float32 spectra (sized 8x per part + 4); sum speedup 7.1 / 10.9 /
+14.1 at 8 / 18 / 36 workers (memory bandwidth); isobaths Nov 2013 (4971
+sites) bulk 127 s / spectral 337 s, 93 / 78 GiB peak vs 101 / 108
+predicted; buoys 2013 spectral + `save_spectra` one 12-month call, 172 s,
+69 GiB (was 209 GiB in 4-month calls); pool start-up ~6 s per call.
+Numbers vs the pre-store baseline unchanged (<= 1.5e-4 m Hs; wind K one
+site-hour 0.019). Open option: GP prediction as per-(goal, partition)
+processes returning PCs (36 threads only ~3x 4 threads; GP + PCA is ~12%
+of an isobaths spectral month, ~55% of a buoys year).
 Old `tmp/reconstruct/reconstruct-v8__*` files (3.6 GB) can be deleted when
 the user agrees.
 
