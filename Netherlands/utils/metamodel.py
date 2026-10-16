@@ -439,6 +439,7 @@ def _fit_mda(goal: str, force_retrain: bool = False) -> None:
 
 def _fit_set(goal: str, metamodel: str, n: int, gp_epochs: int, device: str) -> None:
     """PCAs and GP of one goal, set and MDA size on the first *n* MDA cases (one process)."""
+    t0 = _time.monotonic()
     mda, train_idx = load_model(mda_path(goal)), load_split(goal)[0]
     cases = load_cases_goal(goal).isel(case_num=train_idx[:n])
     kept = set(cases.sites.values)
@@ -462,9 +463,9 @@ def _fit_set(goal: str, metamodel: str, n: int, gp_epochs: int, device: str) -> 
     gp_model_path(goal, metamodel, n).parent.mkdir(parents=True, exist_ok=True)
     gp.save_model(gp_model_path(goal, metamodel, n))
     logger.info(
-        "Goal %s / %s / n=%d: %d cases x %d sites, PCA sites dropped %s, %d PCs",
+        "Goal %s / %s / n=%d: %d cases x %d sites, PCA sites dropped %s, %d PCs, %.0f s",
         goal, metamodel, n, cases.sizes["case_num"], cases.sizes["sites"],
-        summary["pca_sites_dropped"], hw.stack_pcs(pcas).shape[1],
+        summary["pca_sites_dropped"], hw.stack_pcs(pcas).shape[1], _time.monotonic() - t0,
     )
 
 

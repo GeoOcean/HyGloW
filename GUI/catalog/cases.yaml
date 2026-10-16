@@ -8,7 +8,7 @@ cases:
       - name: tausiaj
         github: https://github.com/tausiaj
         role: downscaling & metamodel
-    repository: https://github.com/tausiaj/HyGloW
+    repository: https://github.com/GeoOcean/HyGloW
     updated: "2026-07-15"
     pipeline:
       mesh: done
@@ -28,7 +28,7 @@ cases:
       - name: tausiaj
         github: https://github.com/tausiaj
         role: downscaling & metamodel
-    repository: https://github.com/tausiaj/HyGloW
+    repository: https://github.com/GeoOcean/HyGloW
     updated: "2026-09-09"
     pipeline:
       aoi: done
@@ -50,7 +50,7 @@ cases:
       - name: tausiaj
         github: https://github.com/tausiaj
         role: downscaling & metamodel
-    repository: https://github.com/tausiaj/HyGloW
+    repository: https://github.com/GeoOcean/HyGloW
     updated: "2026-09-24"
     pipeline:
       aoi: done

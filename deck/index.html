@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HyGloW Presentation</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+
+  <div class="brand"><img src="assets/geoocean_logo.png" alt="" class="brand-logo" /><span
+      class="brand-name">HyGloW</span>&nbsp;&middot; GeoOcean</div>
+  <div class="brand-right">
+    <button id="mode-btn" class="mode-btn" type="button" title="Toggle short / full deck (S)">Full deck</button>
+    <button id="theme-btn" class="theme-btn" type="button">&#9789; Dark</button>
+  </div>
+
+  <div id="deck">
+
+    <section class="slide">
+      <p class="kicker">The Team</p>
+      <h1>GeoOcean &mdash; Geomatics &amp; Ocean Engineering Group</h1>
+      <h2>Universidad de Cantabria &middot; advancing coastal engineering research through hybrid numerical +
+        statistical methods. Link to the <a href="https://geoocean.unican.es/hyweb" target="_blank"
+          rel="noopener noreferrer">website</a>.</h2>
+      <div class="body">
+        <div class="cols-2">
+          <div>
+            <img src="assets/geoocean_logo.png" alt="GeoOcean logo"
+              style="width:88px;height:auto;margin-bottom:1rem;" />
+            <p>An interdisciplinary team combining ocean expertise, data science, and numerical modelling to understand
+              and predict coastal processes &mdash; from local surf breaks to Pacific-wide flood forecasting.</p>
+            <div class="title-meta" style="margin-top:1.2rem;gap:2rem;">
+              <div><strong>141+</strong>Publications</div>
+              <div><strong>20+</strong>Partner institutions</div>
+              <div><strong>5</strong>Continents, active projects</div>
+            </div>
+          </div>
+          <ul class="points">
+            <li><strong>Australia&ndash;Pacific BlueMath</strong> &mdash; hybrid statistical-dynamical coastal
+              prediction.</li>
+            <li><strong>Impact forecasting consultancy</strong> for Samoa &amp; Tonga.</li>
+            <li><strong>Flood inundation &amp; risk</strong> across Aotearoa&ndash;New Zealand.</li>
+            <li><strong>Hydrodiversity &amp; blue heritage</strong> &mdash; sustainable surfing in Cantabria.</li>
+            <li>Recently: <strong>BlueMesh2D</strong> &mdash; our QGIS meshing plugin &mdash; went live on the QGIS
+              Plugin Repository. It builds the HyGloW meshes.</li>
+          </ul>
+        </div>
+        <figure class="fig" style="cursor:default;">
+          <img src="assets/partner_logos.png"
+            alt="Selected partner institutions: Universidad de Cantabria, TU Delft, Oregon State, NOAA, CSIRO, VU Amsterdam"
+            style="height:9vh;object-fit:contain;padding:1rem 0;" />
+          <figcaption>A few of our international partners &mdash; academia, government, and industry</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="slide">
+      <p class="kicker">The Ecosystem</p>
+      <h1>BlueMath &mdash; open-source ocean science</h1>
+      <h2>An open-source Python ecosystem for hybrid numerical + statistical methods. BinWaves and HyWaves, two wave
+        downscaling methods, both live here.</h2>
+      <div class="body fig-row">
+        <figure class="fig" style="cursor:default;">
+          <img src="assets/bluemath_diagram.png"
+            alt="BlueMath layered architecture: Toolkit, Methods, Climate Services" />
+          <figcaption>Toolkit &rarr; Methods &rarr; Climate Services</figcaption>
+        </figure>
+        <ul class="points">
+          <li>Born <strong>September 2020</strong>, from a NOAA-led international workshop (Spain, USA, Australia, Fiji,
+            New Zealand) held during COVID &mdash; now a genuine community model library, grown to TU Delft, UC Santa
+            Cruz, UFSC Brazil, ERDC, IFCA and more.</li>
+          <li><strong>Toolkit</strong> (<code>BlueMath-tk</code>) &mdash; data-mining/statistical models + numerical
+            model wrappers &mdash; <strong>Methods</strong> (hybrid/statistical/dynamical downscaling) &mdash;
+            <strong>Climate Services</strong> (hindcast, forecast, probabilistic assessment, climate change).
+          </li>
+          <li>Cross-platform, cloud-ready: quick tests in DevContainers, heavy runs on HPC &mdash; the setup
+            HyGloW runs on.</li>
+          <li>Showcased use cases: MUSCLE, HyWindSea, HySwash, GreenSurge 2.0, and for nearshore waves
+            <strong>BinWaves</strong> and <strong>HyWaves</strong>.
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide">
+      <p class="kicker">The Ecosystem &middot; The Toolkit</p>
+      <h1>bluemath-tk &mdash; numerical, statistical and hybrid in one package</h1>
+      <h2>Hybrid downscaling is only one use. The same building blocks also run purely statistical climate emulators
+        such as MUSCLE. Click a card to see it in code.</h2>
+      <div class="body">
+        <div class="cols-5">
+          <div class="card card-clickable tk-card" data-code="tk-code-data" data-title="1 · Get data">
+            <span class="pill">1 &middot; Get data</span>
+            <p class="tk-mod">downloaders</p>
+            <p class="tk-items">Copernicus ERA5 / CERRA, ECMWF Open Data, NOAA NDBC buoys, AVISO SWOT</p>
+            <p class="tk-mod">tide &middot; topo_bathy</p>
+            <p class="tk-items">Harmonic analysis (UTide, T_Tide), profiles, SWAN grids</p>
+            <span class="paper-link tk-hint">Show code &#8599;</span>
+          </div>
+          <div class="card card-clickable tk-card" data-code="tk-code-sample" data-title="2 · Classify & sample">
+            <span class="pill">2 &middot; Classify &amp; sample</span>
+            <p class="tk-mod">datamining &middot; predictor</p>
+            <p class="tk-items"><strong>LHS</strong>, <strong>MDA</strong>, <strong>PCA</strong>, K-means, SOM,
+              XWT weather types</p>
+            <p class="tk-items" style="margin-top:0.5rem">Pick the few cases worth simulating, or sort decades of
+              weather into a handful of types</p>
+            <span class="paper-link tk-hint">Show code &#8599;</span>
+          </div>
+          <div class="card card-clickable tk-card" data-code="tk-code-simulate" data-title="3 · Simulate">
+            <span class="pill">3 &middot; Simulate</span>
+            <p class="tk-mod">wrappers</p>
+            <p class="tk-items"><strong>SWAN</strong>, SWASH, XBeach, SFINCS, SCHISM, Delft3D</p>
+            <p class="tk-items" style="margin-top:0.5rem">One API for every model: templates &rarr;
+              <code>build_cases</code> &rarr; <code>run_cases</code> &rarr; <code>postprocess_cases</code>, locally
+              or on HPC
+            </p>
+            <span class="paper-link tk-hint">Show code &#8599;</span>
+          </div>
+          <div class="card card-clickable tk-card" data-code="tk-code-reconstruct"
+            data-title="4 · Emulate & reconstruct">
+            <span class="pill">4 &middot; Emulate &amp; reconstruct</span>
+            <p class="tk-mod">interpolation &middot; deeplearning</p>
+            <p class="tk-items">RBF, <strong>Gaussian processes</strong>, autoencoders, U-Net</p>
+            <p class="tk-mod">waves &middot; additive &middot; tcs</p>
+            <p class="tk-items">BinWaves, <strong>spectra</strong>, ESTELA, GreenSurge, SHyTCWaves</p>
+            <span class="paper-link tk-hint">Show code &#8599;</span>
+          </div>
+          <div class="card card-clickable tk-card" data-code="tk-code-extremes"
+            data-title="5 · Extremes & climate emulation">
+            <span class="pill">5 &middot; Extremes &amp; climate</span>
+            <p class="tk-mod">distributions &middot; teslakit</p>
+            <p class="tk-items">GEV, GPD, POT, non-stationary GEV, copulas, ALR weather-type simulation: the
+              engine behind <strong style="color:inherit">MUSCLE</strong></p>
+            <p class="tk-mod">risk</p>
+            <p class="tk-items">Damage curves and risk metrics</p>
+            <span class="paper-link tk-hint">Show code &#8599;</span>
+          </div>
+        </div>
+        <p style="margin-top:1.2rem"><code>core</code> (metrics, plotting, I/O, Dask) is shared by all of
+          them<br><code>pip install bluemath-tk</code> &middot; <code>conda install -c conda-forge
+            bluemath-tk</code><br><strong>bold</strong> = used by HyWaves.
+        </p>
+      </div>
+
+      <template id="tk-code-data">
+        <pre><span class="hl"># Offshore forcing: ERA5 waves and winds over the area of interest</span>
+<span class="hl">from</span> bluemath_tk.downloaders.copernicus.copernicus_downloader <span class="hl">import</span> CopernicusDownloader
+
+era5 = CopernicusDownloader(product="ERA5", base_path_to_download="data/", api_key=CDS_KEY)
+era5.download_data_era5(
+    variables=["swh", "pp1d", "mwd", "u10", "v10"],
+    years=years, months=months, area=[north, west, south, east],
+    dry_run=False,
+)
+
+<span class="hl"># Validation: NDBC buoy records</span>
+<span class="hl">from</span> bluemath_tk.downloaders.noaa.noaa_downloader <span class="hl">import</span> NOAADownloader
+
+ndbc = NOAADownloader(product="NDBC", base_path_to_download="data/")
+ndbc.download_data_ndbc(data_type="bulk_parameters", ..., dry_run=False)
+
+<span class="hl"># Pseudocode: split a tide-gauge record into astronomical tide + residual</span>
+tide     = harmonic_fit(sea_level)          <span class="hl"># bluemath_tk.tide (UTide / T_Tide)</span>
+residual = sea_level - tide.predict(time)
+
+<span class="hl"># Pseudocode: bathymetry as cross-shore profiles or a SWAN grid</span>
+grid = topo_bathy.swan_grid(bathymetry, ...)</pre>
+      </template>
+
+      <template id="tk-code-sample">
+        <pre><span class="hl">from</span> bluemath_tk.datamining <span class="hl">import</span> LHS, MDA, PCA, KMA
+
+<span class="hl"># HYBRID: a few representative sea states to simulate</span>
+cases = LHS(num_dimensions=4).generate(
+    dimensions_names=["hs", "tp", "dir", "wl"],
+    lower_bounds=lo, upper_bounds=hi, num_samples=5000,
+)
+mda = MDA(num_centers=300)
+mda.fit(data=cases, directional_variables=["dir"])
+to_simulate = mda.centroids                   <span class="hl"># → card 3: run the model</span>
+
+<span class="hl"># STATISTICAL: daily weather types from sea-level-pressure fields</span>
+pca = PCA(n_components=0.95)
+pcs = pca.fit_transform(
+    data=slp, vars_to_stack=["slp", "slp_gradient"],
+    coords_to_stack=["latitude", "longitude"], pca_dim_for_rows="time",
+)
+kma = KMA(num_clusters=36)
+weather_types, _ = kma.fit_predict(data=pcs)  <span class="hl"># → card 5: ALR simulation</span>
+
+<span class="hl"># Or in one call: PCA + KMA on atmospheric fields</span>
+<span class="hl">from</span> bluemath_tk.predictor.xwt <span class="hl">import</span> XWT
+xwt = XWT(steps={"pca": pca, "kma": kma})
+xwt.fit(data=slp)</pre>
+      </template>
+
+      <template id="tk-code-simulate">
+        <pre><span class="hl">from</span> bluemath_tk.wrappers.swan.swan_wrapper <span class="hl">import</span> SwanModelWrapper
+<span class="hl"># also: SwashModelWrapper, XBeachModelWrapper, SfincsModelWrapper,</span>
+<span class="hl">#       SchismModelWrapper, Delft3dModelWrapper, ...</span>
+
+wrapper = SwanModelWrapper(
+    templates_dir="templates/",            <span class="hl"># Jinja templates of the model input files</span>
+    metamodel_parameters=to_simulate,      <span class="hl"># one row per case (e.g. MDA centroids)</span>
+    fixed_parameters={"mesh": mesh_file},  <span class="hl"># the same for every case</span>
+    output_dir="cases/",
+)
+
+wrapper.build_cases()                            <span class="hl"># one folder per case, inputs rendered</span>
+wrapper.run_cases(launcher="serial", num_workers=10)
+<span class="hl"># or run_cases_in_background(...) / run_cases_bulk(...) on an HPC cluster</span>
+wrapper.monitor_cases()                          <span class="hl"># which ran, which failed</span>
+results = wrapper.postprocess_cases()            <span class="hl"># all cases → one xarray Dataset</span>
+
+<span class="hl"># Your own model? Subclass BaseModelWrapper and keep the same four calls.</span>
+<span class="hl"># That's how SnapWave was added for HyWaves.</span></pre>
+      </template>
+
+      <template id="tk-code-reconstruct">
+        <pre><span class="hl">from</span> bluemath_tk.interpolation.rbf <span class="hl">import</span> RBF
+<span class="hl">from</span> bluemath_tk.interpolation.gps <span class="hl">import</span> ExactGPInterpolation
+
+<span class="hl"># Metamodel: offshore inputs → simulated nearshore outputs, trained on a few cases</span>
+rbf = RBF()
+rbf.fit(
+    subset_data=mda.centroids,             <span class="hl"># the simulated inputs</span>
+    target_data=results_df,                <span class="hl"># their model outputs</span>
+    subset_directional_variables=["dir"],
+)
+nearshore = rbf.predict(dataset=hindcast)  <span class="hl"># decades of hourly data in seconds</span>
+
+<span class="hl"># Same interface, with uncertainty: swap in a Gaussian process</span>
+gp = ExactGPInterpolation(epochs=200)
+gp.fit(subset_data=mda.centroids, target_data=results_df)
+
+<span class="hl"># Or reconstruct by superposition, with no fitting at all (BinWaves)</span>
+<span class="hl">from</span> bluemath_tk.waves.binwaves <span class="hl">import</span> reconstruct_spectra
+nearshore_spectra = reconstruct_spectra(offshore_spectra, kp_coefficients)
+
+<span class="hl"># GreenSurge (storm surge) and SHyTCWaves (tropical-cyclone waves) follow the same idea</span></pre>
+      </template>
+
+      <template id="tk-code-extremes">
+        <pre><span class="hl">from</span> bluemath_tk.distributions.gev <span class="hl">import</span> GEV
+<span class="hl">from</span> bluemath_tk.distributions.nonstat_gev <span class="hl">import</span> NonStatGEV
+<span class="hl">from</span> bluemath_tk.distributions.pot <span class="hl">import</span> pot
+<span class="hl">from</span> bluemath_tk.teslakit.alr <span class="hl">import</span> ALR_WRP
+<span class="hl">from</span> bluemath_tk.teslakit.statistical <span class="hl">import</span> CopulaSimulation
+
+<span class="hl"># Extremes: stationary, or driven by seasonality / climate indices</span>
+gev   = GEV.fit(annual_maxima_hs)
+nsgev = NonStatGEV(xt=hs_maxima, t=time, covariates=climate_indices)
+nsgev.fit()
+peaks = pot(hs, threshold=u)                   <span class="hl"># peaks over threshold → GPD</span>
+
+<span class="hl"># Pseudocode: a MUSCLE-style climate emulator</span>
+alr = ALR_WRP(model_dir)                        <span class="hl"># autoregressive logistic regression</span>
+alr.SetFitData(n_types, weather_types, terms)   <span class="hl"># weather types from card 2</span>
+alr.FitModel()
+alr.Simulate(num_sims=100, time_sim=thousand_years)  <span class="hl"># synthetic weather chronologies</span>
+
+<span class="hl"># For each simulated weather type, sample its storms jointly with copulas</span>
+storms = CopulaSimulation(U_data=[hs, tp, dir, surge],
+                          kernels=["GPareto", "KDE", "KDE", "KDE"], num_sim=n)
+
+<span class="hl"># → thousands of years of plausible sea states → return periods, flooding, risk</span></pre>
+      </template>
+    </section>
+
+    <section class="slide">
+      <p class="kicker">The Ecosystem &middot; Wrappers</p>
+      <h1>Wrappers &mdash; one template, thousands of cases</h1>
+      <h2>Write the model input once with Jinja placeholders. The wrapper creates a named folder for every case, runs
+        them on a laptop, in a container or on HPC, and returns everything as one xarray Dataset.</h2>
+      <div class="body">
+        <div class="cols-4 wr-flow">
+          <div class="card card-clickable tk-card" data-code="wr-code-template"
+            data-title="1 · Template: real input files">
+            <span class="pill">1 &middot; Template</span>
+            <h3>Write the input once</h3>
+            <pre class="mini-code">PROJ 'Paradip' '<span class="hl">{{ case_num }}</span>'
+CGRID UNSTRUC CIRCLE <span class="hl">{{ mdc }}</span> ...
+BOUndspec SIDE <span class="hl">{{ marker | default(1) }}</span></pre>
+            <p class="tk-items">Any input file of any model. Text files are rendered with Jinja (variables,
+              loops, defaults); binary files such as meshes are copied as they are.</p>
+            <span class="paper-link tk-hint">Show code &#8599;</span>
+          </div>
+          <div class="card card-clickable tk-card" data-code="wr-code-cases"
+            data-title="2 · Cases: from a table to named folders">
+            <span class="pill">2 &middot; Cases</span>
+            <h3>Thousands of named folders</h3>
+            <pre class="mini-code">Paradip_CASES/
+├─ <span class="hl">dm105.0fp0.035</span>/ INPUT fort.14
+├─ <span class="hl">dm105.0fp0.038</span>/ ...
+│  ... <span class="hl">1,260 cases</span>
+└─ sbatch_example.sh</pre>
+            <p class="tk-items">One case per row (<code>one_by_one</code>: LHS, MDA) or every combination
+              (<code>all_combinations</code>: BinWaves). You choose the folder names, and cases are built in
+              parallel.</p>
+            <span class="paper-link tk-hint">Show code &#8599;</span>
+          </div>
+          <div class="card card-clickable tk-card" data-code="wr-code-run"
+            data-title="3 · Run: a launcher is just a command">
+            <span class="pill">3 &middot; Run</span>
+            <h3>Anywhere</h3>
+            <pre class="mini-code"><span class="hl">serial</span>  swan_serial.exe
+<span class="hl">mpi</span>     mpirun -np 2 swash_mpi.exe
+<span class="hl">docker</span>  docker run ... geoocean/rocky8
+<span class="hl">slurm</span>   sbatch sbatch_example.sh</pre>
+            <p class="tk-items">Executable, MPI, Docker container or a Slurm array on HPC. Run in parallel
+              workers, or in a background thread while you keep working in the notebook.</p>
+            <span class="paper-link tk-hint">Show code &#8599;</span>
+          </div>
+          <div class="card card-clickable tk-card" data-code="wr-code-collect"
+            data-title="4 · Collect: monitor, postprocess, extend">
+            <span class="pill">4 &middot; Collect</span>
+            <h3>One dataset back</h3>
+            <pre class="mini-code">wrapper.<span class="hl">monitor_cases</span>()
+<span class="hl"># % done, read from each case's log</span>
+ds = wrapper.<span class="hl">postprocess_cases</span>()
+<span class="hl"># → one xarray.Dataset</span></pre>
+            <p class="tk-items">Track progress, re-run only the cases that failed, then merge every output into
+              a single dataset, optionally cleaning up the raw files.</p>
+            <span class="paper-link tk-hint">Show code &#8599;</span>
+          </div>
+        </div>
+        <div class="card wr-strip">
+          <strong>Same four steps for every model:</strong> SWAN &middot; SWASH &middot; XBeach &middot; SFINCS
+          &middot; SCHISM &middot; Delft3D &middot; <em>your own</em>. <br>To add a model, subclass
+          <code>BaseModelWrapper</code> and write <code>build_case</code> + <code>postprocess_case</code>
+        </div>
+      </div>
+
+      <template id="wr-code-template">
+        <pre><span class="hl"># BinWaves/templates/INPUT  (SWAN), rendered once per case</span>
+PROJ 'Paradip' '{{ case_num }}'
+MODE STAT
+COORDINATES SPHERICAL CCM
+CGRID UNSTRUCtured CIRCLE {{ mdc }} {{ flow }} {{ fhigh }}
+READGRID UNSTRUCtured ADCIRC                <span class="hl"># fort.14: binary-safe copy</span>
+BOUndspec SIDE {{ boundary_marker | default(1) }} CONstant FILE 'input_spectra.bnd'
+GEN3 KOMEN AGROW
+...
+
+<span class="hl"># HyGloW case template templates-snapwave-metamodel/snapwave.inp  (SnapWave)</span>
+gridfile   = {{ gridfile }}
+hmin       = {{ min_depth }}
+map_file   = {{ map_file }}
+map_dirspr = {{ map_dirspr }}
+
+<span class="hl"># Every {{ key }} comes from one case context:</span>
+<span class="hl">#   metamodel_parameters (changes per case) + fixed_parameters (the same for all)</span>
+<span class="hl">#   + case_num, added automatically</span></pre>
+      </template>
+
+      <template id="wr-code-cases">
+        <pre><span class="hl"># BinWaves/02_Propagation.ipynb</span>
+swan_cases, fixed = generate_swan_cases_and_fixed_parameters(
+    frequencies_array=freqs, directions_array=dirs,
+)                                          <span class="hl"># {"dm": [...], "fp": [...]}</span>
+
+wrapper = BinWavesUnstructuredWrapper(
+    templates_dir="templates",             <span class="hl"># INPUT, fort.14, locations.loc</span>
+    metamodel_parameters=swan_cases,
+    fixed_parameters=fixed,
+    output_dir="Paradip_CASES",
+)
+wrapper.build_cases(
+    mode="all_combinations",               <span class="hl"># every dm × every fp → 1,260 cases</span>
+    cases_name_format=lambda ctx: f"dm{ctx.get('dm'):.1f}fp{ctx.get('fp'):.3f}",
+)
+
+<span class="hl"># HyWaves: one case per LHS row, grouped by goal</span>
+wrapper.build_cases(
+    cases_name_format=lambda ctx: f"{ctx.get('goal'):02}/{ctx.get('case_num'):04}",
+)                                          <span class="hl"># mode="one_by_one" (default)</span>
+
+<span class="hl"># Rebuild just a few:  wrapper.build_cases(cases_to_build=[3, 17, 42])</span>
+<span class="hl"># Large batches:       wrapper.build_cases(num_workers=16)</span></pre>
+      </template>
+
+      <template id="wr-code-run">
+        <pre><span class="hl"># Each wrapper ships named launchers; any other string is run as a shell command</span>
+SwanModelWrapper.available_launchers = {
+    "serial":        "swan_serial.exe",
+    "docker_serial": "docker run --rm -v .:/case_dir -w /case_dir geoocean/rocky8 swan_serial.exe",
+}
+SwashModelWrapper.available_launchers  <span class="hl"># + "mpi": "mpirun -np 2 swash_mpi.exe", "docker_mpi"</span>
+SfincsModelWrapper.available_launchers <span class="hl"># + "docker": "... deltares/sfincs-cpu", "cluster"</span>
+
+<span class="hl"># Laptop: 10 cases at a time, output and errors logged in each case folder</span>
+wrapper.run_cases(launcher="serial", num_workers=10)
+
+<span class="hl"># Same, but in a background thread: the notebook stays free</span>
+wrapper.run_cases_in_background(launcher="docker_serial", num_workers=10)
+wrapper.get_thread_status()
+
+<span class="hl"># Only the ones that failed</span>
+wrapper.run_cases(launcher="serial", cases_to_run=[12, 874])
+
+<span class="hl"># HPC: build_cases already wrote sbatch_example.sh → one Slurm array job</span>
+wrapper.run_cases_bulk(launcher="sbatch --array=1-1260 sbatch_example.sh")</pre>
+      </template>
+
+      <template id="wr-code-collect">
+        <pre><span class="hl"># Progress of every case, read from its own log</span>
+wrapper.monitor_cases(value_counts="percentage")
+
+<span class="hl"># Every case → one xarray Dataset (optionally written to disk and cleaned up)</span>
+ds = wrapper.postprocess_cases(write_output_nc=True, clean_after=False)
+
+
+<span class="hl"># Adding a new model: two methods. This is how SnapWave was added for HyWaves</span>
+<span class="hl"># (bluemath_tk/wrappers/snapwave/snapwave_wrapper.py)</span>
+<span class="hl">from</span> bluemath_tk.wrappers._base_wrappers <span class="hl">import</span> BaseModelWrapper
+
+<span class="hl">class</span> SnapWaveModelWrapper(BaseModelWrapper):
+    available_launchers = {"default": "snapwave"}
+
+    <span class="hl">def</span> build_case(self, case_context, case_dir):
+        <span class="hl"># write the boundary files for this case (hs.txt, tp.txt, dir.txt, ...)</span>
+        ...
+
+    <span class="hl">def</span> postprocess_case(self, case_num, case_dir, case_context):
+        <span class="hl"># read output_sites.nc → tidy xarray Dataset</span>
+        ...
+
+<span class="hl"># Templates, naming, parallel building, launchers, background runs, Slurm,</span>
+<span class="hl"># monitoring and merging: all inherited, nothing else to write.</span></pre>
+      </template>
+    </section>
+
+    <section class="slide">
+      <p class="kicker">The Ecosystem &middot; Wrappers, live</p>
+      <h1>3 templates &rarr; 1,260 SWAN runs &rarr; 1 file</h1>
+      <h2>A real BinWaves propagation step (Paradip, India), one call at a time. Press the button.</h2>
+      <div class="body">
+        <div class="wa" id="wa">
+          <div class="wa-top">
+            <ol class="wa-steps">
+              <li data-step="0">templates</li>
+              <li data-step="1">build_cases()</li>
+              <li data-step="2">run_cases()</li>
+              <li data-step="3">postprocess_cases()</li>
+            </ol>
+            <div class="wa-actions">
+              <button type="button" class="wa-btn" id="wa-next">build_cases() &#9654;</button>
+              <button type="button" class="wa-reset" id="wa-reset" title="Start again"
+                aria-label="Start again">&#8634;</button>
+            </div>
+          </div>
+
+          <div class="wa-stage">
+            <div class="wa-panel wa-templates">
+              <div class="wa-head"><svg class="wa-ico" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                </svg>templates/</div>
+              <ul class="wa-files">
+                <li><span>INPUT</span><em class="wa-tag wa-tag-jinja">Jinja</em></li>
+                <li><span>fort.14</span><em class="wa-tag">mesh, copied</em></li>
+                <li><span>locations.loc</span><em class="wa-tag">copied</em></li>
+              </ul>
+              <pre class="wa-render">PROJ 'Paradip' '<span class="hl" id="wa-casenum">{{ case_num }}</span>'
+CGRID ... <span class="hl">{{ mdc }}</span> <span class="hl">{{ flow }}</span></pre>
+              <div class="wa-params">
+                <div><code>dm</code><span>36 directions</span></div>
+                <div><code>fp</code><span>35 frequencies</span></div>
+                <div class="wa-mult">36 &times; 35 = <strong>1,260</strong> cases</div>
+              </div>
+            </div>
+
+            <div class="wa-link" id="wa-link1"><span></span></div>
+
+            <div class="wa-panel wa-cases">
+              <div class="wa-head"><svg class="wa-ico" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                </svg>Paradip_CASES/<span class="wa-count" id="wa-count">empty</span></div>
+              <div class="wa-grid" id="wa-grid"></div>
+              <div class="wa-run">
+                <div class="wa-launchers" role="group" aria-label="Launcher">
+                  <span class="wa-label">launcher</span>
+                  <button type="button" class="wa-chip active" data-launcher="serial">serial</button>
+                  <button type="button" class="wa-chip" data-launcher="docker">docker</button>
+                  <button type="button" class="wa-chip" data-launcher="slurm">slurm</button>
+                  <span class="wa-note" id="wa-note"></span>
+                </div>
+                <div class="wa-progress">
+                  <div class="wa-bar"><span id="wa-bar"></span></div>
+                  <code id="wa-pct">monitor_cases()&nbsp;&nbsp;0%</code>
+                </div>
+              </div>
+            </div>
+
+            <div class="wa-link" id="wa-link2"><span></span></div>
+
+            <div class="wa-panel wa-output">
+              <div class="wa-head">one file</div>
+              <div class="wa-nc" id="wa-nc">
+                <div class="wa-doc"><span>.nc</span></div>
+                <div class="wa-nc-name">output_postprocessed.nc</div>
+                <div class="wa-nc-size" id="wa-nc-size">waiting&hellip;</div>
+              </div>
+              <pre class="wa-repr" id="wa-repr"><span class="hl">&lt;xarray.Dataset&gt;</span>
+Dimensions:
+  case_num: 1260
+  node:     13225
+Data variables:
+  Hsig  (case_num, node)
+  Tm02  (case_num, node)
+  Dir   (case_num, node)
++ Xp, Yp, Depth (node)
++ dm, fp, tp, hs (case_num)</pre>
+            </div>
+          </div>
+
+          <div class="wa-code"><span class="wa-prompt">&gt;&gt;&gt;</span><code id="wa-code"></code><span
+              class="wa-caret"></span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide title-slide">
+      <p class="kicker" data-config="eventTag">HyGloW</p>
+      <h1 data-config="eventTitle">Nearshore waves, anywhere on the coast</h1>
+      <div class="wave-divider"></div>
+      <h2 data-config="eventSubtitle">Hybrid downscaling of offshore wave hindcasts.</h2>
+      <div class="title-meta">
+        <div><strong data-config="presenter">Presenter</strong><span data-config="venue">GeoOcean</span></div>
+        <div><strong id="t-cases">3 regions</strong>published use cases</div>
+        <div><strong id="t-goals">52 goals</strong>offshore boundary points</div>
+        <div><strong id="t-obs">47 buoys</strong>for validation</div>
+      </div>
+    </section>
+
+    <!-- ============================================================ 5 -->
+    <section class="slide">
+      <p class="kicker">The idea</p>
+      <h1>Run the physics a few hundred times, learn the rest</h1>
+      <h2>Train a fast surrogate (a "metamodel") on a few hundred physics runs, then use it to predict every hour of the
+        hindcast.</h2>
+      <div class="body cols-2 center">
+        <div class="code-block">
+          <div class="code-head"><span>expensive vs cheap</span><span>concept</span></div>
+          <pre>training   &mdash; expensive, done once
+  sea state &rarr; <span class="hl">SnapWave()</span> &rarr; nearshore waves
+  <span data-main="runs">550</span> runs per goal, then never again
+
+prediction &mdash; cheap, every hour, every site
+  sea state &rarr; <span class="hl">metamodel()</span> &rarr; nearshore waves
+  <span data-main="reconstruct">minutes per year</span>
+
+metamodel = sample   (LHS + MDA [optional])
+          + compress (PCA)
+          + learn    (Gaussian Process)</pre>
+        </div>
+        <div class="stats" style="grid-template-columns:1fr 1fr;">
+          <div class="stat">
+            <div class="num">~394,000</div>
+            <div class="lbl">hourly sea states in a 45-year hindcast, too many to simulate one by one</div>
+          </div>
+          <div class="stat">
+            <div class="num" data-main="runs">550</div>
+            <div class="lbl">SnapWave runs per offshore goal, enough to train the metamodel</div>
+          </div>
+          <div class="stat">
+            <div class="num" data-main="runs-total">5,500</div>
+            <div class="lbl">physics runs in total, in the <span data-main="name">Netherlands</span> case</div>
+          </div>
+          <div class="stat">
+            <div class="num">0</div>
+            <div class="lbl">extra physics runs needed to add a new year, forecast or climate scenario</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ 6 -->
+    <section class="slide">
+      <p class="kicker">The Pipeline</p>
+      <h1>Six steps from offshore hindcast to the coast</h1>
+      <h2>The same recipe for every region. Only the inputs change: an area of interest, a bathymetry and an offshore
+        hindcast.</h2>
+      <div class="body">
+        <div class="flow">
+          <div class="flow-step stats-step gis">
+            <span class="n">1</span>
+            <h3>Split the coast</h3>
+            <p>Draw the <strong>area of interest</strong> (BlueMath or QGIS) and place offshore <strong>goal
+                points</strong> along the coast, each with the range of directions waves can arrive from.</p>
+            <div class="cost"><span data-main="goals">10 goals</span> &middot; <span data-main="name">Netherlands</span>
+            </div>
+          </div>
+          <div class="flow-step stats-step gis optional">
+            <span class="n">2</span><span class="opt-tag">optional</span>
+            <h3>Build the mesh</h3>
+            <p>Generate the unstructured <strong>SnapWave mesh</strong> over the bathymetry with
+              <a href="https://github.com/GeoOcean/BlueMesh2d" target="_blank">bluemesh2d</a>.
+            </p>
+            <div class="cost">Delaunay-based mesh generation in Python</div>
+          </div>
+          <div class="flow-step stats-step">
+            <span class="n">3</span>
+            <h3>Sample</h3>
+            <p>Generate <strong>N plausible sea states</strong> per goal (wave height, period, direction, spreading,
+              water level) with Latin Hypercube Sampling (LHS), dropping unrealistically steep seas.</p>
+            <div class="cost">space-filling design</div>
+          </div>
+          <div class="flow-step physics">
+            <span class="n">4</span>
+            <h3>Simulate</h3>
+            <p>Run <strong>SnapWave</strong> once per sample over a real bathymetry mesh, giving the nearshore response
+              at thousands of sites.</p>
+            <div class="cost">the only expensive step</div>
+          </div>
+          <div class="flow-step stats-step">
+            <span class="n">5</span>
+            <h3>Learn</h3>
+            <p><strong>MDA [optional]</strong> picks the most informative runs, <strong>PCA</strong> compresses the
+              response
+              maps, and a <strong>Gaussian Process</strong> learns the mapping.</p>
+            <div class="cost">one model per goal</div>
+          </div>
+          <div class="flow-step stats-step">
+            <span class="n">6</span>
+            <h3>Reconstruct</h3>
+            <p>Feed in any offshore hindcast hour, whole spectra included. Each wave system is predicted on its own
+              and the results are added up at the coast.</p>
+            <div class="cost">decades, in hours</div>
+          </div>
+        </div>
+        <div class="flow-legend"><span class="physics">physics (SnapWave)</span><span>statistics (BlueMath)</span><span
+            class="gis">GIS (QGIS)</span><span class="optional">optional step</span></div>
+      </div>
+    </section>
+
+    <!-- ============================================================ 7 deep -->
+    <section class="slide" data-depth="deep">
+      <p class="kicker">The Sketch</p>
+      <h1>Every goal gets its own training set</h1>
+      <h2>Goal points sit on the offshore boundary. Each one only samples directions that can actually reach the coast
+        from it, so no runs are spent on waves travelling out to sea.</h2>
+      <div class="body fig-row" id="goals-figs">
+        <figure class="fig">
+          <img data-case-fig="main:fig01_domain" alt="Domain: goals, propagation sectors and mesh" />
+          <figcaption><span data-main="name">Netherlands</span>: <span data-main="goals">10 goals</span>, their
+            propagation sectors, and the SnapWave mesh</figcaption>
+        </figure>
+        <figure class="fig">
+          <img data-case-fig="main:fig03_metamodel" alt="Metamodel training: LHS cases per goal" />
+          <figcaption>Training design: sampled wave directions per goal (bars) over the domain map</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- ============================================================ 8 deep -->
+    <section class="slide" data-depth="deep">
+      <p class="kicker">The output</p>
+      <h1>Swells and wind sea, transformed into directional spectra</h1>
+      <h2>Real sea states mix swells from different storms and local wind sea. HyWaves propagates each component on its
+        own, then adds them up at the coast.</h2>
+      <div class="body fig-row">
+        <figure class="fig">
+          <img data-case-fig="main:fig04_spectra_reconstruction"
+            alt="Reconstruction spectra network: partition arrows offshore, reconstructed spectra along the 5 m isobath" />
+          <figcaption>Offshore partitions (arrows) &rarr; reconstructed directional spectra along the 5 m isobath
+          </figcaption>
+        </figure>
+        <ul class="points">
+          <li>The offshore hindcast (<strong>WHACS</strong>) splits each hour into up to <strong>4
+              partitions</strong>: one wind sea plus three swells.</li>
+          <li>Each partition goes through the metamodel on its own, as a simple sea state from one direction.</li>
+          <li>The nearshore spectrum is the <strong>linear sum</strong> of the transformed partitions, so two swells
+            arriving from different directions still appear as two peaks at the coast.</li>
+          <li>A cheaper <strong>bulk</strong> mode (one sea state per hour) is also available.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ============================================================ 6b  simplifications -->
+    <section class="slide">
+      <p class="kicker">Before the results</p>
+      <h1>What HyWaves simplifies, on purpose</h1>
+      <h2>Three choices keep HyWaves cheap and general, and each costs some accuracy. Keep them in mind for the
+        numbers that follow.</h2>
+      <div class="body cols-3">
+        <div class="card v1-card">
+          <span class="v1-n">1</span>
+          <h3>Hour by hour</h3>
+          <p>Every training run is <strong>stationary</strong>: each hour is treated as a sea state on its own, as if
+            the waves reached the coast instantly. There is no travel time and no memory of the hours before.</p>
+          <p class="v1-effect"><strong>Effect:</strong> storm peaks can arrive a little early at the coast.<br />
+            <strong>Fix:</strong> a travel-time lag per site (being explored).</p>
+        </div>
+        <div class="card v1-card">
+          <span class="v1-n">2</span>
+          <h3>A linear sum</h3>
+          <p>Each offshore goal and each wave system is propagated <strong>on its own</strong>, and the nearshore
+            spectrum is their sum. Processes that depend on the whole sea at once, like breaking or wave&ndash;wave
+            interactions, see one part at a time.</p>
+          <p class="v1-effect"><strong>Effect:</strong> small errors where several big wave systems meet in shallow
+            water.<br /><strong>Check:</strong> full simulations of real periods, compared site by site.</p>
+        </div>
+        <div class="card v1-card">
+          <span class="v1-n">3</span>
+          <h3>No wind in the training runs</h3>
+          <p>Training runs only propagate waves from the offshore boundary. <strong>Local wind</strong> blowing over
+            the domain, which grows new sea on the way to the coast, is left out.</p>
+          <p class="v1-effect"><strong>Effect:</strong> wave heights underestimated in strong onshore wind.<br />
+            <strong>Fix:</strong> an optional wind correction, trained on runs with and without wind.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ 9 deep -->
+    <section class="slide" data-depth="deep">
+      <p class="kicker">Does it learn the physics?</p>
+      <h1>A few hundred runs are "enough"</h1>
+      <div class="body cols-2 center">
+        <div class="chart" id="conv-chart"></div>
+        <ul class="points">
+          <li>Each point is the <strong>median error (RMSE)</strong> across every goal and every depth contour in the
+            case. Switch between wave height and direction.</li>
+          <li id="conv-headline"></li>
+          <li>Knowing where the curve flattens tells us how much physics each new
+            region needs.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ============================================================ 12 -->
+    <section class="slide">
+      <p class="kicker">One site, up close</p>
+      <h1 data-config="featuredBuoyTitle">Featured buoy</h1>
+      <h2><span data-config="featuredBuoyNote">A nearshore buoy</span>, hourly data for
+        <span data-main="buoy-period">a year</span>. HyWaves (purple) against the measurements (black).</h2>
+      <div class="body fig-row wide-left">
+        <figure class="fig">
+          <img id="site-fig" alt="Featured buoy: spectral metamodel vs buoy scatters, plus Hs time series" />
+          <figcaption>Spectral metamodel vs buoy: density scatters (top) and time series (bottom)</figcaption>
+        </figure>
+        <div class="stats" style="grid-template-columns:1fr;" id="site-stats"></div>
+      </div>
+    </section>
+
+    <!-- ============================================================ 14 -->
+    <section class="slide">
+      <p class="kicker">Where it runs today</p>
+      <h1>Three coastlines, one recipe</h1>
+      <h2>A long, exposed coastline, a shallow shelf sea and a volcanic island group, all using the same code, the
+        same case contract and the same validation.</h2>
+      <div class="body cols-3" id="case-cards"></div>
+    </section>
+
+    <!-- ============================================================ 16 -->
+    <section class="slide">
+      <p class="kicker">The portal &middot; Inside a case</p>
+      <h1>Validation, one click away</h1>
+      <h2>Case metadata and pipeline status on the left, the domain on the map, and every validation tab in the drawer
+        below.</h2>
+      <div class="body">
+        <div class="shot">
+          <div class="shot-tabs" role="tablist">
+            <button class="shot-tab active" type="button" data-shot="case_metamodel">Metamodel
+              validation</button>
+            <button class="shot-tab" type="button" data-shot="case_buoys">Buoy validation</button>
+            <button class="shot-tab" type="button" data-shot="case_goals">Goals validation</button>
+            <button class="shot-tab" type="button" data-shot="case_final">Final plots</button>
+          </div>
+          <figure class="fig dark">
+            <img id="shot-img" alt="HyGloW Results Explorer: case view" />
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ 18 -->
+    <section class="slide">
+      <p class="kicker">Being honest</p>
+      <h1>Where it struggles, and what's next</h1>
+      <h2>A fast surrogate inherits the limits of its physics and its forcing. These are the current weak spots.</h2>
+      <div class="body cols-2">
+        <div class="card">
+          <h3>Known limits</h3>
+          <ul class="points">
+            <li><strong>Mean direction against buoys</strong>: no clear gain yet over the offshore hindcast on
+              average, even though it closely follows the full simulation.</li>
+            <li>The <strong>simplifications</strong> above: hour by hour, a linear sum, wind added afterwards. Their
+              cost shows up at <strong>very shallow, sheltered sites</strong> (5 m, inside inlets, behind reefs).</li>
+            <li>It can only be as good as the <strong>offshore hindcast</strong>. Calibrating it against satellite
+              altimetry is work in progress; in open water, downscaling adds little.</li>
+          </ul>
+        </div>
+        <div class="card" style="border-top:3px solid var(--accent)">
+          <h3>Next</h3>
+          <ul class="points">
+            <li><strong>SWAN</strong> as a second physics engine, through the same pipeline.</li>
+            <li><strong>More regions in HyGloW</strong>, contributed by other teams through the same case contract.</li>
+            <li>Beyond hindcasts: <strong>forecasts</strong> and <strong>climate projections</strong> through the same
+              trained HyWaves metamodels, with no new physics runs.</li>
+            <li>Nearshore waves as input to <strong>impact models</strong>: run-up, coastal flooding, erosion.</li>
+            <li>A public deployment of the Results Explorer.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ 19 -->
+    <section class="slide title-slide">
+      <p class="kicker">Thank you</p>
+      <h1>Questions?</h1>
+      <div class="wave-divider"></div>
+      <h2>HyWaves: a few hundred physics runs, a statistical model, and nearshore waves anywhere on the coast.
+        HyGloW: the open project that brings it to your coast.</h2>
+      <div class="title-meta">
+        <div><strong data-config="presenter">Presenter</strong><span data-config="contact">tausiaj@unican.es</span>
+        </div>
+        <div><strong>github.com/GeoOcean</strong>HyGloW &middot; HyWaves &middot; BlueMath</div>
+      </div>
+    </section>
+
+  </div>
+
+  <div class="chrome">
+    <button id="prev-btn" class="nav-btn" type="button" aria-label="Previous slide">&#8592;</button>
+    <div class="progress-track">
+      <div id="progress-fill" class="progress-fill"></div>
+    </div>
+    <span id="slide-counter" class="slide-counter">1 / 1</span>
+    <button id="next-btn" class="nav-btn" type="button" aria-label="Next slide">&#8594;</button>
+  </div>
+
+  <span id="gen-note" class="gen-note"></span>
+  <div id="chart-tip" class="chart-tip"></div>
+  <div id="lightbox"><img src="" alt="" /></div>
+
+  <div id="code-modal" class="pdf-modal code-modal">
+    <div class="pdf-modal-inner">
+      <div class="pdf-modal-header">
+        <span id="code-modal-title" class="pdf-modal-title"></span>
+        <div class="pdf-modal-actions">
+          <span class="code-modal-note">bluemath-tk &middot; simplified</span>
+          <button type="button" id="code-modal-close" class="pdf-modal-close" aria-label="Close">&times;</button>
+        </div>
+      </div>
+      <pre id="code-modal-code"></pre>
+    </div>
+  </div>
+
+  <script src="data.js"></script>
+  <script src="deck.js"></script>
+</body>
+
+</html>
