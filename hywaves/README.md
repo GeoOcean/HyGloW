@@ -74,33 +74,41 @@ How the work is split:
 
 - **Fit**: every (goal, metamodel set, MDA size) is an independent small
   fit, run as its own single-thread process, many at a time.
-- **Reconstruction**: per call (up to 12 months x all sites), the goal
-  contributions are predicted (GP + PCA, threaded), then their spectra are
-  summed in worker processes. Every site and hour is independent, so the sum
-  is cut in small site x hour blocks: each worker needs 0.5-2 GiB, whatever
-  the period or number of sites.
+- **Reconstruction**: per call (up to 12 months x all sites), three steps:
+  1. the GP of every goal and offshore partition, each in its own process
+     (it only depends on the offshore sea states, not on the sites);
+  2. the PCA inverse to the sites, threaded;
+  3. the spectral sum in worker processes. Every site and hour is
+     independent, so the sum is cut in small site x hour blocks (0.5-2 GiB
+     per worker, whatever the period or number of sites); a small sum, such
+     as one site, runs in the main process.
 - **Cache**: results are stored per site and calendar month
   (`tmp/reconstruct/`, one store per setup); a request reads what is stored
   and computes only what is missing. Hours with no energy from any goal are
   NaN. The reconstruction proposal also prints the disk the spectra would
   take, so you can decide on `save_spectra` (~6 MB per site and month).
 
-Timings measured on one 48-core node (Xeon Gold 5418Y, 36 cores used),
-Netherlands case (10 goals), WHACS hindcast, MDA 100, October 2026:
+Timings on one 48-core node (Xeon Gold 5418Y, 36 cores used, shared with
+other jobs), Netherlands case (10 goals), WHACS, **MDA 550, with water level
+and wind correction**, nothing cached, October 2026:
 
 | Task | Time | Peak memory |
 | --- | --- | --- |
-| 1 MDA + 30 PCA/GP fits (MDA 50, 30 epochs), 30 processes | 16 s | — |
-| One GP fit (38 buoys, MDA 550, 100 epochs): 1 thread / 36 threads | 108 s / 58 s | 1 GiB |
-| One month, 4,971 isobath sites, bulk | 127 s | 93 GiB |
-| One month, 4,971 isobath sites, spectral (4 partitions) | 337 s | 78 GiB |
-| One year, 38 buoys, spectral, spectra saved | 172 s | 69 GiB |
-| Any part of a stored month (from the cache) | ~1 s | — |
+| 38 buoys, one year, bulk | 44 s | 53 GiB |
+| 38 buoys, one year, spectral | 84 s | 76 GiB |
+| 38 buoys, one year, spectral, spectra saved | 97 s | 77 GiB |
+| One site, one year, bulk / spectral | 22 s / 41 s | 11 / 26 GiB |
+| One site, 1979-2023 (45 years), bulk / spectral | ~17 min / ~31 min (extrapolated) | |
+| 4,971 isobath sites, one month, bulk | 149 s | 52 GiB |
+| One site and year read back from the cache | 1 s | 1 GiB |
 
-Before this way of running, one month of bulk for 1,875 sites took ~11 min
-in one process (~29 min for the 4,971 sites above). Scaling the spectral
-month gives ~50 h for 45 years of all isobath sites; the proposal prints its
-own estimate for each request (an order of magnitude on other machines).
+Before these changes the same requests took 105 s (38 buoys, bulk), 173 s
+(spectral) and 60 / 97 s (one site, bulk / spectral, per year); a bulk month
+of 1,875 sites took ~11 min in one process. For the GP fits: 30 fits (MDA
+50, 30 epochs) and their MDA took 16 s in 30 processes; one fit uses many
+threads poorly (38 buoys, MDA 550, 100 epochs: 108 s on 1 thread, 58 s on
+36). The proposal prints its own time estimate for each request (an order
+of magnitude on other machines).
 
 ## Commands
 

@@ -223,8 +223,8 @@ rebuilds; hours with no energy are NaN. `core/resources.py` (machine, 75%
 cap, spawn pool) + `waves/hywaves/resources.py` (plans, memory model, rates
 measured on the 48-core node; re-measure there if the sum changes). The sum
 runs in site x hour blocks (`reconstruction.batch_shape`); fits run as
-single-thread processes. Open option: GP prediction as per-(goal, partition)
-processes (GP + PCA ~12% of an isobaths spectral month, ~55% of a buoys year).
+single-thread processes; the GP step runs per (goal, partition) in processes
+(2 threads, 512-row kernels). Speed work in progress: `RECONSTRUCTION.md`.
 
 **Next (user)**: re-run Netherlands 09-12, publish, snapshot; notebook 11
 still has the template `TODO_Buoy`; decide on `WHACS_cal` (overshoot); SWAN

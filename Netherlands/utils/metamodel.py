@@ -65,6 +65,7 @@ from bluemath_tk.waves.hywaves.resources import (
     plan_fit,
     plan_reconstruction,
     sum_budget,
+    sum_workers,
 )
 from bluemath_tk.waves.hywaves.store import ReconstructionStore
 
@@ -117,6 +118,11 @@ PCA_TARGETS = hw.pca_targets(VARS)
 WL_FROM_FORCING = "forcing"
 WaterLevel = float | str
 BULK_PARTITION = hw.BULK_PARTITION
+
+#: Threads per GP process in :func:`goal_contributions` (2 to 4 were equally
+#: fast and gave the threaded results exactly; 1 thread differed by float32
+#: rounding and was slower).
+GP_THREADS = 2
 
 #: Bump to invalidate every reconstruction cache.
 CACHE_VERSION = 10
@@ -373,11 +379,14 @@ def load_models(
     gp = load_model(gp_model_path(goal, metamodel, n))
     if device is not None:
         gp.to(device)
-    pcas = {
+    return {"gp": gp, "pcas": _load_pcas(goal, metamodel, n)}
+
+
+def _load_pcas(goal: str | int, metamodel: str, n: int) -> dict[str, Any]:
+    return {
         name: load_model(pca_model_path(goal, metamodel, n, name, variance))
         for name, variance, _ in PCA_TARGETS
     }
-    return {"gp": gp, "pcas": pcas}
 
 
 def _release_gp_memory() -> None:
@@ -628,15 +637,46 @@ def predict(
     return fields.assign_coords(site_meta(site_ids).coords)
 
 
-def _goal_forcing(offshore: xr.Dataset, goal: str, partition: int, wl: WaterLevel) -> pd.DataFrame:
-    """MDA forcing (``hs``, ``tp``, ``dir``, ``spr``, ``wl``) of one goal and partition."""
+def _goal_wl(offshore: xr.Dataset, goal: str, wl: WaterLevel) -> float | pd.Series:
+    """*wl* (m), or the ``forcing.water_level`` series of *goal* on the offshore times."""
     if not isinstance(wl, str):
-        return hw.goal_forcing(offshore.sel(goal=int(goal)), partition, float(wl))
+        return float(wl)
     if wl != WL_FROM_FORCING:
         raise ValueError(f"wl must be a number or {WL_FROM_FORCING!r}, got {wl!r}")
-    df = hw.goal_forcing(offshore.sel(goal=int(goal)), partition)
-    df["wl"] = goal_water_level(goal, df.index).to_numpy()
-    return df
+    return goal_water_level(goal, offshore.get_index("time"))
+
+
+def _valid_forcing(offshore: xr.Dataset, goal: str, partition: int, wl: float | pd.Series) -> pd.DataFrame:
+    """MDA forcing of one goal and partition at its valid time steps (energy, in its sector)."""
+    if isinstance(wl, pd.Series):
+        df = hw.goal_forcing(offshore.sel(goal=int(goal)), partition)
+        df["wl"] = wl.reindex(df.index).to_numpy()
+    else:
+        df = hw.goal_forcing(offshore.sel(goal=int(goal)), partition, wl)
+    return df[hw.valid_timesteps(df, sector=tuple(load_goals()[goal]["angles"]))]
+
+
+def _wind_sea(forcing: pd.DataFrame) -> dict[str, tuple[str, np.ndarray]]:
+    """Offshore wind-sea weight and inferred wind of the forcing rows, on ``time``."""
+    from bluemath_tk.waves.hywaves.wind_correction import offshore_wind_sea
+
+    from utils.wind import config as wind_config
+
+    cfg = wind_config()
+    ws = offshore_wind_sea(
+        forcing,
+        steepness_range=tuple(cfg["steepness_range"]),
+        spr_range=tuple(cfg["spr_range"]),
+        speed_factor=float(cfg["speed_factor"]),
+    )
+    return {name: ("time", ws[name].to_numpy()) for name in ws}
+
+
+def _goal_pcs(goal: str, metamodel: str, n: int, forcing: pd.DataFrame, device: str) -> np.ndarray:
+    """GP prediction (stacked PCs) of one goal for the forcing rows (one process)."""
+    gp = load_model(gp_model_path(goal, metamodel, n))
+    gp.to(device)
+    return hw.predict_pcs(gp, forcing)
 
 
 def predict_goal(
@@ -685,26 +725,11 @@ def predict_goal(
         Fields on ``(time, sites)``; ``None`` when no time step is valid.
     """
     goal = str(goal)
-    forcing = _goal_forcing(offshore, goal, partition, wl)
-    forcing = forcing[hw.valid_timesteps(forcing, sector=tuple(load_goals()[goal]["angles"]))]
+    forcing = _valid_forcing(offshore, goal, partition, _goal_wl(offshore, goal, wl))
     if forcing.empty:
         return None
     pred = predict(goal, n, forcing, metamodel=metamodel, sites=sites, models=models, device=device)
-    if not wind_sea:
-        return pred
-
-    from bluemath_tk.waves.hywaves.wind_correction import offshore_wind_sea
-
-    from utils.wind import config as wind_config
-
-    cfg = wind_config()
-    ws = offshore_wind_sea(
-        forcing,
-        steepness_range=tuple(cfg["steepness_range"]),
-        spr_range=tuple(cfg["spr_range"]),
-        speed_factor=float(cfg["speed_factor"]),
-    )
-    return pred.assign({name: ("time", ws[name].to_numpy()) for name in ws})
+    return pred.assign(_wind_sea(forcing)) if wind_sea else pred
 
 
 # ---------------------------------------------------------------------------
@@ -725,10 +750,13 @@ def goal_contributions(
     wind_sea: bool = False,
 ) -> list[xr.Dataset]:
     """
-    Contribution of every goal and offshore partition (:func:`predict_goal`).
+    Contribution of every goal and offshore partition (as :func:`predict_goal`).
 
-    The models of one goal are loaded, used for all its partitions and
-    released before the next goal (GPU memory).
+    The GP of every goal x partition runs in its own process
+    (``resources.threads // 2`` processes of 2 threads at a time: one year of
+    40 goal-partitions was ~5x faster than one 36-thread process); on a GPU
+    they run here, one after the other. The PCA inverse to the sites runs
+    here, threaded.
 
     Parameters
     ----------
@@ -739,7 +767,7 @@ def goal_contributions(
     spectral
         Offshore partitions ``0``-``3`` (``True``) or the bulk sea state.
     resources
-        ``device`` and ``threads`` of the GP prediction
+        ``device`` and ``threads`` of the GP and PCA steps
         (:func:`reconstruction_resources`).
     goals
         Goals to include; default all.
@@ -753,19 +781,33 @@ def goal_contributions(
         ``goal`` and ``partition`` dimensions of size 1.
     """
     sites = list(sites)
+    items = []
+    for goal in _goals(goals):
+        level = _goal_wl(offshore, goal, wl)
+        for partition in hwr.partition_ids(offshore, spectral):
+            forcing = _valid_forcing(offshore, goal, partition, level)
+            if not forcing.empty:
+                items.append((goal, partition, forcing))
+    on_gpu = resources.device != "cpu"
+    pcs = run_processes(
+        _goal_pcs,
+        [(goal, metamodel, n, forcing[MDA_INPUTS], resources.device) for goal, _, forcing in items],
+        workers=1 if on_gpu else max(1, resources.threads // GP_THREADS),
+        threads=resources.threads if on_gpu else GP_THREADS,
+    )
+    coords = site_meta(sites).coords
     chunks: list[xr.Dataset] = []
+    loaded, pcas = None, {}
     with limit_threads(resources.threads):
-        for goal in _goals(goals):
-            models = load_models(goal, metamodel, n, device=resources.device)
-            for partition in hwr.partition_ids(offshore, spectral):
-                pred = predict_goal(
-                    offshore, goal, n, metamodel=metamodel, sites=sites, partition=partition,
-                    wl=wl, models=models, wind_sea=wind_sea,
-                )
-                if pred is not None:
-                    chunks.append(pred.expand_dims(goal=[int(goal)], partition=[partition]).load())
-            del models
-            _release_gp_memory()
+        for (goal, partition, forcing), goal_pcs in zip(items, pcs):
+            if goal != loaded:
+                loaded, pcas = goal, _load_pcas(goal, metamodel, n)
+            fields = hw.fields_from_pcs(goal_pcs, pcas, forcing[MDA_INPUTS], VARS, sites)
+            fields = fields.assign_coords(coords)
+            if wind_sea:
+                fields = fields.assign(_wind_sea(forcing))
+            chunks.append(fields.expand_dims(goal=[int(goal)], partition=[partition]).load())
+    _release_gp_memory()
     return chunks
 
 
@@ -791,7 +833,8 @@ def sum_contributions(
     resources
         ``workers`` processes (up to 2 GiB of site x time blocks each, within
         what ``memory`` the contributions and spectra leave;
-        :func:`reconstruction_resources`).
+        :func:`reconstruction_resources`); a small sum (e.g. one site) runs
+        here instead, where a worker pool would cost more than it saves.
     variables
         Output name -> wavespectra stat; default
         ``metamodel.reconstruction.variables``.
@@ -816,12 +859,14 @@ def sum_contributions(
     held = 2 * sum(c.nbytes for c in chunks)
     if save_spectra:
         held += 3 * hwr.spectra_bytes(len(times), len(sites))
+    parts = sum(c.sizes["goal"] * c.sizes["partition"] for c in chunks) + int(wind_correction)
+    workers = sum_workers(len(sites), len(times), parts, resources.workers)
     return hwr.sum_partition_spectra_batched(
         chunks,
         sites,
         dict(variables or RECONSTRUCTION["variables"]),
-        budget_bytes=sum_budget(resources.memory, held, resources.workers),
-        workers=resources.workers,
+        budget_bytes=sum_budget(resources.memory, held, workers),
+        workers=workers,
         save_spectra=save_spectra,
         log_file=str(resolve("logs/metamodel.log")),
         wind_correction=wind_inputs,
