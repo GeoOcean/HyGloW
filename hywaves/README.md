@@ -53,6 +53,47 @@ so the sum of single-goal runs equals a run with every goal forced.
   hour by hour with every goal, wind and water level, against which the
   reconstruction is validated, and buoys are the final check.
 
+## Running it: resources and timings
+
+Fitting and reconstructing are the heavy steps. Before each, one call looks
+at the machine (cores, free memory, GPU) and **proposes** settings using at
+most 75% of it; you read the proposal, change it if you want, and run with
+it. Nothing is guessed silently, and no queue system is needed (SLURM is only
+used for the SnapWave / SWAN runs).
+
+```python
+res = mm.fit_resources()                   # prints the machine, the fits to do, the proposal
+mm.fit_all(resources=res)
+
+res = mm.reconstruction_resources("2013", 550, metamodel="isobaths", spectral=True)
+res.workers = 20                           # optional: leave cores to others
+ds = mm.reconstruct("2013", 550, metamodel="isobaths", spectral=True, resources=res)
+```
+
+How the work is split:
+
+- **Fit**: every (goal, metamodel set, MDA size) is an independent small
+  fit, run as its own single-thread process, many at a time.
+- **Reconstruction**: in calls of up to 12 months x all sites; the GP of
+  every goal runs in its own process, then the spectra of all goals are
+  summed per site and hour in worker processes. Results are cached per site
+  and month (`tmp/reconstruct/`), so a request only computes what is missing.
+  Details and open points: [`RECONSTRUCTION.md`](RECONSTRUCTION.md).
+
+Timings, Netherlands (10 goals, 38 buoys), WHACS, MDA 550, with water level,
+on one 48-core node (36 cores used, shared), nothing cached, October 2026:
+
+| Task | Time | Peak memory |
+| --- | --- | --- |
+| 38 buoys, one year, bulk / spectral | 44 s / 84 s | 53 / 76 GiB |
+| 38 buoys, 1979-2023, spectral, spectra saved | ~73 min, ~90 GB of spectra | 77 GiB |
+| One buoy, 1980-2023, bulk | 14 min | 11 GiB |
+| One buoy and year read back from the cache | 1 s | 1 GiB |
+
+Fits: 30 fits (MDA 50, 30 epochs) and their MDA take 16 s in 30 processes.
+The proposal prints its own time estimate for each request (an order of
+magnitude on other machines).
+
 ## Commands
 
 ```bash

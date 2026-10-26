@@ -29,7 +29,6 @@ order, `python -m hywaves validate Netherlands/` to see what is missing.
 | 07b | `07b_Satellite_Calibration` | WHACS vs IMOS altimetry, `WHACS_cal` |
 | 08 | `08_Dynamic_Cases_Generation` | Hourly reference runs with wind and water level |
 | 09–12 | validation and figures | Reconstruction vs reference runs, buoys, spectra, portal figures |
-| 13, 14 | `13_Storm_Analysis`, `14_TimeLag_Exploration` | Case studies: storm peaks, propagation time lag |
 
 ## Case-specific code
 
@@ -37,7 +36,6 @@ order, `python -m hywaves validate Netherlands/` to see what is missing.
 | --- | --- |
 | `utils/buoy_archive.py` | Builds the processed buoys (Waterinfo, CMEMS and older Rijkswaterstaat exports) |
 | `utils/rijkswaterstaat.py` | Reads the older Rijkswaterstaat exports |
-| `utils/metamodel.py` | The template's, with GPU and memory settings for this machine |
 
 The rest of `utils/` is the template's: `python -m hywaves update Netherlands/`
-keeps it current (and leaves the tuned `metamodel.py` alone).
+keeps it current.

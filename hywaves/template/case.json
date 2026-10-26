@@ -19,7 +19,7 @@
     ],
     "satellite": {
         "name": "IMOS altimeter",
-        "data_path": "/lustre/geocean/DATA/IMOS/processed/imos_altimeter_1985_2020.zarr",
+        "data_path": "https://geoocean.unican.es/zarr/IMOS/imos_altimeter_1985_2020.zarr",
         "radius_km": 50,
         "min_depth": 15,
         "flags": [1, 2],

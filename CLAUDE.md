@@ -1,7 +1,7 @@
 # CLAUDE.md — HyGloW
 
 Guide for maintainers and coding agents. User docs: `README.md`,
-`hywaves/README.md` (the method), the case README. Case rules:
+`hywaves/README.md` (the method, resources and timings), the case README. Case rules:
 `hywaves/validate.py`.
 
 ## What it is
@@ -16,7 +16,7 @@ nearshore series (bulk or spectra) is the **linear sum of the goal spectra**.
 | `hywaves/` | One module per command (`start`, `validate` = the case rules, `publish`, `snapshot`, `update`), `common.py` (shared helpers, case manifest), `cli.py`, the case `template/` |
 | `Netherlands/` | Reference case, latest code. `Samoa/`, `NewSouthWales/`: older code (0.9.0), migrate when next touched |
 | `GUI/` | Dash results explorer, reads only `{Case}/portal/` |
-| `presentation/` | Static deck, numbers from the `portal/` bundles |
+| `deck/` | Slide deck on GitHub Pages: `python deck/build.py` -> `deck/_site/` from the `portal/` bundles (`.github/workflows/deck.yml`) |
 | `~/BlueMath_tk` | **bluemath_tk**: all generic code (HyWaves in `waves/hywaves/`, wrappers in `wrappers/{snapwave,swan}/` holding only `_wrapper/_utils/_plots.py`) |
 | `~/BlueMath` | Examples (`climate_services/hindcast/HyWaves_Netherlands`, branch `hywaves/netherlands`) |
 
@@ -39,7 +39,7 @@ python -m hywaves snapshot <Case>/ <tag> --note "…"  # portal/ -> portal_<tag>
 python -m hywaves update   <Case>/ [--dry-run]     # case utils/ <- template
 python -m unittest discover -s hywaves/tests -t .  # all hywaves tests (case_utils/ run inside a started case)
 cd Netherlands && PYTHONPATH=. python -m unittest discover -s ../hywaves/tests/case_utils -t ../hywaves/tests/case_utils
-cd ~/BlueMath_tk && python -m unittest tests.waves.test_hywaves tests.waves.test_hywaves_plots tests.core.test_core_metrics
+cd ~/BlueMath_tk && python -m unittest tests.waves.test_hywaves tests.waves.test_hywaves_plots tests.waves.test_hywaves_store tests.waves.test_hywaves_resources tests.core.test_resources tests.core.test_core_metrics
 cd GUI && python app.py                            # http://localhost:8050
 ```
 
@@ -54,8 +54,8 @@ cd GUI && python app.py                            # http://localhost:8050
 2. **`hywaves/template/` is canonical.** General fixes go there (tests in
    `hywaves/tests/case_utils/`), then `python -m hywaves update <Case>/`. Case-only code stays in
    the case (`Netherlands/utils/buoy_archive.py`, `rijkswaterstaat.py`). Say
-   which copy you edit. Netherlands' only drift: `metamodel.py` GPU batch 12
-   months / 64 GiB (re-apply after `update --force`).
+   which copy you edit. Netherlands has no drift in `utils/` (machine
+   settings are passed as resources, never hard-coded).
 3. **Case rules live in `hywaves/validate.py`** (no spec document). Changing what a case provides: `validate.py`, `publish.py`,
    `hywaves/tests/` and the reference below together.
 4. **The GUI reads only `portal/`**: extend `publish.py`, never make the GUI
@@ -67,10 +67,12 @@ cd GUI && python app.py                            # http://localhost:8050
    prepare them.
 6. **Refactors are checked numerically**: snapshot outputs on Netherlands
    data before, compare after (rebuild the script in the scratchpad).
-7. **Docs stay minimal**: root README, `hywaves/README.md` (brief physics),
+7. **Docs stay minimal**: root README, `hywaves/README.md` (brief physics, resources + timings table: update it when timings are re-measured),
    the case README (one line per notebook + JSON keys), notebook markdown,
-   short GUI/presentation READMEs. Method details go in bluemath_tk
-   docstrings, maintainer facts here. No contract or method-note files.
+   short GUI/deck READMEs, `hywaves/RECONSTRUCTION.md` (how the
+   reconstruction uses the machine, buoy timings, open points). Method
+   details go in bluemath_tk docstrings, maintainer facts here. No other
+   contract or method-note files.
 8. **Style**: Python 3.12, type hints, `from __future__ import annotations`,
    NumPy docstrings, `pathlib`, loggers `hywaves.*`; sparse comments.
 9. **Honest numbers**: quote what was computed, with period, MDA size and
@@ -90,7 +92,7 @@ after publishing, commit `portal/`.
   -> 05 training cases (05b wind correction) -> 06 fit + holdout -> 07a
   offshore (`07a_Offshore_WHACS` or `_ERA5`; 07b satellite calibration) ->
   08 dynamic runs -> 09 linear sum vs dynamic -> 10 buoys
-  (`10_Validate_Buoys`) -> 11 spectra -> 12 GUI figures; >= 13 case studies.
+  (`10_Validate_Buoys`) -> 11 spectra -> 12 GUI figures. Netherlands case studies in progress (storms, time lag) live untracked in `Netherlands/tmp/storm_validation/`.
   Save cells of 06/09/10/12 write the `outputs/` that `publish` bundles.
 - Conventions: directions nautical, coming-from, clockwise; goal `angles` =
   `[left, right]` (left may be negative across North); goal ids are string
@@ -112,8 +114,14 @@ after publishing, commit `portal/`.
 - **Metamodel** (`utils/metamodel.py`): inputs `hs, tp, dir, spr, wl` (LHS,
   steep seas dropped by `max_steepness`); predicts absolute nearshore fields.
   **Sets** (`metamodel.sets`: `buoys`, `isobaths`, ...) = PCA + GP per site
-  group on the same cases and MDA; every call names its set. API:
-  `fit_all()`; `predict(goal, n, forcing, metamodel=)` (row dim = forcing
+  group on the same cases and MDA; every call names its set. **Resources:
+  the user decides**: `fit_resources()` / `reconstruction_resources(<same
+  args as reconstruct>)` print the machine and a proposal (<= 75% of it,
+  never SLURM) and return an editable `FitResources` /
+  `ReconstructionResources`, passed as `resources=` (required) to
+  `fit_all` / `reconstruct` / `goal_contributions` / `sum_contributions`.
+  Notebooks: one resources cell before the first heavy call. API:
+  `fit_all(resources=)`; `predict(goal, n, forcing, metamodel=)` (row dim = forcing
   index name); `predict_goal(offshore, goal, n, metamodel=, sites=,
   partition=, wl=)`; `goal_contributions` + `sum_contributions` =
   `reconstruct(time, n, metamodel=, spectral=, wl=0|"forcing",
@@ -159,7 +167,8 @@ fig02_map_comparison, fig03_metamodel, fig04_spectra_reconstruction), `book/`
 `sources`). Missing sources skip a layer. Snapshots: `portal_<tag>/`, never
 re-published. Case manifest `.hywaves/manifest.json`: `hywaves_version`,
 `source`, `created`/`updated`, `bluemath_tk {version, commit, branch, dirty}`
-(start, update, publish), `engine_files` (hashes of `utils/`). Cases carry
+(start, update, publish), `notebooks` (copied at start), `engine_files`
+(hashes of `utils/`). Cases carry
 no `tests/`.
 
 **Method facts**
@@ -190,51 +199,42 @@ no `tests/`.
   energy fit overshoots moderate seas: open). ERA5 (`EDH_API_KEY`; `ptp` are
   Tm-1,0) beats WHACS RMSE at 8/10 goals at 10 km, with few passes.
 
-## Where we are (2026-10-15)
+## Where we are (2026-10-26)
 
-hywaves **0.15.0**, uncommitted on HyGloW `netherlands/swan` and bluemath_tk
-`hywaves/mesh-sites` (0.12-0.15 work: mesh-based sites, satellite
-calibration, SWAN maps, the 0.15 refactor, docs cleanup). The user reviews
-and commits.
+hywaves **0.15.0** on `main` (HyGloW) and `develop` (bluemath_tk).
 
 **Netherlands** (`Netherlands.json`): SnapWave; 10 goals, 629 cases/goal;
-mesh `inputs/GRID/Netherlands_mesh.nc` / `.grd` (153k nodes); 5163 sites,
-5156 ok (5m 1175, 10m 1875, 20m 1927, DeenHaag 141, 38 of 44 buoys;
-`smooth_m` 50, `spacing_m` 500, `fraction` 0.1, `wl` [−3.25, 4.0]); site
-filter keeps 38 / 4971 / 139 in `buoys` / `isobaths` / `deenhaag`;
-`mda_candidates` [100, 550]; fitted; wind correction fitted; dynamic runs
-`Dynamic_Cases_WHACS_cal_2013.nc` (ERA5 wind, CODEC water level, CODEC only
-to 2018). Buoys: `utils/buoy_archive.py` (stations < 1 km merged, hourly,
-longest record first; 27 Tp, 17 dir, 12 spr; Belgian ones Hs-only 2020-25).
+mesh `inputs/GRID/Netherlands_mesh.nc` / `.grd` (153k nodes); 5156 ok sites
+(5m 1175, 10m 1875, 20m 1927, DeenHaag 141, 38 buoys); site filter keeps 38 /
+4971 / 139 in `buoys` / `isobaths` / `deenhaag`; `mda_candidates` [100, 550]
+(fitted with 5000 epochs; the GP stops early, patience 30); wind correction
+fitted; dynamic runs `Dynamic_Cases_WHACS_cal_2013.nc` (ERA5 wind, CODEC
+water level, CODEC only to 2018). Buoys: `utils/buoy_archive.py` (stations
+< 1 km merged, hourly; 27 Tp, 17 dir, 12 spr; Belgian ones Hs-only 2020-25).
 Earlier results (2012-2013, MDA 550, `buoys`, median over 27 buoys, before
 the 0.14 sites): bulk metamodel Hs bias −0.10 / RMSE 0.31 / R² 0.78, with
 wind correction +0.08 / 0.29 / 0.83; WHACS closest goal +0.19 / 0.41; dynamic
 SnapWave +0.19 / 0.42; Tp R² negative everywhere (`tp` raw).
 
-**Reconstruction store (done 2026-10-15, branches HyGloW `reconstruct-store`,
-bluemath_tk `hywaves/reconstruct-store`, uncommitted).** bluemath_tk
-`waves/hywaves/store.py` `ReconstructionStore`: one zarr per setup on
-`(month, step, sites)`, chunk = 1 site x 1 month, bulk sharded per month
-(one file per variable and month; zarr 3.1.5 cannot write scattered sites
-into a shard, so writes read-modify-write the month under a file lock),
-spectra one file per site-month (~6 MB; only with `save_spectra`); `done`
-mask; setup `key` + input `fingerprint` in the attrs, any change rebuilds.
-float32. Hours with no energy from any goal are NaN (bulk and spectra; none
-for the Netherlands buoys in Nov 2013): nothing is invented. Checked on
-Netherlands (n=100, WHACS_cal, Dec 2013) against the earlier results: bulk
-within 1e-4 m Hs / 1e-3 deg (GP float32 batching), served sub-selections in
-~1 s instead of ~25 s, rebuild on a touched input; with the wind correction
-one site-hour jumped K 1.243 -> 1.262 (GBM threshold, a 1e-4 input change).
-Cost seen: bulk sum of a month for 1,875 sites ~11 min on one process (14
-site batches x 45 s), the input for the resources work
-(`OPTIMIZE_RESOURCES.md`: a `get_reconstruction_guidance()` from the
-machine's cores, RAM, GPU and `save_spectra`; discuss before changing).
-Old `tmp/reconstruct/reconstruct-v8__*` files (3.6 GB) can be deleted when
-the user agrees.
+**Reconstruction cache and resources** (user summary: `hywaves/README.md`;
+how it runs, buoy timings, open points: `hywaves/RECONSTRUCTION.md`). bluemath_tk `waves/hywaves/store.py`: one zarr per
+setup on `(month, step, sites)`, chunk = 1 site x 1 month, bulk sharded per
+month (zarr 3.1.5 cannot write scattered sites into a shard: writes
+read-modify-write the month under a file lock), spectra one file per
+site-month; setup `key` + input `fingerprint` in the attrs, any change
+rebuilds; hours with no energy are NaN. `core/resources.py` (machine, 75%
+cap, spawn pool) + `waves/hywaves/resources.py` (plans, memory model, rates
+measured on the 48-core node; re-measure there if the sum changes). The sum
+runs in site x hour blocks (`reconstruction.batch_shape`); fits run as
+single-thread processes; the GP step runs per (goal, partition) in processes
+(2 threads, 512-row kernels). 38 buoys 1979-2023 spectral with spectra
+saved: ~73 min, ~90 GB. Open: the time model runs short for long calls over
+many sites (blocks of 1 site x ~2,600 h sum ~1.7x slower per site-hour), K
+is a step function.
 
-**Next (user)**: re-run Netherlands 09-12 on the new code (reconstruction
-caches are rebuilt), publish, snapshot; notebook 11 still has the template
-`TODO_Buoy`; decide on `WHACS_cal` (overshoot); SWAN pass (05-12 with
-`model: swan`, `tp` as PCA target, then snapshot `swan`); migrate Samoa and
-NewSouthWales (`update` + config + re-run). Cluster: arrays <= 9999 tasks and
-20000 job records (bigger runs in `OFFSET` blocks with dependencies).
+**Next (user)**: notebook 10 spectral 1979-2023 (running 2026-10-26), then
+09-12, publish, re-snapshot `portal_snapwave`, deck; notebook 11
+still has the template `TODO_Buoy`; decide on `WHACS_cal` (overshoot); SWAN
+pass (05-12 with `model: swan`, `tp` as PCA target, then snapshot `swan`);
+migrate Samoa and NewSouthWales (`update` + config + re-run). Cluster: arrays
+<= 9999 tasks and 20000 job records (bigger runs in `OFFSET` blocks).

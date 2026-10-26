@@ -1,0 +1,13 @@
+{
+  "eventTag": "HyGloW",
+  "eventTitle": "Nearshore waves, anywhere on the coast",
+  "eventSubtitle": "HyWaves, hybrid downscaling: a few hundred physics runs teach a fast statistical model to turn any offshore wave hindcast into nearshore conditions. HyGloW shares it, region by region.",
+  "venue": "GeoOcean · Universidad de Cantabria",
+  "presenter": "Javier Tausía Hoyal",
+  "contact": "tausiaj@unican.es",
+  "mainCase": "Netherlands",
+  "featuredBuoy": "StortemelkWest",
+  "featuredBuoyTitle": "Stortemelk West, Wadden Sea",
+  "featuredBuoyNote": "A buoy in the tidal inlet between Vlieland and Terschelling",
+  "defaultMode": "short"
+}

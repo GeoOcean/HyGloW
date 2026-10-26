@@ -11,10 +11,24 @@ Metamodel sets (``metamodel.sets``) are PCA + GP models on a group of output
 sites (``{"buoys": {"sites": "buoy"}, ...}``). They share each goal's model
 cases and MDA, and every call names its set (``metamodel="buoys"``).
 
-- Training: :func:`fit`, :func:`fit_all`.
+Resources: the user decides. :func:`fit_resources` and
+:func:`reconstruction_resources` print what this machine has and propose
+settings (at most 75% of it); the user edits them if wanted and passes them to
+:func:`fit_all` / :func:`reconstruct` (``resources=``)::
+
+    res = mm.reconstruction_resources("2013", 550, metamodel="buoys", spectral=True)
+    res.workers = 20  # optional
+    ds = mm.reconstruct("2013", 550, metamodel="buoys", spectral=True, resources=res)
+
+Fits run as parallel single-thread processes; a reconstruction predicts the
+goal contributions with threads and sums the spectra in worker processes
+(see :mod:`bluemath_tk.waves.hywaves.resources`).
+
+- Training: :func:`fit_resources`, :func:`fit_all` (parallel processes).
 - Prediction: :func:`predict` (forcing rows -> nearshore fields of one goal),
   :func:`predict_goal` (one goal and offshore partition of a hindcast).
-- Reconstruction: :func:`goal_contributions` (every goal x partition),
+- Reconstruction: :func:`reconstruction_resources`,
+  :func:`goal_contributions` (every goal x partition),
   :func:`sum_contributions` (spectral sum), :func:`reconstruct` (both, cached
   per site and calendar month in :func:`reconstruction_store`),
   :func:`load_reconstruction_spectra`.
@@ -28,6 +42,9 @@ import gc
 import hashlib
 import json
 import logging
+import shutil
+import time as _time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
@@ -37,8 +54,19 @@ import torch
 import xarray as xr
 from bluemath_tk.core.io import load_model
 from bluemath_tk.core.logging import get_file_logger
+from bluemath_tk.core.resources import GIB, USAGE, limit_threads, machine, run_processes
 from bluemath_tk.waves.hywaves import metamodel as hw
 from bluemath_tk.waves.hywaves import reconstruction as hwr
+from bluemath_tk.waves.hywaves.resources import (
+    FitResources,
+    ReconstructionResources,
+    call_memory,
+    hours,
+    plan_fit,
+    plan_reconstruction,
+    sum_budget,
+    sum_workers,
+)
 from bluemath_tk.waves.hywaves.store import ReconstructionStore
 
 from utils.config import (
@@ -63,12 +91,13 @@ logger = get_file_logger(
     console=True,
     console_level="WARNING",
 )
-# bluemath_tk.waves.hywaves logs (e.g. summation progress) go to the same file
-_hywaves_logger = logging.getLogger("bluemath_tk.waves.hywaves")
-_hywaves_logger.setLevel(logging.INFO)
-for _handler in logger.handlers:
-    if isinstance(_handler, logging.FileHandler) and _handler not in _hywaves_logger.handlers:
-        _hywaves_logger.addHandler(_handler)
+# bluemath_tk logs (summation and process-pool progress) go to the same file
+for _name in ("bluemath_tk.waves.hywaves", "bluemath_tk.core.resources"):
+    _toolkit_logger = logging.getLogger(_name)
+    _toolkit_logger.setLevel(logging.INFO)
+    for _handler in logger.handlers:
+        if isinstance(_handler, logging.FileHandler) and _handler not in _toolkit_logger.handlers:
+            _toolkit_logger.addHandler(_handler)
 
 VARS = METAMODEL["vars_to_predict"]
 MDA_INPUTS = METAMODEL["mda_inputs"]
@@ -90,19 +119,10 @@ WL_FROM_FORCING = "forcing"
 WaterLevel = float | str
 BULK_PARTITION = hw.BULK_PARTITION
 
-# Months per GP prediction call in `reconstruct()`. Each call has a large
-# fixed cost, so uncached months are batched; the cap is GPU memory (spectral
-# mode, 4 partitions, all goals), which grows with the time span per call and
-# not with the number of sites. Raise it only after checking spectral mode on
-# the target GPU, or pass device="cpu" to reconstruct().
-# Netherlands: tuned to this host's GPU.
-RECONSTRUCT_GPU_BATCH_MONTHS_CAP = 12
-
-# Memory budget of the site-batched spectral summation on this host (see
-# bluemath_tk.waves.hywaves.reconstruction.site_batch_size).
-WAVESPECTRA_MEMORY_BUDGET_BYTES = (
-    64 * 1024**3
-)  # 64 GiB; tuned to this host
+#: Threads per GP process in :func:`goal_contributions` (2 to 4 were equally
+#: fast and gave the threaded results exactly; 1 thread differed by float32
+#: rounding and was slower).
+GP_THREADS = 2
 
 #: Bump to invalidate every reconstruction cache.
 CACHE_VERSION = 10
@@ -359,11 +379,14 @@ def load_models(
     gp = load_model(gp_model_path(goal, metamodel, n))
     if device is not None:
         gp.to(device)
-    pcas = {
+    return {"gp": gp, "pcas": _load_pcas(goal, metamodel, n)}
+
+
+def _load_pcas(goal: str | int, metamodel: str, n: int) -> dict[str, Any]:
+    return {
         name: load_model(pca_model_path(goal, metamodel, n, name, variance))
         for name, variance, _ in PCA_TARGETS
     }
-    return {"gp": gp, "pcas": pcas}
 
 
 def _release_gp_memory() -> None:
@@ -378,22 +401,17 @@ def _release_gp_memory() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _fit_mda(goal: str, *, force_retrain: bool = False) -> tuple[Any, np.ndarray]:
+def _fit_mda(goal: str, force_retrain: bool = False) -> None:
     """
-    MDA of one goal and its ``split.json`` (fitted once, then loaded).
+    MDA of one goal and its ``split.json`` (kept if fitted, unless *force_retrain*).
 
     The site filter runs here: its ``removed_sites`` are saved with the split.
     The MDA selects ``max(mda_candidates)`` cases (train, in MDA order); the
     rest are the holdout.
-
-    Returns
-    -------
-    mda, train_idx
-        Fitted MDA and the train case indices.
     """
     if not force_retrain and mda_path(goal).exists() and split_path(goal).exists():
         check_artefacts_model(goal)
-        return load_model(mda_path(goal)), load_split(goal)[0]
+        return
 
     raw = load_cases_goal(goal, apply_site_filter=False)
     dropped = hw.detect_removed_sites(raw, SITE_FILTER)
@@ -426,13 +444,12 @@ def _fit_mda(goal: str, *, force_retrain: bool = False) -> tuple[Any, np.ndarray
             indent=2,
         )
     logger.info("Goal %s: MDA fitted (%d train, %d test)", goal, len(train_idx), len(test_idx))
-    return mda, train_idx
 
 
-def _fit_set(
-    goal: str, metamodel: str, n: int, mda: Any, train_idx: np.ndarray, *, gp_epochs: int
-) -> None:
-    """PCAs and GP of one goal, set and MDA size on the first *n* MDA cases."""
+def _fit_set(goal: str, metamodel: str, n: int, gp_epochs: int, device: str) -> None:
+    """PCAs and GP of one goal, set and MDA size on the first *n* MDA cases (one process)."""
+    t0 = _time.monotonic()
+    mda, train_idx = load_model(mda_path(goal)), load_split(goal)[0]
     cases = load_cases_goal(goal).isel(case_num=train_idx[:n])
     kept = set(cases.sites.values)
     cases = cases.sel(sites=[s for s in set_sites(metamodel) if s in kept])
@@ -451,33 +468,108 @@ def _fit_set(
         path = pca_model_path(goal, metamodel, n, name, variance)
         path.parent.mkdir(parents=True, exist_ok=True)
         pcas[name].save_model(path)
-    gp = hw.fit_gp(centroids, pcas, MDA_DIRECTIONAL, epochs=gp_epochs)
+    gp = hw.fit_gp(centroids, pcas, MDA_DIRECTIONAL, epochs=gp_epochs, device=device)
     gp_model_path(goal, metamodel, n).parent.mkdir(parents=True, exist_ok=True)
     gp.save_model(gp_model_path(goal, metamodel, n))
     logger.info(
-        "Goal %s / %s / n=%d: %d cases x %d sites, PCA sites dropped %s, %d PCs",
+        "Goal %s / %s / n=%d: %d cases x %d sites, PCA sites dropped %s, %d PCs, %.0f s",
         goal, metamodel, n, cases.sizes["case_num"], cases.sizes["sites"],
-        summary["pca_sites_dropped"], hw.stack_pcs(pcas).shape[1],
+        summary["pca_sites_dropped"], hw.stack_pcs(pcas).shape[1], _time.monotonic() - t0,
     )
 
 
-def fit(
-    goal: str | int,
+def _fit_jobs(
+    goals: Iterable[str | int] | None,
+    metamodels: Iterable[str] | None,
+    candidates: Iterable[int] | None,
+    force_retrain: bool,
+) -> tuple[list[str], list[tuple[str, str, int]]]:
+    """Goals whose MDA to fit, and (goal, set, n) to fit, largest sets first."""
+    goals = _goals(goals)
+    mdas = [g for g in goals if force_retrain or not (mda_path(g).exists() and split_path(g).exists())]
+    fits = [
+        (g, m, int(n))
+        for g in goals
+        for m in (metamodels or SETS)
+        for n in (candidates or MDA_CANDIDATES)
+        if g in mdas or missing_models(g, m, int(n))
+    ]
+    fits.sort(key=lambda job: (len(set_sites(job[1])), job[2]), reverse=True)
+    return mdas, fits
+
+
+def fit_resources(
+    goals: Iterable[str | int] | None = None,
     *,
+    metamodels: Iterable[str] | None = None,
+    candidates: Iterable[int] | None = None,
+    force_retrain: bool = False,
+) -> FitResources:
+    """
+    Propose resources for :func:`fit_all` with the same arguments, and print why.
+
+    Lists the MDAs and the (goal, set, MDA size) fits still to do. On CPU
+    every fit is one single-thread process, as many at a time as 75% of the
+    cores and free memory allow (a fit takes ~1 GiB + 8x its goal's model
+    cases). Nothing runs::
+
+        res = mm.fit_resources()      # prints machine, fits to do, proposal
+        res.workers = 12              # optional
+        mm.fit_all(resources=res, gp_epochs=1000)
+
+    Parameters
+    ----------
+    goals, metamodels, candidates, force_retrain
+        As for :func:`fit_all`.
+
+    Returns
+    -------
+    FitResources
+        ``device``, ``workers`` (fits at the same time), ``threads`` (each).
+    """
+    mdas, fits = _fit_jobs(goals, metamodels, candidates, force_retrain)
+    host = machine()
+    cores, memory = host.usable()
+    print(f"Machine   {host} -> at most {cores} cores, {memory / GIB:.0f} GiB ({USAGE:.0%})")
+    if not mdas and not fits:
+        print("Nothing to fit (force_retrain=True refits).")
+        return FitResources()
+    cases = []
+    for goal in {g for g, _, _ in fits} | set(mdas):
+        with xr.open_dataset(cases_path(goal)) as ds:
+            cases.append(ds.nbytes)
+    job_memory = GIB + 8 * max(cases)
+    res = plan_fit(max(len(mdas), len(fits)), job_memory, host=host)
+    per_set = pd.Series([m for _, m, _ in fits], dtype=object).value_counts().to_dict()
+    print(f"To fit    {len(mdas)} MDA(s), then {len(fits)} PCA + GP fit(s) {per_set}, ~{job_memory / GIB:.1f} GiB each")
+    print(f"Proposed  {res}")
+    print("Edit the fields if wanted (res.workers = ...), then fit_all(..., resources=res).")
+    return res
+
+
+def fit_all(
+    goals: Iterable[str | int] | None = None,
+    *,
+    resources: FitResources,
     metamodels: Iterable[str] | None = None,
     candidates: Iterable[int] | None = None,
     force_retrain: bool = False,
     gp_epochs: int = 1000,
 ) -> None:
     """
-    MDA of one goal, then PCA + GP per metamodel set and MDA size.
+    MDA of every goal, then PCA + GP per goal, metamodel set and MDA size.
 
-    Existing artefacts are kept unless *force_retrain*.
+    Fits run in parallel processes as *resources* say (see
+    :func:`fit_resources`); existing artefacts are kept unless *force_retrain*
+    (a goal whose MDA is fitted again gets all its models fitted again).
+    Progress goes to ``logs/metamodel.log``.
 
     Parameters
     ----------
-    goal
-        Goal id.
+    goals
+        Goals to fit; default all.
+    resources
+        From :func:`fit_resources`.
     metamodels
         Sets to fit; default every set.
     candidates
@@ -487,18 +579,13 @@ def fit(
     gp_epochs
         GP optimisation iterations.
     """
-    goal = str(goal)
-    mda, train_idx = _fit_mda(goal, force_retrain=force_retrain)
-    for metamodel in metamodels or SETS:
-        for n in candidates or MDA_CANDIDATES:
-            if force_retrain or missing_models(goal, metamodel, n):
-                _fit_set(goal, metamodel, int(n), mda, train_idx, gp_epochs=gp_epochs)
-
-
-def fit_all(goals: Iterable[str | int] | None = None, **kwargs: Any) -> None:
-    """:func:`fit` every goal (default all); *kwargs* as for :func:`fit`."""
-    for goal in _goals(goals):
-        fit(goal, **kwargs)
+    mdas, fits = _fit_jobs(goals, metamodels, candidates, force_retrain)
+    kw = dict(workers=resources.workers, threads=resources.threads)
+    t0 = _time.monotonic()
+    run_processes(_fit_mda, [(g, True) for g in mdas], **kw)
+    run_processes(_fit_set, [(g, m, n, gp_epochs, resources.device) for g, m, n in fits], **kw)
+    logger.info("fit_all: %d MDA(s), %d fit(s) in %.0f s (%s)", len(mdas), len(fits),
+                _time.monotonic() - t0, resources)
 
 
 # ---------------------------------------------------------------------------
@@ -550,15 +637,46 @@ def predict(
     return fields.assign_coords(site_meta(site_ids).coords)
 
 
-def _goal_forcing(offshore: xr.Dataset, goal: str, partition: int, wl: WaterLevel) -> pd.DataFrame:
-    """MDA forcing (``hs``, ``tp``, ``dir``, ``spr``, ``wl``) of one goal and partition."""
+def _goal_wl(offshore: xr.Dataset, goal: str, wl: WaterLevel) -> float | pd.Series:
+    """*wl* (m), or the ``forcing.water_level`` series of *goal* on the offshore times."""
     if not isinstance(wl, str):
-        return hw.goal_forcing(offshore.sel(goal=int(goal)), partition, float(wl))
+        return float(wl)
     if wl != WL_FROM_FORCING:
         raise ValueError(f"wl must be a number or {WL_FROM_FORCING!r}, got {wl!r}")
-    df = hw.goal_forcing(offshore.sel(goal=int(goal)), partition)
-    df["wl"] = goal_water_level(goal, df.index).to_numpy()
-    return df
+    return goal_water_level(goal, offshore.get_index("time"))
+
+
+def _valid_forcing(offshore: xr.Dataset, goal: str, partition: int, wl: float | pd.Series) -> pd.DataFrame:
+    """MDA forcing of one goal and partition at its valid time steps (energy, in its sector)."""
+    if isinstance(wl, pd.Series):
+        df = hw.goal_forcing(offshore.sel(goal=int(goal)), partition)
+        df["wl"] = wl.reindex(df.index).to_numpy()
+    else:
+        df = hw.goal_forcing(offshore.sel(goal=int(goal)), partition, wl)
+    return df[hw.valid_timesteps(df, sector=tuple(load_goals()[goal]["angles"]))]
+
+
+def _wind_sea(forcing: pd.DataFrame) -> dict[str, tuple[str, np.ndarray]]:
+    """Offshore wind-sea weight and inferred wind of the forcing rows, on ``time``."""
+    from bluemath_tk.waves.hywaves.wind_correction import offshore_wind_sea
+
+    from utils.wind import config as wind_config
+
+    cfg = wind_config()
+    ws = offshore_wind_sea(
+        forcing,
+        steepness_range=tuple(cfg["steepness_range"]),
+        spr_range=tuple(cfg["spr_range"]),
+        speed_factor=float(cfg["speed_factor"]),
+    )
+    return {name: ("time", ws[name].to_numpy()) for name in ws}
+
+
+def _goal_pcs(goal: str, metamodel: str, n: int, forcing: pd.DataFrame, device: str) -> np.ndarray:
+    """GP prediction (stacked PCs) of one goal for the forcing rows (one process)."""
+    gp = load_model(gp_model_path(goal, metamodel, n))
+    gp.to(device)
+    return hw.predict_pcs(gp, forcing)
 
 
 def predict_goal(
@@ -607,26 +725,11 @@ def predict_goal(
         Fields on ``(time, sites)``; ``None`` when no time step is valid.
     """
     goal = str(goal)
-    forcing = _goal_forcing(offshore, goal, partition, wl)
-    forcing = forcing[hw.valid_timesteps(forcing, sector=tuple(load_goals()[goal]["angles"]))]
+    forcing = _valid_forcing(offshore, goal, partition, _goal_wl(offshore, goal, wl))
     if forcing.empty:
         return None
     pred = predict(goal, n, forcing, metamodel=metamodel, sites=sites, models=models, device=device)
-    if not wind_sea:
-        return pred
-
-    from bluemath_tk.waves.hywaves.wind_correction import offshore_wind_sea
-
-    from utils.wind import config as wind_config
-
-    cfg = wind_config()
-    ws = offshore_wind_sea(
-        forcing,
-        steepness_range=tuple(cfg["steepness_range"]),
-        spr_range=tuple(cfg["spr_range"]),
-        speed_factor=float(cfg["speed_factor"]),
-    )
-    return pred.assign({name: ("time", ws[name].to_numpy()) for name in ws})
+    return pred.assign(_wind_sea(forcing)) if wind_sea else pred
 
 
 # ---------------------------------------------------------------------------
@@ -641,16 +744,19 @@ def goal_contributions(
     metamodel: str,
     sites: Iterable[str],
     spectral: bool = True,
+    resources: ReconstructionResources,
     goals: Iterable[str | int] | None = None,
     wl: WaterLevel = 0.0,
-    device: str | None = None,
     wind_sea: bool = False,
 ) -> list[xr.Dataset]:
     """
-    Contribution of every goal and offshore partition (:func:`predict_goal`).
+    Contribution of every goal and offshore partition (as :func:`predict_goal`).
 
-    The models of one goal are loaded, used for all its partitions and
-    released before the next goal (GPU memory).
+    The GP of every goal x partition runs in its own process
+    (``resources.threads // 2`` processes of 2 threads at a time: one year of
+    40 goal-partitions was ~5x faster than one 36-thread process); on a GPU
+    they run here, one after the other. The PCA inverse to the sites runs
+    here, threaded.
 
     Parameters
     ----------
@@ -660,9 +766,12 @@ def goal_contributions(
         MDA size, metamodel set and sites.
     spectral
         Offshore partitions ``0``-``3`` (``True``) or the bulk sea state.
+    resources
+        ``device`` and ``threads`` of the GP and PCA steps
+        (:func:`reconstruction_resources`).
     goals
         Goals to include; default all.
-    wl, device, wind_sea
+    wl, wind_sea
         As for :func:`predict_goal`.
 
     Returns
@@ -672,18 +781,33 @@ def goal_contributions(
         ``goal`` and ``partition`` dimensions of size 1.
     """
     sites = list(sites)
-    chunks: list[xr.Dataset] = []
+    items = []
     for goal in _goals(goals):
-        models = load_models(goal, metamodel, n, device=device)
+        level = _goal_wl(offshore, goal, wl)
         for partition in hwr.partition_ids(offshore, spectral):
-            pred = predict_goal(
-                offshore, goal, n, metamodel=metamodel, sites=sites, partition=partition,
-                wl=wl, models=models, wind_sea=wind_sea,
-            )
-            if pred is not None:
-                chunks.append(pred.expand_dims(goal=[int(goal)], partition=[partition]).load())
-        del models
-        _release_gp_memory()
+            forcing = _valid_forcing(offshore, goal, partition, level)
+            if not forcing.empty:
+                items.append((goal, partition, forcing))
+    on_gpu = resources.device != "cpu"
+    pcs = run_processes(
+        _goal_pcs,
+        [(goal, metamodel, n, forcing[MDA_INPUTS], resources.device) for goal, _, forcing in items],
+        workers=1 if on_gpu else max(1, resources.threads // GP_THREADS),
+        threads=resources.threads if on_gpu else GP_THREADS,
+    )
+    coords = site_meta(sites).coords
+    chunks: list[xr.Dataset] = []
+    loaded, pcas = None, {}
+    with limit_threads(resources.threads):
+        for (goal, partition, forcing), goal_pcs in zip(items, pcs):
+            if goal != loaded:
+                loaded, pcas = goal, _load_pcas(goal, metamodel, n)
+            fields = hw.fields_from_pcs(goal_pcs, pcas, forcing[MDA_INPUTS], VARS, sites)
+            fields = fields.assign_coords(coords)
+            if wind_sea:
+                fields = fields.assign(_wind_sea(forcing))
+            chunks.append(fields.expand_dims(goal=[int(goal)], partition=[partition]).load())
+    _release_gp_memory()
     return chunks
 
 
@@ -691,10 +815,10 @@ def sum_contributions(
     chunks: list[xr.Dataset],
     sites: Iterable[str],
     *,
+    resources: ReconstructionResources,
     variables: Mapping[str, str] | None = None,
     save_spectra: bool = False,
     wind_correction: bool = False,
-    workers: int = 1,
 ) -> tuple[xr.Dataset, xr.Dataset | None]:
     """
     Linear spectral sum of goal contributions into bulk parameters.
@@ -706,6 +830,11 @@ def sum_contributions(
         ``partition``, ``time``, ``sites``).
     sites
         Sites to sum.
+    resources
+        ``workers`` processes (up to 2 GiB of site x time blocks each, within
+        what ``memory`` the contributions and spectra leave;
+        :func:`reconstruction_resources`); a small sum (e.g. one site) runs
+        here instead, where a worker pool would cost more than it saves.
     variables
         Output name -> wavespectra stat; default
         ``metamodel.reconstruction.variables``.
@@ -714,8 +843,6 @@ def sum_contributions(
     wind_correction
         Add the local wind sea before the sum (see :mod:`utils.wind`); the
         chunks must carry the wind-sea variables (``wind_sea=True``).
-    workers
-        Processes for the site-batched sum (CPU only).
 
     Returns
     -------
@@ -729,15 +856,18 @@ def sum_contributions(
         from utils.wind import reconstruction_inputs
 
         wind_inputs = reconstruction_inputs(times, sites)
+    held = 2 * sum(c.nbytes for c in chunks)
+    if save_spectra:
+        held += 3 * hwr.spectra_bytes(len(times), len(sites))
+    parts = sum(c.sizes["goal"] * c.sizes["partition"] for c in chunks) + int(wind_correction)
+    workers = sum_workers(len(sites), len(times), parts, resources.workers)
     return hwr.sum_partition_spectra_batched(
         chunks,
         sites,
-        len(times),
-        sum(c.sizes["goal"] * c.sizes["partition"] for c in chunks),
         dict(variables or RECONSTRUCTION["variables"]),
-        save_spectra=save_spectra,
-        budget_bytes=WAVESPECTRA_MEMORY_BUDGET_BYTES,
+        budget_bytes=sum_budget(resources.memory, held, workers),
         workers=workers,
+        save_spectra=save_spectra,
         log_file=str(resolve("logs/metamodel.log")),
         wind_correction=wind_inputs,
     )
@@ -860,7 +990,64 @@ def reconstruction_store(
     )
 
 
-def reconstruct(
+@dataclass
+class _Request:
+    """A reconstruction request: its sites, stores and contributions per site."""
+
+    n: int
+    metamodel: str
+    spectral: bool
+    goals: list[str]
+    wl: WaterLevel
+    site_ids: list[str]
+    variables: dict[str, str]
+    save_spectra: bool
+    wind: bool
+    stores: list[ReconstructionStore]
+
+    @property
+    def parts(self) -> int:
+        """Contributions summed per site: goals x partitions (+ 1 wind sea)."""
+        partitions = len(hwr.SPECTRAL_PARTITIONS) if self.spectral else 1
+        return len(self.goals) * partitions + int(self.wind)
+
+    def todo(self, time: str | slice, recompute: bool = False) -> dict[str, list[str]]:
+        """Sites to compute per month (every requested one with *recompute*), in store order."""
+        months = self.stores[0].months_of(time)
+        if recompute:
+            return {m: list(self.site_ids) for m in months}
+        todo: dict[str, set[str]] = {}
+        for store in self.stores:
+            for month, missing in store.missing(time, self.site_ids).items():
+                todo.setdefault(month, set()).update(missing)
+        return {m: [s for s in self.stores[0].sites if s in todo[m]] for m in months if m in todo}
+
+
+def _request(
+    n: int, *, metamodel: str, spectral: bool, offshore_name: str, goals: Iterable[str | int] | None,
+    wl: WaterLevel, sites: str | Iterable[str] | None, variables: Mapping[str, str] | None,
+    save_spectra: bool | None, wind_correction: bool | None,
+) -> _Request:
+    if not (isinstance(wl, (int, float)) or (isinstance(wl, str) and wl == WL_FROM_FORCING)):
+        raise ValueError(
+            f"wl must be a number (m) or {WL_FROM_FORCING!r} (forcing.water_level at each goal), "
+            f"got {type(wl).__name__}"
+        )
+    goals = _goals(goals)
+    require_models(metamodel, n, goals)
+    variables = dict(variables or RECONSTRUCTION["variables"])
+    save_spectra = RECONSTRUCTION["save_spectra"] if save_spectra is None else bool(save_spectra)
+    wind = _wind_correction_on(wind_correction)
+    setup = dict(metamodel=metamodel, spectral=spectral, offshore_name=offshore_name,
+                 goals=goals, wl=wl, variables=variables, wind_correction=wind)
+    stores = [reconstruction_store(n, **setup)]
+    if save_spectra:
+        stores.append(reconstruction_store(n, **setup, spectra=True))
+    return _Request(n, metamodel, spectral, goals, wl, reconstruction_sites(metamodel, sites, goals),
+                    variables, save_spectra, wind, stores)
+
+
+def reconstruction_resources(
     time: str | slice,
     n: int,
     *,
@@ -873,17 +1060,102 @@ def reconstruct(
     variables: Mapping[str, str] | None = None,
     save_spectra: bool | None = None,
     wind_correction: bool | None = None,
+    recompute: bool = False,
+) -> ReconstructionResources:
+    """
+    Propose resources for :func:`reconstruct` with the same arguments, and print why.
+
+    Nothing runs. It prints:
+
+    - ``Machine``: cores, free memory and GPU, and the 75% it may use;
+    - ``Request``: site-months still to compute (stored ones are read);
+    - ``Proposed``: the settings (see
+      :class:`bluemath_tk.waves.hywaves.resources.ReconstructionResources`);
+    - ``Per call``: memory of one call (contributions, spectra, sum workers);
+    - ``Time``: a rough estimate from rates measured on a 48-core node;
+    - ``Spectra``: their disk size for this request (saved or not) and the
+      free disk, to decide on ``save_spectra``.
+
+    Edit the returned fields if wanted and pass them to :func:`reconstruct`
+    (``resources=``). One proposal can serve several calls: a call that
+    does not fit in ``resources.memory`` stops before computing.
+
+    Parameters
+    ----------
+    time, n, metamodel, spectral, offshore_name, goals, wl, sites, variables,
+    save_spectra, wind_correction, recompute
+        As for :func:`reconstruct`.
+
+    Returns
+    -------
+    ReconstructionResources
+        ``device``, ``threads``, ``workers``, ``months`` and ``sites`` per
+        call, ``memory``.
+    """
+    req = _request(n, metamodel=metamodel, spectral=spectral, offshore_name=offshore_name,
+                   goals=goals, wl=wl, sites=sites, variables=variables,
+                   save_spectra=save_spectra, wind_correction=wind_correction)
+    todo = req.todo(time, recompute)
+    n_months, n_sites = len(todo), len(set().union(*todo.values())) if todo else 0
+    site_months = sum(len(v) for v in todo.values())
+    requested = len(req.stores[0].months_of(time)) * len(req.site_ids)
+    host = machine()
+    cores, memory = host.usable()
+    mode = "spectral" if spectral else "bulk"
+    print(f"Machine   {host} -> at most {cores} cores, {memory / GIB:.0f} GiB ({USAGE:.0%})")
+    print(f"Request   {metamodel} n={n} {mode} ({req.parts} contributions/site), {time!r}: "
+          f"{site_months} of {requested} site-months to compute, in {n_months} month(s)")
+    res = plan_reconstruction(max(1, n_sites), max(1, n_months), req.parts,
+                              save_spectra=req.save_spectra, host=host)
+    print(f"Proposed  {res}")
+    if todo:
+        need = call_memory(res.months, res.sites or n_sites, req.parts, workers=res.workers,
+                           save_spectra=req.save_spectra)
+        held = need["contributions"] + need["spectra"]
+        need = call_memory(res.months, res.sites or n_sites, req.parts, workers=res.workers,
+                           save_spectra=req.save_spectra,
+                           sum_per_worker=sum_budget(res.memory, held, res.workers) // res.workers)
+        print(f"Per call  ~{need['total'] / GIB:.0f} GiB of {res.memory / GIB:.0f} GiB: contributions "
+              f"{need['contributions'] / GIB:.1f}, spectra {need['spectra'] / GIB:.1f}, "
+              f"spectral sum {need['sum'] / GIB:.1f} ({res.workers} workers)")
+        h = hours(site_months, n_months, req.parts, res.workers)
+        span = f"{h:.1f} h" if h >= 1 else f"{max(1, round(h * 60))} min"
+        print(f"Time      ~{span} (rate measured on a 48-core Xeon Gold 5418Y node; yours may differ)")
+    disk = site_months * hwr.spectra_bytes(744, 1)
+    free = shutil.disk_usage(req.stores[0].path.parent).free
+    state = "saved" if req.save_spectra else "not saved (save_spectra=True to keep them)"
+    print(f"Spectra   {state}: ~{disk / 1e9:.1f} GB on disk for these site-months, "
+          f"{free / 1e9:.0f} GB free")
+    if req.save_spectra and disk > free:
+        print("          They do not fit on disk: fewer sites (sites=...) or a shorter period.")
+    print("Edit the fields if wanted (res.workers = ...), then reconstruct(..., resources=res).")
+    return res
+
+
+def reconstruct(
+    time: str | slice,
+    n: int,
+    *,
+    metamodel: str,
+    resources: ReconstructionResources,
+    spectral: bool = True,
+    offshore_name: str = "WHACS",
+    goals: Iterable[str | int] | None = None,
+    wl: WaterLevel = 0.0,
+    sites: str | Iterable[str] | None = None,
+    variables: Mapping[str, str] | None = None,
+    save_spectra: bool | None = None,
+    wind_correction: bool | None = None,
     use_cache: bool = True,
     recompute: bool = False,
-    device: str | None = None,
-    workers: int = 1,
 ) -> xr.Dataset:
     """
     Nearshore waves from the offshore hindcast: goal contributions, summed.
 
     Results are cached per site and calendar month (:func:`reconstruction_store`):
     a request reads what is stored and computes only the missing site-months,
-    whole months at a time, in batches of :data:`RECONSTRUCT_GPU_BATCH_MONTHS_CAP`.
+    whole months at a time, ``resources.months`` months x ``resources.sites``
+    sites per call.
 
     Parameters
     ----------
@@ -894,6 +1166,8 @@ def reconstruct(
         MDA size; the models must be fitted for every goal.
     metamodel
         Metamodel set.
+    resources
+        From :func:`reconstruction_resources` (called with the same arguments).
     spectral
         Sum the offshore partitions ``0``-``3`` (``True``) or the bulk sea state.
     offshore_name
@@ -914,13 +1188,9 @@ def reconstruct(
         Add the local wind sea (see :mod:`utils.wind`); the output then has
         ``wind_k``. Default ``metamodel.wind_correction.enabled``.
     use_cache
-        Read and write the cache (``False``: compute the selection only).
+        Read and write the cache (``False``: compute the selection in one call).
     recompute
         Recompute the requested site-months even if stored.
-    device
-        PyTorch device for GP inference (``"cpu"`` when CUDA runs out of memory).
-    workers
-        Processes for the site-batched spectral sum.
 
     Returns
     -------
@@ -932,55 +1202,69 @@ def reconstruct(
     ------
     ModelsNotFittedError
         If a goal lacks its fitted models.
+    MemoryError
+        If one call of this request needs more than ``resources.memory``.
     """
-    goals = _goals(goals)
-    require_models(metamodel, n, goals)
-    site_ids = reconstruction_sites(metamodel, sites, goals)
-    variables = dict(variables or RECONSTRUCTION["variables"])
-    save_spectra = RECONSTRUCTION["save_spectra"] if save_spectra is None else save_spectra
-    wind = _wind_correction_on(wind_correction)
+    req = _request(n, metamodel=metamodel, spectral=spectral, offshore_name=offshore_name,
+                   goals=goals, wl=wl, sites=sites, variables=variables,
+                   save_spectra=save_spectra, wind_correction=wind_correction)
     offshore = open_offshore_waves(offshore_name)
 
+    def check(months: int, n_sites: int) -> None:
+        need = call_memory(months, n_sites, req.parts, workers=resources.workers,
+                           save_spectra=req.save_spectra and use_cache)
+        if need["total"] > resources.memory:
+            raise MemoryError(
+                f"A call of {months} month(s) x {n_sites} sites needs ~{need['total'] / GIB:.0f} GiB, "
+                f"resources.memory is {resources.memory / GIB:.0f} GiB: lower resources.months / "
+                "resources.sites, or call reconstruction_resources() with this request"
+            )
+
     def compute(off: xr.Dataset, sites_: list[str]) -> tuple[xr.Dataset, xr.Dataset | None]:
+        t0 = _time.monotonic()
         chunks = goal_contributions(
-            off, n, metamodel=metamodel, sites=sites_, spectral=spectral, goals=goals,
-            wl=wl, device=device, wind_sea=wind,
+            off, n, metamodel=metamodel, sites=sites_, spectral=spectral, goals=req.goals,
+            wl=wl, resources=resources, wind_sea=req.wind,
         )
-        return sum_contributions(
-            chunks, sites_, variables=variables, save_spectra=save_spectra,
-            wind_correction=wind, workers=workers,
+        t1 = _time.monotonic()
+        out = sum_contributions(
+            chunks, sites_, resources=resources, variables=req.variables,
+            save_spectra=req.save_spectra and use_cache, wind_correction=req.wind,
         )
+        logger.info("%d steps x %d sites: contributions %.0f s, sum %.0f s",
+                    off.sizes["time"], len(sites_), t1 - t0, _time.monotonic() - t1)
+        return out
 
     if not use_cache:
-        bulk, _ = compute(offshore.sel(time=time), site_ids)
-        return bulk.assign_coords(site_meta(site_ids).coords)
+        check(len(req.stores[0].months_of(time)), len(req.site_ids))
+        bulk, _ = compute(offshore.sel(time=time), req.site_ids)
+        return bulk.assign_coords(site_meta(req.site_ids).coords)
 
-    setup = dict(metamodel=metamodel, spectral=spectral, offshore_name=offshore_name,
-                 goals=goals, wl=wl, variables=variables, wind_correction=wind)
-    stores = [reconstruction_store(n, **setup)]
-    if save_spectra:
-        stores.append(reconstruction_store(n, **setup, spectra=True))
     if recompute:
-        for store in stores:
-            store.invalidate(time, site_ids)
-    todo: dict[str, set[str]] = {}
-    for store in stores:
-        for month, missing in store.missing(time, site_ids).items():
-            todo.setdefault(month, set()).update(missing)
-    months = [m for m in stores[0].months if m in todo]
+        for store in req.stores:
+            store.invalidate(time, req.site_ids)
+    todo = req.todo(time)
+    months = list(todo)
+    if months:
+        widest = max(len(v) for v in todo.values())
+        check(min(resources.months, len(months)), min(resources.sites or widest, widest))
     logger.info(
-        "Reconstruct %r: set %s n=%d, %d sites, %d site-month(s) to compute in %d month(s)",
-        time, metamodel, n, len(site_ids), sum(len(v) for v in todo.values()), len(months),
+        "Reconstruct %r: set %s n=%d, %d sites, %d site-month(s) to compute in %d month(s); %s",
+        time, metamodel, n, len(req.site_ids), sum(len(v) for v in todo.values()), len(months), resources,
     )
-    for i in range(0, len(months), RECONSTRUCT_GPU_BATCH_MONTHS_CAP):
-        batch = months[i : i + RECONSTRUCT_GPU_BATCH_MONTHS_CAP]
+    for i in range(0, len(months), resources.months):
+        batch = months[i : i + resources.months]
         needed = set().union(*(todo[m] for m in batch))
-        sites_ = [s for s in stores[0].sites if s in needed]
-        bulk, spectra = compute(xr.concat([offshore.sel(time=m) for m in batch], dim="time"), sites_)
-        stores[0].write(bulk, batch)
-        if save_spectra:
-            stores[1].write(spectra, batch)
-    return stores[0].read(time, site_ids).assign_coords(site_meta(site_ids).coords)
+        sites_ = [s for s in req.stores[0].sites if s in needed]
+        off = xr.concat([offshore.sel(time=m) for m in batch], dim="time")
+        step = resources.sites or len(sites_)
+        for j in range(0, len(sites_), step):
+            bulk, spectra = compute(off, sites_[j : j + step])
+            req.stores[0].write(bulk, batch)
+            if req.save_spectra:
+                req.stores[1].write(spectra, batch)
+            del bulk, spectra
+    return req.stores[0].read(time, req.site_ids).assign_coords(site_meta(req.site_ids).coords)
 
 
 def load_reconstruction_spectra(time: str | slice, n: int, *, sites: str | Iterable[str] | None = None,

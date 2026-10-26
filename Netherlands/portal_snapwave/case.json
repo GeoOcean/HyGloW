@@ -10,8 +10,30 @@
         {
             "name": "WHACS",
             "data_path": "inputs/WHACS/processed/Netherlands_WHACS_goal.zarr"
+        },
+        {
+            "name": "WHACS_cal",
+            "data_path": "inputs/WHACS/processed/Netherlands_WHACS_goal_cal.zarr",
+            "hindcast": "WHACS"
+        },
+        {
+            "name": "ERA5",
+            "data_path": "inputs/ERA5/processed/Netherlands_ERA5_goal.zarr"
         }
     ],
+    "satellite": {
+        "name": "IMOS altimeter",
+        "data_path": "https://geoocean.unican.es/zarr/IMOS/imos_altimeter_1985_2020.zarr",
+        "radius_km": 25,
+        "min_depth": 15,
+        "flags": [
+            1,
+            2
+        ],
+        "max_time_diff": "30min",
+        "min_points": 3,
+        "train_fraction": 0.75
+    },
     "forcing": {
         "wind": {
             "name": "ERA5",
@@ -36,7 +58,7 @@
             "slurm": {
                 "cpus_per_task": 2,
                 "mem": "4gb",
-                "setup": "module use /nfs/software/geocean/modulefiles\nmodule load snapwave/b663c81-wind1"
+                "setup": "module use /nfs/software/geocean/modulefiles\nmodule load snapwave"
             }
         },
         "swan": {
@@ -55,6 +77,7 @@
         },
         "num_samples_per_goal": 1000,
         "max_steepness": 0.06,
+        "min_depth": 0.1,
         "bounds": {
             "hs": [
                 0.05,
@@ -69,8 +92,8 @@
                 45
             ],
             "wl": [
-                -3.5,
-                3.5
+                -3.25,
+                4.0
             ]
         },
         "output_sites_config": {
@@ -78,26 +101,32 @@
                 {
                     "name": "5m",
                     "level": -5.0,
-                    "smooth_m": 1000.0,
-                    "min_length_m": 5000.0,
-                    "spacing_m": 5000.0
+                    "smooth_m": 50.0,
+                    "min_length_m": 15000.0,
+                    "spacing_m": 500.0
                 },
                 {
                     "name": "10m",
                     "level": -10.0,
-                    "smooth_m": 1000.0,
-                    "min_length_m": 5000.0,
-                    "spacing_m": 5000.0
+                    "smooth_m": 50.0,
+                    "min_length_m": 25000.0,
+                    "spacing_m": 500.0
                 },
                 {
                     "name": "20m",
                     "level": -20.0,
-                    "smooth_m": 1000.0,
-                    "min_length_m": 5000.0,
-                    "spacing_m": 5000.0
+                    "smooth_m": 50.0,
+                    "min_length_m": 50000.0,
+                    "spacing_m": 500.0
                 }
             ],
-            "polygons": [],
+            "polygons": [
+                {
+                    "name": "DeenHaag",
+                    "file": "inputs/AoI_Polygons/DeenHaag_AoI.shp",
+                    "fraction": 0.1
+                }
+            ],
             "include_buoys": true,
             "clip_to_aoi": true
         }
@@ -109,13 +138,13 @@
             },
             "isobaths": {
                 "sites": "isobath"
+            },
+            "deenhaag": {
+                "sites": "DeenHaag"
             }
         },
         "mda_candidates": [
-            50,
             100,
-            200,
-            350,
             550
         ],
         "mda_inputs": [
@@ -152,17 +181,20 @@
         },
         "site_filter": {
             "hs_ratio_max": 3.0,
-            "tp_min": 0.5
+            "tp_min": 0.5,
+            "hs_nan_max": 0.01
         },
         "pca_preprocessing": {
             "nan_threshold_to_drop": {
                 "hs": 0.99,
+                "tp": 0.99,
                 "dir_u": 0.99,
                 "dir_v": 0.99,
                 "spr": 0.99
             },
             "value_to_replace_nans": {
                 "hs": 0.0,
+                "tp": 0.0,
                 "dir_u": 0.0,
                 "dir_v": 0.0,
                 "spr": 0.0
@@ -183,12 +215,12 @@
                 "dir": "dm",
                 "spr": "dspr"
             },
-            "save_spectra": true
+            "save_spectra": false
         },
         "wind_correction": {
             "enabled": false,
             "wind": "forcing",
-            "num_cases": 100,
+            "num_cases": 250,
             "speed_ratio": [
                 0.8,
                 2.0

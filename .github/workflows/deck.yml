@@ -1,0 +1,56 @@
+# Build deck/ from the committed case portals; deploy it to GitHub Pages on
+# every push (or merged pull request) to main. Pull requests only build it.
+# Repo settings -> Pages -> Source: "GitHub Actions" (once).
+name: Deck
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - "deck/**"
+      - "*/portal/**"
+      - "GUI/catalog/cases.yaml"
+      - ".github/workflows/deck.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: deck-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /deck/
+            /GUI/catalog/
+            /*/portal/
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pillow
+      - run: python deck/build.py
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: deck/_site
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

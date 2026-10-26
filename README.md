@@ -46,7 +46,7 @@ own repository and add it to `GUI/catalog/cases.yaml`.
 | `hywaves/` | The method, the case template and the command line |
 | `Netherlands/`, `NewSouthWales/`, `Samoa/` | Cases |
 | `GUI/` | Results explorer |
-| `presentation/` | Slides |
+| `deck/` | Slides, published on GitHub Pages |
 
 Generic code lives in [bluemath_tk](https://github.com/GeoOcean/BlueMath_tk);
 examples in [BlueMath](https://github.com/GeoOcean/BlueMath).

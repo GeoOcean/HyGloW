@@ -8,7 +8,9 @@ from unittest import mock
 import numpy as np
 import pandas as pd
 import xarray as xr
+from bluemath_tk.core.resources import GIB
 from bluemath_tk.waves.hywaves import metamodel as hw
+from bluemath_tk.waves.hywaves.resources import ReconstructionResources
 
 from utils import metamodel as mm
 
@@ -72,7 +74,8 @@ class TestReconstructionHelpers(unittest.TestCase):
             for g in (1, 2)
         ]
         bulk, spec = mm.sum_contributions(
-            chunks, ["s"], variables={"hs": "hs", "tp": "tp", "dir": "dm", "spr": "dspr"}, save_spectra=True
+            chunks, ["s"], resources=ReconstructionResources(memory=2 * GIB),
+            variables={"hs": "hs", "tp": "tp", "dir": "dm", "spr": "dspr"}, save_spectra=True,
         )
         self.assertEqual(set(bulk.data_vars), {"hs", "tp", "dir", "spr"})
         self.assertAlmostEqual(float(bulk["hs"].isel(time=0, sites=0)), np.sqrt(2.0), places=1)

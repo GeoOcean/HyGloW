@@ -1,0 +1,253 @@
+{
+    "name": "Netherlands",
+    "description": "Base case where everything started with Johan and Dano",
+    "paths": {
+        "aoi_file": "inputs/AoI_Polygons/Netherlands_AoI.shp",
+        "topobathy_file": "inputs/GRID/UGdcsm-fm_100m2coast3d_v3_era5bnd_net.tiff"
+    },
+    "onshore_waves": "inputs/Observations/Netherlands_observations.json",
+    "offshore_waves": [
+        {
+            "name": "WHACS",
+            "data_path": "inputs/WHACS/processed/Netherlands_WHACS_goal.zarr"
+        },
+        {
+            "name": "WHACS_cal",
+            "data_path": "inputs/WHACS/processed/Netherlands_WHACS_goal_cal.zarr",
+            "hindcast": "WHACS"
+        },
+        {
+            "name": "ERA5",
+            "data_path": "inputs/ERA5/processed/Netherlands_ERA5_goal.zarr"
+        }
+    ],
+    "satellite": {
+        "name": "IMOS altimeter",
+        "data_path": "https://geoocean.unican.es/zarr/IMOS/imos_altimeter_1985_2020.zarr",
+        "radius_km": 25,
+        "min_depth": 15,
+        "flags": [
+            1,
+            2
+        ],
+        "max_time_diff": "30min",
+        "min_points": 3,
+        "train_fraction": 0.75
+    },
+    "forcing": {
+        "wind": {
+            "name": "ERA5",
+            "data_path": "inputs/ERA5/raw/Netherlands_wind.zarr"
+        },
+        "water_level": {
+            "name": "CODEC",
+            "data_path": "inputs/CODEC/processed/Netherlands_CODEC_goal.zarr",
+            "variable": "waterlevel"
+        }
+    },
+    "simulations": {
+        "goals_file": "inputs/Goals/Netherlands_Goals.json",
+        "model": "snapwave",
+        "snapwave": {
+            "grid_file": "inputs/GRID/Netherlands_mesh.nc",
+            "metamodel_templates": "templates-snapwave-metamodel",
+            "dynamic_templates": "templates-snapwave-dynamic",
+            "metamodel_cases": "SnapWave_CASES_Metamodel",
+            "dynamic_cases": "SnapWave_CASES_Dynamic",
+            "wind_cases": "SnapWave_CASES_Wind",
+            "slurm": {
+                "cpus_per_task": 2,
+                "mem": "4gb",
+                "setup": "module use /nfs/software/geocean/modulefiles\nmodule load snapwave"
+            }
+        },
+        "swan": {
+            "grid_file": "inputs/GRID/Netherlands_mesh.grd",
+            "metamodel_templates": "templates-swan-metamodel",
+            "dynamic_templates": "templates-swan-dynamic",
+            "metamodel_cases": "SWAN_CASES_Metamodel",
+            "dynamic_cases": "SWAN_CASES_Dynamic",
+            "wind_cases": "SWAN_CASES_Wind",
+            "slurm": {
+                "mem": "4gb",
+                "extra_sbatch": [
+                    "--time=02:00:00"
+                ]
+            }
+        },
+        "num_samples_per_goal": 1000,
+        "max_steepness": 0.06,
+        "min_depth": 0.1,
+        "bounds": {
+            "hs": [
+                0.05,
+                8.0
+            ],
+            "tp": [
+                1,
+                15
+            ],
+            "spr": [
+                1,
+                45
+            ],
+            "wl": [
+                -3.25,
+                4.0
+            ]
+        },
+        "output_sites_config": {
+            "isobaths": [
+                {
+                    "name": "5m",
+                    "level": -5.0,
+                    "smooth_m": 50.0,
+                    "min_length_m": 15000.0,
+                    "spacing_m": 500.0
+                },
+                {
+                    "name": "10m",
+                    "level": -10.0,
+                    "smooth_m": 50.0,
+                    "min_length_m": 25000.0,
+                    "spacing_m": 500.0
+                },
+                {
+                    "name": "20m",
+                    "level": -20.0,
+                    "smooth_m": 50.0,
+                    "min_length_m": 50000.0,
+                    "spacing_m": 500.0
+                }
+            ],
+            "polygons": [
+                {
+                    "name": "DeenHaag",
+                    "file": "inputs/AoI_Polygons/DeenHaag_AoI.shp",
+                    "fraction": 0.1
+                }
+            ],
+            "include_buoys": true,
+            "clip_to_aoi": true
+        }
+    },
+    "metamodel": {
+        "sets": {
+            "buoys": {
+                "sites": "buoy"
+            },
+            "isobaths": {
+                "sites": "isobath"
+            },
+            "deenhaag": {
+                "sites": "DeenHaag"
+            }
+        },
+        "mda_candidates": [
+            100,
+            550
+        ],
+        "mda_inputs": [
+            "hs",
+            "tp",
+            "dir",
+            "spr",
+            "wl"
+        ],
+        "mda_directional_variables": [
+            "dir"
+        ],
+        "vars_to_predict": {
+            "hs": {
+                "vars_to_stack": [
+                    "hs"
+                ],
+                "pca_variance": 0.99
+            },
+            "tp": "raw",
+            "dir": {
+                "vars_to_stack": [
+                    "dir_u",
+                    "dir_v"
+                ],
+                "pca_variance": 0.99
+            },
+            "spr": {
+                "vars_to_stack": [
+                    "spr"
+                ],
+                "pca_variance": 0.99
+            }
+        },
+        "site_filter": {
+            "hs_ratio_max": 3.0,
+            "tp_min": 0.5,
+            "hs_nan_max": 0.01
+        },
+        "pca_preprocessing": {
+            "nan_threshold_to_drop": {
+                "hs": 0.99,
+                "tp": 0.99,
+                "dir_u": 0.99,
+                "dir_v": 0.99,
+                "spr": 0.99
+            },
+            "value_to_replace_nans": {
+                "hs": 0.0,
+                "tp": 0.0,
+                "dir_u": 0.0,
+                "dir_v": 0.0,
+                "spr": 0.0
+            }
+        },
+        "validation": {
+            "metrics_variables": [
+                "hs",
+                "tp",
+                "dir",
+                "spr"
+            ]
+        },
+        "reconstruction": {
+            "variables": {
+                "hs": "hs",
+                "tp": "tp",
+                "dir": "dm",
+                "spr": "dspr"
+            },
+            "save_spectra": false
+        },
+        "wind_correction": {
+            "enabled": false,
+            "wind": "forcing",
+            "num_cases": 250,
+            "speed_ratio": [
+                0.8,
+                2.0
+            ],
+            "wind_wave_angle": [
+                -60.0,
+                60.0
+            ],
+            "u10_range": [
+                3.0,
+                35.0
+            ],
+            "steepness_range": [
+                0.02,
+                0.03
+            ],
+            "spr_range": [
+                20.0,
+                25.0
+            ],
+            "speed_factor": 1.0,
+            "added_spr": 30.0,
+            "added_tp": "wind_sea"
+        },
+        "paths": {
+            "pca_dir": "outputs/{goal}/{metamodel}/pca_{mda_candidate}",
+            "gp_dir": "outputs/{goal}/{metamodel}/gp_{mda_candidate}"
+        }
+    }
+}

@@ -227,5 +227,5 @@ Netherlands/inputs/Observations/raw/
 */portal.tmp/
 */portal.old/
 
-# Official presentation
-presentation/
+# Deck build output (`python deck/build.py`)
+deck/_site/
