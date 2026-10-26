@@ -31,7 +31,7 @@ WEBP_QUALITY = 82
 # Deck display order + the human-friendly region label for each case.
 REGIONS = {
     "NewSouthWales": "New South Wales, Australia",
-    "Netherlands": "Dutch coast, North Sea",
+    "Netherlands": "Belgian and Dutch coasts, North Sea",
     "Samoa": "Samoan archipelago, Pacific",
 }
 HYGLOW_MODEL = "Spectral metamodel"
@@ -191,7 +191,8 @@ def build_data(config: dict) -> dict:
         "totals": {
             "cases": len(cases),
             "goals": sum(c["n_goals"] for c in cases),
-            "observations": sum(c["n_observations"] for c in cases),
+            # buoys in the published Hs comparison, not every observation site
+            "buoys": sum(c["buoys"]["n_buoys"] for c in cases if c["buoys"]),
         },
     }
 

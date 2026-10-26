@@ -50,7 +50,7 @@
   if (T) {
     setText("#t-cases", `${T.cases} regions`);
     setText("#t-goals", `${T.goals} goals`);
-    setText("#t-obs", `${T.observations} buoys`);
+    setText("#t-obs", `${T.buoys} buoys`);
   }
 
   document.querySelectorAll("img[data-case-fig]").forEach((img) => {
@@ -197,6 +197,78 @@
   })();
 
   /* ---------------------------------------------------------------------
+   * The whole flow -- stages revealed by the slide's steps, boxes explain
+   * themselves in the detail bar.
+   * ------------------------------------------------------------------- */
+  (function renderFlow() {
+    const root = document.querySelector("#hf");
+    const detail = document.querySelector("#hf-detail");
+    if (!root || !detail) return;
+    const slide = root.closest(".slide");
+    const stages = root.querySelectorAll(".hf-stage");
+    const boxes = root.querySelectorAll(".hf-box");
+    const hint = detail.innerHTML;
+
+    slide.addEventListener("step", (e) => {
+      stages.forEach((st) => st.classList.toggle("hidden", parseInt(st.dataset.step, 10) > e.detail));
+      boxes.forEach((b) => b.classList.remove("on"));
+      detail.innerHTML = hint;
+    });
+    boxes.forEach((b) => {
+      b.addEventListener("click", () => {
+        boxes.forEach((o) => o.classList.toggle("on", o === b));
+        const name = b.querySelector("span").firstChild.textContent.trim();
+        detail.innerHTML = `<strong>${escapeHtml(name)}</strong> &mdash; ${escapeHtml(b.dataset.text)}`;
+      });
+    });
+  })();
+
+  /* ---------------------------------------------------------------------
+   * Each goal alone, then add -- two JONSWAP spectra and their sum
+   * (illustrative shapes, not case data).
+   * ------------------------------------------------------------------- */
+  (function renderSum() {
+    const root = document.querySelector("#sum-sketch");
+    if (!root) return;
+    const W = 200, H = 110, N = 120, f0 = 0.03, f1 = 0.3;
+    const fs = Array.from({ length: N }, (_, i) => f0 + ((f1 - f0) * i) / (N - 1));
+    const jonswap = (fp, scale) =>
+      fs.map((f) => {
+        const s = f <= fp ? 0.07 : 0.09;
+        const r = Math.exp(-((f - fp) ** 2) / (2 * s * s * fp * fp));
+        return scale * f ** -5 * Math.exp(-1.25 * (fp / f) ** 4) * 3.3 ** r * fp ** 4;
+      });
+    const swell = jonswap(0.075, 1.6);
+    const sea = jonswap(0.17, 0.5);
+    const sum = swell.map((v, i) => v + sea[i]);
+    const top = Math.max(...sum) * 1.08;
+    const pts = (e) => e.map((v, i) => `${((fs[i] - f0) / (f1 - f0)) * W},${H - (v / top) * (H - 6)}`);
+
+    function panel(series, caption) {
+      const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H + 4}`, role: "img" });
+      svg.setAttribute("aria-label", caption);
+      svg.appendChild(svgEl("line", { class: "axis-line", x1: 0, x2: W, y1: H, y2: H }));
+      series.forEach(([e, color]) => {
+        const p = pts(e);
+        svg.appendChild(svgEl("polygon", { class: "area", points: `0,${H} ${p.join(" ")} ${W},${H}`, style: `fill:${color}` }));
+        svg.appendChild(svgEl("polyline", { class: "curve", points: p.join(" "), style: `stroke:${color}` }));
+      });
+      const fig = document.createElement("figure");
+      fig.appendChild(svg);
+      fig.insertAdjacentHTML("beforeend", `<figcaption>${caption}</figcaption>`);
+      return fig;
+    }
+    const op = (t) => Object.assign(document.createElement("span"), { className: "op", textContent: t });
+    root.append(
+      panel([[swell, "var(--series-1)"]], "Goal A: long swell"),
+      op("+"),
+      panel([[sea, "var(--series-2)"]], "Goal B: wind sea"),
+      op("="),
+      panel([[sum, "var(--violet)"]], "At the coast: both"),
+    );
+  })();
+
+  /* ---------------------------------------------------------------------
    * Case cards
    * ------------------------------------------------------------------- */
   (function renderCases() {
@@ -207,7 +279,7 @@
       const b = c.buoys;
       const pills = [
         `${c.n_goals} goals`,
-        `${c.n_observations} buoys`,
+        b ? `${b.n_buoys} buoys validated` : null,
         c.n_training_runs ? `${c.n_training_runs.toLocaleString("en-US")} runs` : null,
         `${c.n_sites.toLocaleString("en-US")} sites`,
       ].filter(Boolean);
@@ -297,16 +369,36 @@
     applyMode(keep);
   }
 
-  function show(index) {
+  // Slides with data-steps="N" reveal N more steps (next/prev) before moving
+  // on; each step change fires a "step" event on the slide.
+  const stepsOf = (s) => parseInt(s?.dataset.steps || "0", 10);
+  const stepOf = (s) => parseInt(s?.dataset.step || "0", 10);
+  function setStep(slide, k) {
+    slide.dataset.step = k;
+    slide.dispatchEvent(new CustomEvent("step", { detail: k }));
+  }
+
+  // atEnd: enter the slide fully revealed (when stepping back into it).
+  function show(index, atEnd = false) {
     current = Math.max(0, Math.min(slides.length - 1, index));
     allSlides.forEach((s) => s.classList.toggle("active", s === slides[current]));
+    const s = slides[current];
+    if (stepsOf(s)) setStep(s, atEnd ? stepsOf(s) : 0);
     if (counterEl) counterEl.textContent = `${current + 1} / ${slides.length}`;
     if (progressEl) progressEl.style.width = `${((current + 1) / slides.length) * 100}%`;
     history.replaceState(null, "", `#${current + 1}`);
   }
 
-  const next = () => show(current + 1);
-  const prev = () => show(current - 1);
+  function next() {
+    const s = slides[current];
+    if (stepOf(s) < stepsOf(s)) setStep(s, stepOf(s) + 1);
+    else show(current + 1);
+  }
+  function prev() {
+    const s = slides[current];
+    if (stepOf(s) > 0) setStep(s, stepOf(s) - 1);
+    else show(current - 1, true);
+  }
 
   document.querySelector("#next-btn")?.addEventListener("click", next);
   document.querySelector("#prev-btn")?.addEventListener("click", prev);

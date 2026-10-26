@@ -69,8 +69,10 @@ cd GUI && python app.py                            # http://localhost:8050
    data before, compare after (rebuild the script in the scratchpad).
 7. **Docs stay minimal**: root README, `hywaves/README.md` (brief physics, resources + timings table: update it when timings are re-measured),
    the case README (one line per notebook + JSON keys), notebook markdown,
-   short GUI/deck READMEs. Method details go in bluemath_tk
-   docstrings, maintainer facts here. No contract or method-note files.
+   short GUI/deck READMEs, `hywaves/RECONSTRUCTION.md` (how the
+   reconstruction uses the machine, buoy timings, open points). Method
+   details go in bluemath_tk docstrings, maintainer facts here. No other
+   contract or method-note files.
 8. **Style**: Python 3.12, type hints, `from __future__ import annotations`,
    NumPy docstrings, `pathlib`, loggers `hywaves.*`; sparse comments.
 9. **Honest numbers**: quote what was computed, with period, MDA size and
@@ -165,7 +167,8 @@ fig02_map_comparison, fig03_metamodel, fig04_spectra_reconstruction), `book/`
 `sources`). Missing sources skip a layer. Snapshots: `portal_<tag>/`, never
 re-published. Case manifest `.hywaves/manifest.json`: `hywaves_version`,
 `source`, `created`/`updated`, `bluemath_tk {version, commit, branch, dirty}`
-(start, update, publish), `engine_files` (hashes of `utils/`). Cases carry
+(start, update, publish), `notebooks` (copied at start), `engine_files`
+(hashes of `utils/`). Cases carry
 no `tests/`.
 
 **Method facts**
@@ -196,7 +199,7 @@ no `tests/`.
   energy fit overshoots moderate seas: open). ERA5 (`EDH_API_KEY`; `ptp` are
   Tm-1,0) beats WHACS RMSE at 8/10 goals at 10 km, with few passes.
 
-## Where we are (2026-10-16)
+## Where we are (2026-10-26)
 
 hywaves **0.15.0** on `main` (HyGloW) and `develop` (bluemath_tk).
 
@@ -213,8 +216,8 @@ the 0.14 sites): bulk metamodel Hs bias −0.10 / RMSE 0.31 / R² 0.78, with
 wind correction +0.08 / 0.29 / 0.83; WHACS closest goal +0.19 / 0.41; dynamic
 SnapWave +0.19 / 0.42; Tp R² negative everywhere (`tp` raw).
 
-**Reconstruction cache and resources** (user docs and timings:
-`hywaves/README.md`). bluemath_tk `waves/hywaves/store.py`: one zarr per
+**Reconstruction cache and resources** (user summary: `hywaves/README.md`;
+how it runs, buoy timings, open points: `hywaves/RECONSTRUCTION.md`). bluemath_tk `waves/hywaves/store.py`: one zarr per
 setup on `(month, step, sites)`, chunk = 1 site x 1 month, bulk sharded per
 month (zarr 3.1.5 cannot write scattered sites into a shard: writes
 read-modify-write the month under a file lock), spectra one file per
@@ -224,9 +227,13 @@ cap, spawn pool) + `waves/hywaves/resources.py` (plans, memory model, rates
 measured on the 48-core node; re-measure there if the sum changes). The sum
 runs in site x hour blocks (`reconstruction.batch_shape`); fits run as
 single-thread processes; the GP step runs per (goal, partition) in processes
-(2 threads, 512-row kernels). Speed work in progress: `RECONSTRUCTION.md`.
+(2 threads, 512-row kernels). 38 buoys 1979-2023 spectral with spectra
+saved: ~73 min, ~90 GB. Open: the time model runs short for long calls over
+many sites (blocks of 1 site x ~2,600 h sum ~1.7x slower per site-hour), K
+is a step function.
 
-**Next (user)**: re-run Netherlands 09-12, publish, snapshot; notebook 11
+**Next (user)**: notebook 10 spectral 1979-2023 (running 2026-10-26), then
+09-12, publish, re-snapshot `portal_snapwave`, deck; notebook 11
 still has the template `TODO_Buoy`; decide on `WHACS_cal` (overshoot); SWAN
 pass (05-12 with `model: swan`, `tp` as PCA target, then snapshot `swan`);
 migrate Samoa and NewSouthWales (`update` + config + re-run). Cluster: arrays

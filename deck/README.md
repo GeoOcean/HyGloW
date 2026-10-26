@@ -1,9 +1,10 @@
 # HyGloW deck
 
 An HTML slide deck introducing HyGloW (the open project and portal) and HyWaves
-(the hybrid downscaling method) for a general audience. Published on GitHub
-Pages by `.github/workflows/deck.yml` on every push to `main` that touches
-`deck/`, a case `portal/` or `GUI/catalog/cases.yaml`.
+(the hybrid downscaling method) for a general audience, at
+<https://geoocean.github.io/HyGloW/>. `.github/workflows/deck.yml` deploys it
+on every push or merged pull request to `main` and only builds it on pull
+requests (repo settings -> Pages -> Source: "GitHub Actions").
 
 ## Build and preview
 
@@ -21,8 +22,16 @@ and committing `portal/`, the online deck updates itself.
 
 - Arrow keys / space / on-screen buttons to navigate, `f` fullscreen, click a
   figure to zoom, top-right button toggles light/dark.
-- `s` (or the "Full/Short deck" button) hides the slides marked
-  `data-depth="deep"` (goals sketch, spectra, MDA convergence).
+- Slides with `data-steps="N"` (the whole-flow slide) reveal N steps with the
+  arrow keys before moving on; click a flow box for its one-line explanation.
+- The short deck (default) is the talk, ~15 min: title, problem, idea, flow,
+  linear sum, holdout, cases, portal, thanks. `s` (or the "Full/Short deck"
+  button) adds the slides marked `data-depth="deep"`: the featured buoy and
+  the limits in place, then the appendix (team, BlueMath, toolkit, wrappers,
+  training design, spectra, simplifications).
+- Icons are an inline SVG sprite at the top of `index.html` (`#i-*`, drawn
+  with strokes so they follow the theme); the "Built on" strip on the last
+  slide names the data and models.
 - `config.json` holds per-audience text (title, subtitle, presenter, venue,
   default mode), `mainCase` (the case the deck walks through: figures, headline
   numbers, GUI screenshots) and `featuredBuoy` (the "one site, up close" buoy,

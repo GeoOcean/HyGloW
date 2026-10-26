@@ -10,6 +10,27 @@
 
 <body>
 
+  <svg class="icon-sprite" aria-hidden="true" style="display:none">
+    <symbol id="i-waves" viewBox="0 0 24 24"><path d="M2 6c1.5 1.2 3 1.2 4.5 0s3-1.2 4.5 0 3 1.2 4.5 0 3-1.2 4.5 0M2 12c1.5 1.2 3 1.2 4.5 0s3-1.2 4.5 0 3 1.2 4.5 0 3-1.2 4.5 0M2 18c1.5 1.2 3 1.2 4.5 0s3-1.2 4.5 0 3 1.2 4.5 0 3-1.2 4.5 0" /></symbol>
+    <symbol id="i-mountain" viewBox="0 0 24 24"><path d="M2 20 9 6l4 7 3-4 6 11z" /><path d="M2 20h20" /></symbol>
+    <symbol id="i-wind" viewBox="0 0 24 24"><path d="M17.7 7.7A2.5 2.5 0 1 1 19.5 12H2M9.6 4.6A2 2 0 1 1 11 8H2M12.6 19.4A2 2 0 1 0 14 16H2" /></symbol>
+    <symbol id="i-buoy" viewBox="0 0 24 24"><path d="M12 2v4M9 6h6l-1 8h-4z" /><path d="M2 19c1.7 1.3 3.3 1.3 5 0s3.3-1.3 5 0 3.3 1.3 5 0 3.3-1.3 5 0" /></symbol>
+    <symbol id="i-area" viewBox="0 0 24 24"><path d="M4 7l6-4 8 3 3 9-7 6-9-4z" /><path d="M4 7l6 6 8-7M10 13l4 8M10 13l-6 4" /></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0z" /><circle cx="12" cy="10" r="3" /></symbol>
+    <symbol id="i-sites" viewBox="0 0 24 24"><path d="M3 20c4-1 6-4 8-8s5-7 10-8" stroke-dasharray="2 3" /><circle cx="5" cy="19" r="1.6" /><circle cx="10" cy="14" r="1.6" /><circle cx="14" cy="8" r="1.6" /><circle cx="20" cy="4.5" r="1.6" /></symbol>
+    <symbol id="i-dice" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="8" cy="8" r="1.2" /><circle cx="16" cy="8" r="1.2" /><circle cx="12" cy="12" r="1.2" /><circle cx="8" cy="16" r="1.2" /><circle cx="16" cy="16" r="1.2" /></symbol>
+    <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" /><rect x="9" y="9" width="6" height="6" /><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3" /></symbol>
+    <symbol id="i-net" viewBox="0 0 24 24"><circle cx="5" cy="5" r="2" /><circle cx="5" cy="19" r="2" /><circle cx="12" cy="12" r="2.4" /><circle cx="19" cy="7" r="2" /><circle cx="19" cy="17" r="2" /><path d="M6.6 6.4 10.2 10.4M6.6 17.6l3.6-4M14.2 11l3-2.8M14.2 13l3 2.8" /></symbol>
+    <symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9z" /></symbol>
+    <symbol id="i-split" viewBox="0 0 24 24"><path d="M2 12h7l6-7h7M9 12l6 7h7M9 12h13" /></symbol>
+    <symbol id="i-sigma" viewBox="0 0 24 24"><path d="M18 7V4H6l7 8-7 8h12v-3" /></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z" /><circle cx="12" cy="12" r="3" /></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15 15 0 0 1 4 10 15 15 0 0 1-4 10 15 15 0 0 1-4-10 15 15 0 0 1 4-10z" /></symbol>
+    <symbol id="i-series" viewBox="0 0 24 24"><path d="M2 20h20" /><path d="M2 15l3-4 3 2 3-7 3 9 3-5 3 3 2-2" /></symbol>
+    <symbol id="i-map" viewBox="0 0 24 24"><path d="M9 3 3 5v16l6-2 6 2 6-2V3l-6 2z" /><path d="M9 3v16M15 5v16" /></symbol>
+    <symbol id="i-satellite" viewBox="0 0 24 24"><rect x="9" y="9" width="6" height="6" rx="1" transform="rotate(45 12 12)" /><path d="M5 5l3 3M16 16l3 3M3 7l4-4 3 3-4 4zM14 18l4-4 3 3-4 4z" /></symbol>
+  </svg>
+
   <div class="brand"><img src="assets/geoocean_logo.png" alt="" class="brand-logo" /><span
       class="brand-name">HyGloW</span>&nbsp;&middot; GeoOcean</div>
   <div class="brand-right">
@@ -18,8 +39,286 @@
   </div>
 
   <div id="deck">
+    <section class="slide title-slide">
+      <p class="kicker" data-config="eventTag">HyGloW</p>
+      <h1 data-config="eventTitle">Nearshore waves, anywhere on the coast</h1>
+      <div class="wave-divider"></div>
+      <h2 data-config="eventSubtitle">Hybrid downscaling of offshore wave hindcasts.</h2>
+      <div class="title-meta">
+        <div><strong data-config="presenter">Presenter</strong><span data-config="venue">GeoOcean</span></div>
+        <div><strong id="t-cases">3 regions</strong>published use cases</div>
+        <div><strong id="t-goals">52 goals</strong>offshore boundary points</div>
+        <div><strong id="t-obs">47 buoys</strong>for validation</div>
+      </div>
+    </section>
 
     <section class="slide">
+      <p class="kicker">The problem</p>
+      <h1>Wave data stops offshore. The questions are at the coast.</h1>
+      <h2>Global hindcasts give hourly waves for decades, but on a coarse grid in deep water. Near the coast, depth,
+        headlands and sandbanks reshape every wave.</h2>
+      <div class="body cols-2 center">
+        <figure class="fig problem-sketch" data-no-zoom>
+          <svg viewBox="0 0 520 300" role="img" aria-label="Offshore hindcast grid points far from a coastline with nearshore sites">
+            <defs>
+              <marker id="pb-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7"
+                orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" style="fill:var(--text-muted)" />
+              </marker>
+            </defs>
+            <rect class="sea" x="0" y="0" width="520" height="300" rx="12" />
+            <path class="land"
+              d="M520,0 L520,300 L300,300 C330,250 300,215 340,185 C372,160 345,120 380,95 C410,72 395,35 420,0 Z" />
+            <path class="iso" d="M285,300 C312,250 282,212 322,182 C352,158 328,118 362,92 C390,70 377,32 400,0" />
+            <path class="iso" d="M262,300 C292,250 262,210 302,178 C332,155 308,115 343,88 C370,66 357,30 380,0" />
+            <g>
+              <circle class="grid-dot" cx="50" cy="45" r="5" /><circle class="grid-dot" cx="130" cy="45" r="5" />
+              <circle class="grid-dot" cx="210" cy="45" r="5" /><circle class="grid-dot" cx="50" cy="125" r="5" />
+              <circle class="grid-dot" cx="130" cy="125" r="5" /><circle class="grid-dot" cx="210" cy="125" r="5" />
+              <circle class="grid-dot" cx="50" cy="205" r="5" /><circle class="grid-dot" cx="130" cy="205" r="5" />
+              <circle class="grid-dot" cx="210" cy="205" r="5" />
+            </g>
+            <circle class="site-dot" cx="318" cy="246" r="5" /><circle class="site-dot" cx="334" cy="196" r="5" />
+            <circle class="site-dot" cx="356" cy="138" r="5" /><circle class="site-dot" cx="372" cy="98" r="5" />
+            <circle class="site-dot" cx="396" cy="44" r="5" />
+            <path class="gap" d="M218,125 C260,128 300,135 345,138" />
+            <text x="30" y="275">Offshore hindcast: coarse grid, deep water</text>
+            <text x="300" y="20" text-anchor="end">Coast: where we need the waves</text>
+          </svg>
+        </figure>
+        <div class="stats" style="grid-template-columns:1fr;">
+          <div class="stat">
+            <div class="num">394,000</div>
+            <div class="lbl">hours in a 45-year hindcast (1979&ndash;2023), each a different sea state</div>
+          </div>
+          <div class="stat">
+            <div class="num">~24 CPU-years</div>
+            <div class="lbl">to run a wave model once for every hour (SWAN on the Netherlands mesh, 32 min per run)</div>
+          </div>
+          <div class="stat">
+            <div class="num">Too slow</div>
+            <div class="lbl">to repeat for every new year, forecast, climate scenario or coastline</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <p class="kicker">The idea</p>
+      <h1>Run the physics a few hundred times, learn the rest</h1>
+      <div class="body idea">
+        <div class="idea-row train">
+          <div class="idea-tag"><strong>Training</strong><span>done once</span></div>
+          <div class="idea-node"><span class="badge"><svg class="ico"><use href="#i-dice" /></svg></span>
+            <strong>Sea states</strong><span><span data-main="runs">550</span> per goal</span></div>
+          <div class="idea-arrow"></div>
+          <div class="idea-node"><span class="badge"><svg class="ico"><use href="#i-cpu" /></svg></span>
+            <strong>Wave model</strong><span><span data-main="runs-total">5,500</span> runs on a cluster</span></div>
+          <div class="idea-arrow"></div>
+          <div class="idea-node"><span class="badge"><svg class="ico"><use href="#i-map" /></svg></span>
+            <strong>Waves at the coast</strong><span>one map per run</span></div>
+        </div>
+        <div class="idea-teach"><span>the runs teach the metamodel</span></div>
+        <div class="idea-row predict">
+          <div class="idea-tag"><strong>Prediction</strong><span>every hour</span></div>
+          <div class="idea-node"><span class="badge"><svg class="ico"><use href="#i-series" /></svg></span>
+            <strong>45 years offshore</strong><span>394,000 hours</span></div>
+          <div class="idea-arrow"></div>
+          <div class="idea-node"><span class="badge"><svg class="ico"><use href="#i-zap" /></svg></span>
+            <strong>Metamodel</strong><span>no wave-model run</span></div>
+          <div class="idea-arrow"></div>
+          <div class="idea-node"><span class="badge"><svg class="ico"><use href="#i-series" /></svg></span>
+            <strong>45 years at the coast</strong><span>every site, full spectra</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-steps="4">
+      <p class="kicker">The whole flow</p>
+      <h1>From offshore data to the coast, in five stages</h1>
+      <h2>The same recipe for every coast.</h2>
+      <div class="body">
+        <div class="hf" id="hf">
+          <div class="hf-stage data" data-step="0">
+            <div class="hf-head"><span>1 &middot; Data</span><strong>What goes in</strong></div>
+            <button class="hf-box" type="button" data-text="The depth of the sea floor, from GEBCO."><svg class="ico"><use href="#i-mountain" /></svg><span>Bathymetry<small>GEBCO</small></span></button>
+            <button class="hf-box" type="button" data-text="Hourly offshore waves since 1979, as wind sea and swells."><svg class="ico"><use href="#i-waves" /></svg><span>Offshore waves<small>WHACS &middot; ERA5</small></span></button>
+            <button class="hf-box" type="button" data-text="Wind and water level (tide and surge) for every hour."><svg class="ico"><use href="#i-wind" /></svg><span>Wind &amp; tide<small>ERA5 &middot; CODEC</small></span></button>
+            <button class="hf-box" type="button" data-text="Measured waves near the coast. Only used to check the results."><svg class="ico"><use href="#i-buoy" /></svg><span>Buoys<small>to check</small></span></button>
+          </div>
+          <div class="hf-stage setup" data-step="1">
+            <div class="hf-head"><span>2 &middot; Set up</span><strong>Describe the coast</strong></div>
+            <button class="hf-box" type="button" data-text="Draw the coast to study; a mesh of triangles covers it, finer near the shore."><svg class="ico"><use href="#i-area" /></svg><span>Area &amp; mesh<small>bluemesh2d</small></span></button>
+            <button class="hf-box" type="button" data-text="Points offshore where the waves come in, each with the directions that reach the coast."><svg class="ico"><use href="#i-pin" /></svg><span>Goals<small>where waves enter</small></span></button>
+            <button class="hf-box" type="button" data-text="Where we want the answer: depth lines (5, 10, 20 m) and the buoys."><svg class="ico"><use href="#i-sites" /></svg><span>Output sites<small>where we want waves</small></span></button>
+          </div>
+          <div class="hf-stage train" data-step="2">
+            <div class="hf-head"><span>3 &middot; Train</span><strong>Once</strong></div>
+            <button class="hf-box" type="button" data-text="A few hundred different sea states per goal: height, period, direction, spread, water level."><svg class="ico"><use href="#i-dice" /></svg><span>Sea states<small>per goal</small></span></button>
+            <button class="hf-box" type="button" data-text="The wave model runs once for each sea state, all at the same time on a cluster."><svg class="ico"><use href="#i-cpu" /></svg><span>Wave model<small>SnapWave &middot; SWAN</small></span></button>
+            <button class="hf-box" type="button" data-text="A statistical model learns, per goal, how each sea state looks at the coast."><svg class="ico"><use href="#i-net" /></svg><span>Metamodel<small>learns the runs</small></span></button>
+          </div>
+          <div class="hf-stage predict" data-step="3">
+            <div class="hf-head"><span>4 &middot; Predict</span><strong>Every hour</strong></div>
+            <button class="hf-box" type="button" data-text="Each offshore hour is split into its wind sea and swells."><svg class="ico"><use href="#i-split" /></svg><span>Split the hour<small>wind sea + swells</small></span></button>
+            <button class="hf-box" type="button" data-text="The metamodel of each goal gives the waves at every site, in milliseconds."><svg class="ico"><use href="#i-zap" /></svg><span>Predict<small>each goal, every site</small></span></button>
+            <button class="hf-box" type="button" data-text="At every site, the waves from all goals are added up."><svg class="ico"><use href="#i-sigma" /></svg><span>Add up<small>nearshore waves</small></span></button>
+          </div>
+          <div class="hf-stage check" data-step="4">
+            <div class="hf-head"><span>5 &middot; Check &amp; share</span><strong>Is it right?</strong></div>
+            <button class="hf-box" type="button" data-text="Wave-model runs the metamodel never saw: does it get them right?"><svg class="ico"><use href="#i-eye" /></svg><span>Unseen runs<small>vs the physics</small></span></button>
+            <button class="hf-box" type="button" data-text="The real measurements: the final check."><svg class="ico"><use href="#i-buoy" /></svg><span>Buoys<small>vs the sea</small></span></button>
+            <button class="hf-box" type="button" data-text="The results go to an open web portal, and to this deck."><svg class="ico"><use href="#i-globe" /></svg><span>Portal<small>open results</small></span></button>
+          </div>
+        </div>
+        <div class="hf-detail" id="hf-detail">Click a box to see what it does.</div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <p class="kicker">The key trick</p>
+      <h1>Each goal on its own, then add them up</h1>
+      <h2>Each offshore goal is learned on its own. At the coast, their waves are simply added together.</h2>
+      <div class="body fig-row">
+        <figure class="fig">
+          <img data-case-fig="main:fig01_domain" alt="Domain: goals, their direction sectors and the mesh" />
+          <figcaption><span data-main="name">Netherlands</span>: <span data-main="goals">10 goals</span> and the
+            directions each one brings in</figcaption>
+        </figure>
+        <div>
+          <div class="sum-sketch" id="sum-sketch"></div>
+          <ul class="points" style="margin-top:1.4rem">
+            <li>A swell and a wind sea from different goals <strong>both</strong> reach the coast.</li>
+            <li>A few hundred runs per goal are enough.</li>
+            <li>Checked against full wave-model runs and buoys.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <p class="kicker">Does it learn the physics?</p>
+      <h1>A few hundred runs are "enough"</h1>
+      <div class="body cols-2 center">
+        <div class="chart" id="conv-chart"></div>
+        <ul class="points">
+          <li>Each point is the <strong>median error (RMSE)</strong> across every goal and every depth contour in the
+            case. Switch between wave height and direction.</li>
+          <li id="conv-headline"></li>
+          <li>Knowing where the curve flattens tells us how much physics each new
+            region needs.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section data-depth="deep" class="slide">
+      <p class="kicker">One site, up close</p>
+      <h1 data-config="featuredBuoyTitle">Featured buoy</h1>
+      <h2><span data-config="featuredBuoyNote">A nearshore buoy</span>, hourly data for
+        <span data-main="buoy-period">a year</span>. HyWaves (purple) against the measurements (black).</h2>
+      <div class="body fig-row wide-left">
+        <figure class="fig">
+          <img id="site-fig" alt="Featured buoy: spectral metamodel vs buoy scatters, plus Hs time series" />
+          <figcaption>Spectral metamodel vs buoy: density scatters (top) and time series (bottom)</figcaption>
+        </figure>
+        <div class="stats" style="grid-template-columns:1fr;" id="site-stats"></div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <p class="kicker">Where it runs today</p>
+      <h1>Three coastlines, one recipe</h1>
+      <h2>A long, exposed coastline, a shallow shelf sea and a volcanic island group, all using the same code, the
+        same case contract and the same validation.</h2>
+      <div class="body cols-3" id="case-cards"></div>
+    </section>
+
+    <section class="slide">
+      <p class="kicker">The portal &middot; work in progress</p>
+      <h1>Validation, one click away</h1>
+      <h2>Case metadata and pipeline status on the left, the domain on the map, and every validation tab in the drawer
+        below.</h2>
+      <div class="body">
+        <div class="shot">
+          <div class="shot-tabs" role="tablist">
+            <button class="shot-tab active" type="button" data-shot="case_metamodel">Metamodel
+              validation</button>
+            <button class="shot-tab" type="button" data-shot="case_buoys">Buoy validation</button>
+            <button class="shot-tab" type="button" data-shot="case_goals">Goals validation</button>
+            <button class="shot-tab" type="button" data-shot="case_final">Final plots</button>
+          </div>
+          <figure class="fig dark">
+            <img id="shot-img" alt="HyGloW Results Explorer: case view" />
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section data-depth="deep" class="slide">
+      <p class="kicker">Being honest</p>
+      <h1>Where it struggles, and what's next</h1>
+      <h2>A fast surrogate inherits the limits of its physics and its forcing. These are the current weak spots.</h2>
+      <div class="body cols-2">
+        <div class="card">
+          <h3>Known limits</h3>
+          <ul class="points">
+            <li><strong>Mean direction against buoys</strong>: no clear gain yet over the offshore hindcast on
+              average, even though it closely follows the full simulation.</li>
+            <li><strong>Hour by hour</strong> and a <strong>linear sum</strong>: no travel time across the domain,
+              and breaking sees one goal at a time. The cost shows at <strong>very shallow, sheltered sites</strong>
+              (5 m, inside inlets, behind reefs).</li>
+            <li>It can only be as good as the <strong>offshore hindcast</strong>, and in open water downscaling adds
+              little. Calibrating the hindcast against satellite altimetry removes most of its bias, but
+              over-corrects moderate seas (open).</li>
+          </ul>
+        </div>
+        <div class="card" style="border-top:3px solid var(--accent)">
+          <h3>Next</h3>
+          <ul class="points">
+            <li><strong>SWAN</strong> as a second physics engine: already in the pipeline, first full case in
+              progress.</li>
+            <li><strong>More regions in HyGloW</strong>, contributed by other teams through the same case contract.</li>
+            <li>Beyond hindcasts: <strong>forecasts</strong> and <strong>climate projections</strong> through the same
+              trained HyWaves metamodels, with no new physics runs.</li>
+            <li>Nearshore waves as input to <strong>impact models</strong>: run-up, coastal flooding, erosion.</li>
+            <li>A public deployment of the Results Explorer.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide title-slide">
+      <p class="kicker">Thank you</p>
+      <h1>Questions?</h1>
+      <div class="wave-divider"></div>
+      <h2>HyWaves: a few hundred physics runs, a statistical model, and nearshore waves anywhere on the coast.
+        HyGloW: the open project that brings it to your coast.</h2>
+      <div class="title-meta">
+        <div><strong data-config="presenter">Presenter</strong><span data-config="contact">tausiaj@unican.es</span>
+        </div>
+        <div><strong><a href="https://github.com/GeoOcean/HyGloW" target="_blank" rel="noopener noreferrer">github.com/GeoOcean/HyGloW</a></strong>open code, cases and this deck</div>
+      </div>
+      <div class="built-on">
+        <span class="built-on-lbl">Built on</span>
+        <span class="chip"><svg class="ico"><use href="#i-mountain" /></svg>GEBCO</span>
+        <span class="chip"><svg class="ico"><use href="#i-waves" /></svg>WHACS</span>
+        <span class="chip"><svg class="ico"><use href="#i-wind" /></svg>ERA5</span>
+        <span class="chip"><svg class="ico"><use href="#i-waves" /></svg>CODEC</span>
+        <span class="chip"><svg class="ico"><use href="#i-satellite" /></svg>IMOS altimetry</span>
+        <span class="chip"><svg class="ico"><use href="#i-cpu" /></svg>SnapWave</span>
+        <span class="chip"><svg class="ico"><use href="#i-cpu" /></svg>SWAN</span>
+        <span class="chip"><svg class="ico"><use href="#i-net" /></svg>bluemath-tk</span>
+      </div>
+    </section>
+
+    <section class="slide title-slide appendix-slide" data-depth="deep">
+      <p class="kicker">Appendix</p>
+      <h1>Backup slides</h1>
+      <div class="wave-divider"></div>
+      <h2>The team, the BlueMath ecosystem and the toolkit behind HyWaves, and more method detail.</h2>
+    </section>
+
+    <section data-depth="deep" class="slide">
       <p class="kicker">The Team</p>
       <h1>GeoOcean &mdash; Geomatics &amp; Ocean Engineering Group</h1>
       <h2>Universidad de Cantabria &middot; advancing coastal engineering research through hybrid numerical +
@@ -57,7 +356,7 @@
       </div>
     </section>
 
-    <section class="slide">
+    <section data-depth="deep" class="slide">
       <p class="kicker">The Ecosystem</p>
       <h1>BlueMath &mdash; open-source ocean science</h1>
       <h2>An open-source Python ecosystem for hybrid numerical + statistical methods. BinWaves and HyWaves, two wave
@@ -85,7 +384,7 @@
       </div>
     </section>
 
-    <section class="slide">
+    <section data-depth="deep" class="slide">
       <p class="kicker">The Ecosystem &middot; The Toolkit</p>
       <h1>bluemath-tk &mdash; numerical, statistical and hybrid in one package</h1>
       <h2>Hybrid downscaling is only one use. The same building blocks also run purely statistical climate emulators
@@ -270,7 +569,7 @@ storms = CopulaSimulation(U_data=[hs, tp, dir, surge],
       </template>
     </section>
 
-    <section class="slide">
+    <section data-depth="deep" class="slide">
       <p class="kicker">The Ecosystem &middot; Wrappers</p>
       <h1>Wrappers &mdash; one template, thousands of cases</h1>
       <h2>Write the model input once with Jinja placeholders. The wrapper creates a named folder for every case, runs
@@ -433,7 +732,7 @@ ds = wrapper.postprocess_cases(write_output_nc=True, clean_after=False)
       </template>
     </section>
 
-    <section class="slide">
+    <section data-depth="deep" class="slide">
       <p class="kicker">The Ecosystem &middot; Wrappers, live</p>
       <h1>3 templates &rarr; 1,260 SWAN runs &rarr; 1 file</h1>
       <h2>A real BinWaves propagation step (Paradip, India), one call at a time. Press the button.</h2>
@@ -522,124 +821,9 @@ Data variables:
       </div>
     </section>
 
-    <section class="slide title-slide">
-      <p class="kicker" data-config="eventTag">HyGloW</p>
-      <h1 data-config="eventTitle">Nearshore waves, anywhere on the coast</h1>
-      <div class="wave-divider"></div>
-      <h2 data-config="eventSubtitle">Hybrid downscaling of offshore wave hindcasts.</h2>
-      <div class="title-meta">
-        <div><strong data-config="presenter">Presenter</strong><span data-config="venue">GeoOcean</span></div>
-        <div><strong id="t-cases">3 regions</strong>published use cases</div>
-        <div><strong id="t-goals">52 goals</strong>offshore boundary points</div>
-        <div><strong id="t-obs">47 buoys</strong>for validation</div>
-      </div>
-    </section>
-
-    <!-- ============================================================ 5 -->
-    <section class="slide">
-      <p class="kicker">The idea</p>
-      <h1>Run the physics a few hundred times, learn the rest</h1>
-      <h2>Train a fast surrogate (a "metamodel") on a few hundred physics runs, then use it to predict every hour of the
-        hindcast.</h2>
-      <div class="body cols-2 center">
-        <div class="code-block">
-          <div class="code-head"><span>expensive vs cheap</span><span>concept</span></div>
-          <pre>training   &mdash; expensive, done once
-  sea state &rarr; <span class="hl">SnapWave()</span> &rarr; nearshore waves
-  <span data-main="runs">550</span> runs per goal, then never again
-
-prediction &mdash; cheap, every hour, every site
-  sea state &rarr; <span class="hl">metamodel()</span> &rarr; nearshore waves
-  <span data-main="reconstruct">minutes per year</span>
-
-metamodel = sample   (LHS + MDA [optional])
-          + compress (PCA)
-          + learn    (Gaussian Process)</pre>
-        </div>
-        <div class="stats" style="grid-template-columns:1fr 1fr;">
-          <div class="stat">
-            <div class="num">~394,000</div>
-            <div class="lbl">hourly sea states in a 45-year hindcast, too many to simulate one by one</div>
-          </div>
-          <div class="stat">
-            <div class="num" data-main="runs">550</div>
-            <div class="lbl">SnapWave runs per offshore goal, enough to train the metamodel</div>
-          </div>
-          <div class="stat">
-            <div class="num" data-main="runs-total">5,500</div>
-            <div class="lbl">physics runs in total, in the <span data-main="name">Netherlands</span> case</div>
-          </div>
-          <div class="stat">
-            <div class="num">0</div>
-            <div class="lbl">extra physics runs needed to add a new year, forecast or climate scenario</div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ============================================================ 6 -->
-    <section class="slide">
-      <p class="kicker">The Pipeline</p>
-      <h1>Six steps from offshore hindcast to the coast</h1>
-      <h2>The same recipe for every region. Only the inputs change: an area of interest, a bathymetry and an offshore
-        hindcast.</h2>
-      <div class="body">
-        <div class="flow">
-          <div class="flow-step stats-step gis">
-            <span class="n">1</span>
-            <h3>Split the coast</h3>
-            <p>Draw the <strong>area of interest</strong> (BlueMath or QGIS) and place offshore <strong>goal
-                points</strong> along the coast, each with the range of directions waves can arrive from.</p>
-            <div class="cost"><span data-main="goals">10 goals</span> &middot; <span data-main="name">Netherlands</span>
-            </div>
-          </div>
-          <div class="flow-step stats-step gis optional">
-            <span class="n">2</span><span class="opt-tag">optional</span>
-            <h3>Build the mesh</h3>
-            <p>Generate the unstructured <strong>SnapWave mesh</strong> over the bathymetry with
-              <a href="https://github.com/GeoOcean/BlueMesh2d" target="_blank">bluemesh2d</a>.
-            </p>
-            <div class="cost">Delaunay-based mesh generation in Python</div>
-          </div>
-          <div class="flow-step stats-step">
-            <span class="n">3</span>
-            <h3>Sample</h3>
-            <p>Generate <strong>N plausible sea states</strong> per goal (wave height, period, direction, spreading,
-              water level) with Latin Hypercube Sampling (LHS), dropping unrealistically steep seas.</p>
-            <div class="cost">space-filling design</div>
-          </div>
-          <div class="flow-step physics">
-            <span class="n">4</span>
-            <h3>Simulate</h3>
-            <p>Run <strong>SnapWave</strong> once per sample over a real bathymetry mesh, giving the nearshore response
-              at thousands of sites.</p>
-            <div class="cost">the only expensive step</div>
-          </div>
-          <div class="flow-step stats-step">
-            <span class="n">5</span>
-            <h3>Learn</h3>
-            <p><strong>MDA [optional]</strong> picks the most informative runs, <strong>PCA</strong> compresses the
-              response
-              maps, and a <strong>Gaussian Process</strong> learns the mapping.</p>
-            <div class="cost">one model per goal</div>
-          </div>
-          <div class="flow-step stats-step">
-            <span class="n">6</span>
-            <h3>Reconstruct</h3>
-            <p>Feed in any offshore hindcast hour, whole spectra included. Each wave system is predicted on its own
-              and the results are added up at the coast.</p>
-            <div class="cost">decades, in hours</div>
-          </div>
-        </div>
-        <div class="flow-legend"><span class="physics">physics (SnapWave)</span><span>statistics (BlueMath)</span><span
-            class="gis">GIS (QGIS)</span><span class="optional">optional step</span></div>
-      </div>
-    </section>
-
-    <!-- ============================================================ 7 deep -->
     <section class="slide" data-depth="deep">
-      <p class="kicker">The Sketch</p>
-      <h1>Every goal gets its own training set</h1>
+      <p class="kicker">Training design</p>
+      <h1>Each goal samples only the directions that reach the coast</h1>
       <h2>Goal points sit on the offshore boundary. Each one only samples directions that can actually reach the coast
         from it, so no runs are spent on waves travelling out to sea.</h2>
       <div class="body fig-row" id="goals-figs">
@@ -655,7 +839,6 @@ metamodel = sample   (LHS + MDA [optional])
       </div>
     </section>
 
-    <!-- ============================================================ 8 deep -->
     <section class="slide" data-depth="deep">
       <p class="kicker">The output</p>
       <h1>Swells and wind sea, transformed into directional spectra</h1>
@@ -679,8 +862,7 @@ metamodel = sample   (LHS + MDA [optional])
       </div>
     </section>
 
-    <!-- ============================================================ 6b  simplifications -->
-    <section class="slide">
+    <section data-depth="deep" class="slide">
       <p class="kicker">Before the results</p>
       <h1>What HyWaves simplifies, on purpose</h1>
       <h2>Three choices keep HyWaves cheap and general, and each costs some accuracy. Keep them in mind for the
@@ -713,114 +895,6 @@ metamodel = sample   (LHS + MDA [optional])
         </div>
       </div>
     </section>
-
-    <!-- ============================================================ 9 deep -->
-    <section class="slide" data-depth="deep">
-      <p class="kicker">Does it learn the physics?</p>
-      <h1>A few hundred runs are "enough"</h1>
-      <div class="body cols-2 center">
-        <div class="chart" id="conv-chart"></div>
-        <ul class="points">
-          <li>Each point is the <strong>median error (RMSE)</strong> across every goal and every depth contour in the
-            case. Switch between wave height and direction.</li>
-          <li id="conv-headline"></li>
-          <li>Knowing where the curve flattens tells us how much physics each new
-            region needs.</li>
-        </ul>
-      </div>
-    </section>
-
-    <!-- ============================================================ 12 -->
-    <section class="slide">
-      <p class="kicker">One site, up close</p>
-      <h1 data-config="featuredBuoyTitle">Featured buoy</h1>
-      <h2><span data-config="featuredBuoyNote">A nearshore buoy</span>, hourly data for
-        <span data-main="buoy-period">a year</span>. HyWaves (purple) against the measurements (black).</h2>
-      <div class="body fig-row wide-left">
-        <figure class="fig">
-          <img id="site-fig" alt="Featured buoy: spectral metamodel vs buoy scatters, plus Hs time series" />
-          <figcaption>Spectral metamodel vs buoy: density scatters (top) and time series (bottom)</figcaption>
-        </figure>
-        <div class="stats" style="grid-template-columns:1fr;" id="site-stats"></div>
-      </div>
-    </section>
-
-    <!-- ============================================================ 14 -->
-    <section class="slide">
-      <p class="kicker">Where it runs today</p>
-      <h1>Three coastlines, one recipe</h1>
-      <h2>A long, exposed coastline, a shallow shelf sea and a volcanic island group, all using the same code, the
-        same case contract and the same validation.</h2>
-      <div class="body cols-3" id="case-cards"></div>
-    </section>
-
-    <!-- ============================================================ 16 -->
-    <section class="slide">
-      <p class="kicker">The portal &middot; Inside a case</p>
-      <h1>Validation, one click away</h1>
-      <h2>Case metadata and pipeline status on the left, the domain on the map, and every validation tab in the drawer
-        below.</h2>
-      <div class="body">
-        <div class="shot">
-          <div class="shot-tabs" role="tablist">
-            <button class="shot-tab active" type="button" data-shot="case_metamodel">Metamodel
-              validation</button>
-            <button class="shot-tab" type="button" data-shot="case_buoys">Buoy validation</button>
-            <button class="shot-tab" type="button" data-shot="case_goals">Goals validation</button>
-            <button class="shot-tab" type="button" data-shot="case_final">Final plots</button>
-          </div>
-          <figure class="fig dark">
-            <img id="shot-img" alt="HyGloW Results Explorer: case view" />
-          </figure>
-        </div>
-      </div>
-    </section>
-
-    <!-- ============================================================ 18 -->
-    <section class="slide">
-      <p class="kicker">Being honest</p>
-      <h1>Where it struggles, and what's next</h1>
-      <h2>A fast surrogate inherits the limits of its physics and its forcing. These are the current weak spots.</h2>
-      <div class="body cols-2">
-        <div class="card">
-          <h3>Known limits</h3>
-          <ul class="points">
-            <li><strong>Mean direction against buoys</strong>: no clear gain yet over the offshore hindcast on
-              average, even though it closely follows the full simulation.</li>
-            <li>The <strong>simplifications</strong> above: hour by hour, a linear sum, wind added afterwards. Their
-              cost shows up at <strong>very shallow, sheltered sites</strong> (5 m, inside inlets, behind reefs).</li>
-            <li>It can only be as good as the <strong>offshore hindcast</strong>. Calibrating it against satellite
-              altimetry is work in progress; in open water, downscaling adds little.</li>
-          </ul>
-        </div>
-        <div class="card" style="border-top:3px solid var(--accent)">
-          <h3>Next</h3>
-          <ul class="points">
-            <li><strong>SWAN</strong> as a second physics engine, through the same pipeline.</li>
-            <li><strong>More regions in HyGloW</strong>, contributed by other teams through the same case contract.</li>
-            <li>Beyond hindcasts: <strong>forecasts</strong> and <strong>climate projections</strong> through the same
-              trained HyWaves metamodels, with no new physics runs.</li>
-            <li>Nearshore waves as input to <strong>impact models</strong>: run-up, coastal flooding, erosion.</li>
-            <li>A public deployment of the Results Explorer.</li>
-          </ul>
-        </div>
-      </div>
-    </section>
-
-    <!-- ============================================================ 19 -->
-    <section class="slide title-slide">
-      <p class="kicker">Thank you</p>
-      <h1>Questions?</h1>
-      <div class="wave-divider"></div>
-      <h2>HyWaves: a few hundred physics runs, a statistical model, and nearshore waves anywhere on the coast.
-        HyGloW: the open project that brings it to your coast.</h2>
-      <div class="title-meta">
-        <div><strong data-config="presenter">Presenter</strong><span data-config="contact">tausiaj@unican.es</span>
-        </div>
-        <div><strong>github.com/GeoOcean</strong>HyGloW &middot; HyWaves &middot; BlueMath</div>
-      </div>
-    </section>
-
   </div>
 
   <div class="chrome">

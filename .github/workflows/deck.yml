@@ -1,9 +1,12 @@
-# Build deck/ from the committed case portals and publish it to GitHub Pages.
-# Repo settings -> Pages -> Source: "GitHub Actions".
+# Build deck/ from the committed case portals; deploy it to GitHub Pages on
+# every push (or merged pull request) to main. Pull requests only build it.
+# Repo settings -> Pages -> Source: "GitHub Actions" (once).
 name: Deck
 
 on:
   push:
+    branches: [main]
+  pull_request:
     branches: [main]
     paths:
       - "deck/**"
@@ -18,7 +21,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: deck-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -42,6 +45,7 @@ jobs:
           path: deck/_site
 
   deploy:
+    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     environment:
