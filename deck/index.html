@@ -11,24 +11,86 @@
 <body>
 
   <svg class="icon-sprite" aria-hidden="true" style="display:none">
-    <symbol id="i-waves" viewBox="0 0 24 24"><path d="M2 6c1.5 1.2 3 1.2 4.5 0s3-1.2 4.5 0 3 1.2 4.5 0 3-1.2 4.5 0M2 12c1.5 1.2 3 1.2 4.5 0s3-1.2 4.5 0 3 1.2 4.5 0 3-1.2 4.5 0M2 18c1.5 1.2 3 1.2 4.5 0s3-1.2 4.5 0 3 1.2 4.5 0 3-1.2 4.5 0" /></symbol>
-    <symbol id="i-mountain" viewBox="0 0 24 24"><path d="M2 20 9 6l4 7 3-4 6 11z" /><path d="M2 20h20" /></symbol>
-    <symbol id="i-wind" viewBox="0 0 24 24"><path d="M17.7 7.7A2.5 2.5 0 1 1 19.5 12H2M9.6 4.6A2 2 0 1 1 11 8H2M12.6 19.4A2 2 0 1 0 14 16H2" /></symbol>
-    <symbol id="i-buoy" viewBox="0 0 24 24"><path d="M12 2v4M9 6h6l-1 8h-4z" /><path d="M2 19c1.7 1.3 3.3 1.3 5 0s3.3-1.3 5 0 3.3 1.3 5 0 3.3-1.3 5 0" /></symbol>
-    <symbol id="i-area" viewBox="0 0 24 24"><path d="M4 7l6-4 8 3 3 9-7 6-9-4z" /><path d="M4 7l6 6 8-7M10 13l4 8M10 13l-6 4" /></symbol>
-    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0z" /><circle cx="12" cy="10" r="3" /></symbol>
-    <symbol id="i-sites" viewBox="0 0 24 24"><path d="M3 20c4-1 6-4 8-8s5-7 10-8" stroke-dasharray="2 3" /><circle cx="5" cy="19" r="1.6" /><circle cx="10" cy="14" r="1.6" /><circle cx="14" cy="8" r="1.6" /><circle cx="20" cy="4.5" r="1.6" /></symbol>
-    <symbol id="i-dice" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="8" cy="8" r="1.2" /><circle cx="16" cy="8" r="1.2" /><circle cx="12" cy="12" r="1.2" /><circle cx="8" cy="16" r="1.2" /><circle cx="16" cy="16" r="1.2" /></symbol>
-    <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" /><rect x="9" y="9" width="6" height="6" /><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3" /></symbol>
-    <symbol id="i-net" viewBox="0 0 24 24"><circle cx="5" cy="5" r="2" /><circle cx="5" cy="19" r="2" /><circle cx="12" cy="12" r="2.4" /><circle cx="19" cy="7" r="2" /><circle cx="19" cy="17" r="2" /><path d="M6.6 6.4 10.2 10.4M6.6 17.6l3.6-4M14.2 11l3-2.8M14.2 13l3 2.8" /></symbol>
-    <symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9z" /></symbol>
-    <symbol id="i-split" viewBox="0 0 24 24"><path d="M2 12h7l6-7h7M9 12l6 7h7M9 12h13" /></symbol>
-    <symbol id="i-sigma" viewBox="0 0 24 24"><path d="M18 7V4H6l7 8-7 8h12v-3" /></symbol>
-    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z" /><circle cx="12" cy="12" r="3" /></symbol>
-    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15 15 0 0 1 4 10 15 15 0 0 1-4 10 15 15 0 0 1-4-10 15 15 0 0 1 4-10z" /></symbol>
-    <symbol id="i-series" viewBox="0 0 24 24"><path d="M2 20h20" /><path d="M2 15l3-4 3 2 3-7 3 9 3-5 3 3 2-2" /></symbol>
-    <symbol id="i-map" viewBox="0 0 24 24"><path d="M9 3 3 5v16l6-2 6 2 6-2V3l-6 2z" /><path d="M9 3v16M15 5v16" /></symbol>
-    <symbol id="i-satellite" viewBox="0 0 24 24"><rect x="9" y="9" width="6" height="6" rx="1" transform="rotate(45 12 12)" /><path d="M5 5l3 3M16 16l3 3M3 7l4-4 3 3-4 4zM14 18l4-4 3 3-4 4z" /></symbol>
+    <symbol id="i-waves" viewBox="0 0 24 24">
+      <path
+        d="M2 6c1.5 1.2 3 1.2 4.5 0s3-1.2 4.5 0 3 1.2 4.5 0 3-1.2 4.5 0M2 12c1.5 1.2 3 1.2 4.5 0s3-1.2 4.5 0 3 1.2 4.5 0 3-1.2 4.5 0M2 18c1.5 1.2 3 1.2 4.5 0s3-1.2 4.5 0 3 1.2 4.5 0 3-1.2 4.5 0" />
+    </symbol>
+    <symbol id="i-mountain" viewBox="0 0 24 24">
+      <path d="M2 20 9 6l4 7 3-4 6 11z" />
+      <path d="M2 20h20" />
+    </symbol>
+    <symbol id="i-wind" viewBox="0 0 24 24">
+      <path d="M17.7 7.7A2.5 2.5 0 1 1 19.5 12H2M9.6 4.6A2 2 0 1 1 11 8H2M12.6 19.4A2 2 0 1 0 14 16H2" />
+    </symbol>
+    <symbol id="i-buoy" viewBox="0 0 24 24">
+      <path d="M12 2v4M9 6h6l-1 8h-4z" />
+      <path d="M2 19c1.7 1.3 3.3 1.3 5 0s3.3-1.3 5 0 3.3 1.3 5 0 3.3-1.3 5 0" />
+    </symbol>
+    <symbol id="i-area" viewBox="0 0 24 24">
+      <path d="M4 7l6-4 8 3 3 9-7 6-9-4z" />
+      <path d="M4 7l6 6 8-7M10 13l4 8M10 13l-6 4" />
+    </symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24">
+      <path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0z" />
+      <circle cx="12" cy="10" r="3" />
+    </symbol>
+    <symbol id="i-sites" viewBox="0 0 24 24">
+      <path d="M3 20c4-1 6-4 8-8s5-7 10-8" stroke-dasharray="2 3" />
+      <circle cx="5" cy="19" r="1.6" />
+      <circle cx="10" cy="14" r="1.6" />
+      <circle cx="14" cy="8" r="1.6" />
+      <circle cx="20" cy="4.5" r="1.6" />
+    </symbol>
+    <symbol id="i-dice" viewBox="0 0 24 24">
+      <rect x="3" y="3" width="18" height="18" rx="3" />
+      <circle cx="8" cy="8" r="1.2" />
+      <circle cx="16" cy="8" r="1.2" />
+      <circle cx="12" cy="12" r="1.2" />
+      <circle cx="8" cy="16" r="1.2" />
+      <circle cx="16" cy="16" r="1.2" />
+    </symbol>
+    <symbol id="i-cpu" viewBox="0 0 24 24">
+      <rect x="4" y="4" width="16" height="16" rx="2" />
+      <rect x="9" y="9" width="6" height="6" />
+      <path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3" />
+    </symbol>
+    <symbol id="i-net" viewBox="0 0 24 24">
+      <circle cx="5" cy="5" r="2" />
+      <circle cx="5" cy="19" r="2" />
+      <circle cx="12" cy="12" r="2.4" />
+      <circle cx="19" cy="7" r="2" />
+      <circle cx="19" cy="17" r="2" />
+      <path d="M6.6 6.4 10.2 10.4M6.6 17.6l3.6-4M14.2 11l3-2.8M14.2 13l3 2.8" />
+    </symbol>
+    <symbol id="i-zap" viewBox="0 0 24 24">
+      <path d="M13 2 3 14h9l-1 8 10-12h-9z" />
+    </symbol>
+    <symbol id="i-split" viewBox="0 0 24 24">
+      <path d="M2 12h7l6-7h7M9 12l6 7h7M9 12h13" />
+    </symbol>
+    <symbol id="i-sigma" viewBox="0 0 24 24">
+      <path d="M18 7V4H6l7 8-7 8h12v-3" />
+    </symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z" />
+      <circle cx="12" cy="12" r="3" />
+    </symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M2 12h20M12 2a15 15 0 0 1 4 10 15 15 0 0 1-4 10 15 15 0 0 1-4-10 15 15 0 0 1 4-10z" />
+    </symbol>
+    <symbol id="i-series" viewBox="0 0 24 24">
+      <path d="M2 20h20" />
+      <path d="M2 15l3-4 3 2 3-7 3 9 3-5 3 3 2-2" />
+    </symbol>
+    <symbol id="i-map" viewBox="0 0 24 24">
+      <path d="M9 3 3 5v16l6-2 6 2 6-2V3l-6 2z" />
+      <path d="M9 3v16M15 5v16" />
+    </symbol>
+    <symbol id="i-satellite" viewBox="0 0 24 24">
+      <rect x="9" y="9" width="6" height="6" rx="1" transform="rotate(45 12 12)" />
+      <path d="M5 5l3 3M16 16l3 3M3 7l4-4 3 3-4 4zM14 18l4-4 3 3-4 4z" />
+    </symbol>
   </svg>
 
   <div class="brand"><img src="assets/geoocean_logo.png" alt="" class="brand-logo" /><span
@@ -55,36 +117,11 @@
     <section class="slide">
       <p class="kicker">The problem</p>
       <h1>Wave data stops offshore. The questions are at the coast.</h1>
-      <h2>Global hindcasts give hourly waves for decades, but on a coarse grid in deep water. Near the coast, depth,
-        headlands and sandbanks reshape every wave.</h2>
+      <h2>Global hindcasts give hourly waves for decades, but on cells of ~50 km (10 km at best) in deep water. Near
+        the coast, depth, headlands and sandbanks reshape every wave within a few hundred metres.</h2>
       <div class="body cols-2 center">
         <figure class="fig problem-sketch" data-no-zoom>
-          <svg viewBox="0 0 520 300" role="img" aria-label="Offshore hindcast grid points far from a coastline with nearshore sites">
-            <defs>
-              <marker id="pb-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7"
-                orient="auto-start-reverse">
-                <path d="M0,0 L10,5 L0,10 z" style="fill:var(--text-muted)" />
-              </marker>
-            </defs>
-            <rect class="sea" x="0" y="0" width="520" height="300" rx="12" />
-            <path class="land"
-              d="M520,0 L520,300 L300,300 C330,250 300,215 340,185 C372,160 345,120 380,95 C410,72 395,35 420,0 Z" />
-            <path class="iso" d="M285,300 C312,250 282,212 322,182 C352,158 328,118 362,92 C390,70 377,32 400,0" />
-            <path class="iso" d="M262,300 C292,250 262,210 302,178 C332,155 308,115 343,88 C370,66 357,30 380,0" />
-            <g>
-              <circle class="grid-dot" cx="50" cy="45" r="5" /><circle class="grid-dot" cx="130" cy="45" r="5" />
-              <circle class="grid-dot" cx="210" cy="45" r="5" /><circle class="grid-dot" cx="50" cy="125" r="5" />
-              <circle class="grid-dot" cx="130" cy="125" r="5" /><circle class="grid-dot" cx="210" cy="125" r="5" />
-              <circle class="grid-dot" cx="50" cy="205" r="5" /><circle class="grid-dot" cx="130" cy="205" r="5" />
-              <circle class="grid-dot" cx="210" cy="205" r="5" />
-            </g>
-            <circle class="site-dot" cx="318" cy="246" r="5" /><circle class="site-dot" cx="334" cy="196" r="5" />
-            <circle class="site-dot" cx="356" cy="138" r="5" /><circle class="site-dot" cx="372" cy="98" r="5" />
-            <circle class="site-dot" cx="396" cy="44" r="5" />
-            <path class="gap" d="M218,125 C260,128 300,135 345,138" />
-            <text x="30" y="275">Offshore hindcast: coarse grid, deep water</text>
-            <text x="300" y="20" text-anchor="end">Coast: where we need the waves</text>
-          </svg>
+          <div id="problem-sketch"></div>
         </figure>
         <div class="stats" style="grid-template-columns:1fr;">
           <div class="stat">
@@ -93,7 +130,8 @@
           </div>
           <div class="stat">
             <div class="num">~24 CPU-years</div>
-            <div class="lbl">to run a wave model once for every hour (SWAN on the Netherlands mesh, 32 min per run)</div>
+            <div class="lbl">to run a wave model once for every hour (SWAN on the Netherlands mesh, 32 min per run)
+            </div>
           </div>
           <div class="stat">
             <div class="num">Too slow</div>
@@ -109,26 +147,44 @@
       <div class="body idea">
         <div class="idea-row train">
           <div class="idea-tag"><strong>Training</strong><span>done once</span></div>
-          <div class="idea-node"><span class="badge"><svg class="ico"><use href="#i-dice" /></svg></span>
-            <strong>Sea states</strong><span><span data-main="runs">550</span> per goal</span></div>
+          <div class="idea-node"><span class="badge"><svg class="ico">
+                <use href="#i-dice" />
+              </svg></span>
+            <strong>Sea states</strong><span>~500 per goal</span>
+          </div>
           <div class="idea-arrow"></div>
-          <div class="idea-node"><span class="badge"><svg class="ico"><use href="#i-cpu" /></svg></span>
-            <strong>Wave model</strong><span><span data-main="runs-total">5,500</span> runs on a cluster</span></div>
+          <div class="idea-node"><span class="badge"><svg class="ico">
+                <use href="#i-cpu" />
+              </svg></span>
+            <strong>Wave model</strong><span>~5000 (with 10 goals) runs on a cluster</span>
+          </div>
           <div class="idea-arrow"></div>
-          <div class="idea-node"><span class="badge"><svg class="ico"><use href="#i-map" /></svg></span>
-            <strong>Waves at the coast</strong><span>one map per run</span></div>
+          <div class="idea-node"><span class="badge"><svg class="ico">
+                <use href="#i-map" />
+              </svg></span>
+            <strong>Waves at the coast</strong><span>one map per run</span>
+          </div>
         </div>
         <div class="idea-teach"><span>the runs teach the metamodel</span></div>
         <div class="idea-row predict">
           <div class="idea-tag"><strong>Prediction</strong><span>every hour</span></div>
-          <div class="idea-node"><span class="badge"><svg class="ico"><use href="#i-series" /></svg></span>
-            <strong>45 years offshore</strong><span>394,000 hours</span></div>
+          <div class="idea-node"><span class="badge"><svg class="ico">
+                <use href="#i-series" />
+              </svg></span>
+            <strong>45 years offshore</strong><span>394,000 hours</span>
+          </div>
           <div class="idea-arrow"></div>
-          <div class="idea-node"><span class="badge"><svg class="ico"><use href="#i-zap" /></svg></span>
-            <strong>Metamodel</strong><span>no wave-model run</span></div>
+          <div class="idea-node"><span class="badge"><svg class="ico">
+                <use href="#i-zap" />
+              </svg></span>
+            <strong>Metamodel</strong><span>no wave-model run</span>
+          </div>
           <div class="idea-arrow"></div>
-          <div class="idea-node"><span class="badge"><svg class="ico"><use href="#i-series" /></svg></span>
-            <strong>45 years at the coast</strong><span>every site, full spectra</span></div>
+          <div class="idea-node"><span class="badge"><svg class="ico">
+                <use href="#i-series" />
+              </svg></span>
+            <strong>45 years at the coast</strong><span>every site, full spectra</span>
+          </div>
         </div>
       </div>
     </section>
@@ -141,34 +197,84 @@
         <div class="hf" id="hf">
           <div class="hf-stage data" data-step="0">
             <div class="hf-head"><span>1 &middot; Data</span><strong>What goes in</strong></div>
-            <button class="hf-box" type="button" data-text="The depth of the sea floor, from GEBCO."><svg class="ico"><use href="#i-mountain" /></svg><span>Bathymetry<small>GEBCO</small></span></button>
-            <button class="hf-box" type="button" data-text="Hourly offshore waves since 1979, as wind sea and swells."><svg class="ico"><use href="#i-waves" /></svg><span>Offshore waves<small>WHACS &middot; ERA5</small></span></button>
-            <button class="hf-box" type="button" data-text="Wind and water level (tide and surge) for every hour."><svg class="ico"><use href="#i-wind" /></svg><span>Wind &amp; tide<small>ERA5 &middot; CODEC</small></span></button>
-            <button class="hf-box" type="button" data-text="Measured waves near the coast. Only used to check the results."><svg class="ico"><use href="#i-buoy" /></svg><span>Buoys<small>to check</small></span></button>
+            <button class="hf-box" type="button" data-text="The depth of the sea floor, from GEBCO."><svg class="ico">
+                <use href="#i-mountain" />
+              </svg><span>Bathymetry<small>GEBCO</small></span></button>
+            <button class="hf-box" type="button"
+              data-text="Hourly offshore waves since 1979, as wind sea and swells."><svg class="ico">
+                <use href="#i-waves" />
+              </svg><span>Offshore waves<small>WHACS &middot; ERA5</small></span></button>
+            <button class="hf-box" type="button" data-text="Wind and water level (tide and surge) for every hour."><svg
+                class="ico">
+                <use href="#i-wind" />
+              </svg><span>Wind &amp; tide<small>ERA5 &middot; CODEC</small></span></button>
+            <button class="hf-box" type="button"
+              data-text="Measured waves near the coast. Only used to check the results."><svg class="ico">
+                <use href="#i-buoy" />
+              </svg><span>Buoys<small>to check</small></span></button>
           </div>
           <div class="hf-stage setup" data-step="1">
             <div class="hf-head"><span>2 &middot; Set up</span><strong>Describe the coast</strong></div>
-            <button class="hf-box" type="button" data-text="Draw the coast to study; a mesh of triangles covers it, finer near the shore."><svg class="ico"><use href="#i-area" /></svg><span>Area &amp; mesh<small>bluemesh2d</small></span></button>
-            <button class="hf-box" type="button" data-text="Points offshore where the waves come in, each with the directions that reach the coast."><svg class="ico"><use href="#i-pin" /></svg><span>Goals<small>where waves enter</small></span></button>
-            <button class="hf-box" type="button" data-text="Where we want the answer: depth lines (5, 10, 20 m) and the buoys."><svg class="ico"><use href="#i-sites" /></svg><span>Output sites<small>where we want waves</small></span></button>
+            <button class="hf-box" type="button"
+              data-text="Draw the coast to study; a mesh of triangles covers it, finer near the shore."><svg
+                class="ico">
+                <use href="#i-area" />
+              </svg><span>Area &amp; mesh<small>bluemesh2d</small></span></button>
+            <button class="hf-box" type="button"
+              data-text="Points offshore where the waves come in, each with the directions that reach the coast."><svg
+                class="ico">
+                <use href="#i-pin" />
+              </svg><span>Goals<small>where waves enter</small></span></button>
+            <button class="hf-box" type="button"
+              data-text="Where we want the answer: depth lines (5, 10, 20 m) and the buoys."><svg class="ico">
+                <use href="#i-sites" />
+              </svg><span>Output sites<small>where we want waves</small></span></button>
           </div>
           <div class="hf-stage train" data-step="2">
             <div class="hf-head"><span>3 &middot; Train</span><strong>Once</strong></div>
-            <button class="hf-box" type="button" data-text="A few hundred different sea states per goal: height, period, direction, spread, water level."><svg class="ico"><use href="#i-dice" /></svg><span>Sea states<small>per goal</small></span></button>
-            <button class="hf-box" type="button" data-text="The wave model runs once for each sea state, all at the same time on a cluster."><svg class="ico"><use href="#i-cpu" /></svg><span>Wave model<small>SnapWave &middot; SWAN</small></span></button>
-            <button class="hf-box" type="button" data-text="A statistical model learns, per goal, how each sea state looks at the coast."><svg class="ico"><use href="#i-net" /></svg><span>Metamodel<small>learns the runs</small></span></button>
+            <button class="hf-box" type="button"
+              data-text="A few hundred different sea states per goal: height, period, direction, spread, water level."><svg
+                class="ico">
+                <use href="#i-dice" />
+              </svg><span>Sea states<small>per goal</small></span></button>
+            <button class="hf-box" type="button"
+              data-text="The wave model runs once for each sea state, all at the same time on a cluster."><svg
+                class="ico">
+                <use href="#i-cpu" />
+              </svg><span>Wave model<small>SnapWave &middot; SWAN</small></span></button>
+            <button class="hf-box" type="button"
+              data-text="A statistical model learns, per goal, how each sea state looks at the coast."><svg class="ico">
+                <use href="#i-net" />
+              </svg><span>Metamodel<small>learns the runs</small></span></button>
           </div>
           <div class="hf-stage predict" data-step="3">
             <div class="hf-head"><span>4 &middot; Predict</span><strong>Every hour</strong></div>
-            <button class="hf-box" type="button" data-text="Each offshore hour is split into its wind sea and swells."><svg class="ico"><use href="#i-split" /></svg><span>Split the hour<small>wind sea + swells</small></span></button>
-            <button class="hf-box" type="button" data-text="The metamodel of each goal gives the waves at every site, in milliseconds."><svg class="ico"><use href="#i-zap" /></svg><span>Predict<small>each goal, every site</small></span></button>
-            <button class="hf-box" type="button" data-text="At every site, the waves from all goals are added up."><svg class="ico"><use href="#i-sigma" /></svg><span>Add up<small>nearshore waves</small></span></button>
+            <button class="hf-box" type="button"
+              data-text="Each offshore hour is split into its wind sea and swells."><svg class="ico">
+                <use href="#i-split" />
+              </svg><span>Split the hour<small>wind sea + swells</small></span></button>
+            <button class="hf-box" type="button"
+              data-text="The metamodel of each goal gives the waves at every site, in milliseconds."><svg class="ico">
+                <use href="#i-zap" />
+              </svg><span>Predict<small>each goal, every site</small></span></button>
+            <button class="hf-box" type="button" data-text="At every site, the waves from all goals are added up."><svg
+                class="ico">
+                <use href="#i-sigma" />
+              </svg><span>Add up<small>nearshore waves</small></span></button>
           </div>
           <div class="hf-stage check" data-step="4">
             <div class="hf-head"><span>5 &middot; Check &amp; share</span><strong>Is it right?</strong></div>
-            <button class="hf-box" type="button" data-text="Wave-model runs the metamodel never saw: does it get them right?"><svg class="ico"><use href="#i-eye" /></svg><span>Unseen runs<small>vs the physics</small></span></button>
-            <button class="hf-box" type="button" data-text="The real measurements: the final check."><svg class="ico"><use href="#i-buoy" /></svg><span>Buoys<small>vs the sea</small></span></button>
-            <button class="hf-box" type="button" data-text="The results go to an open web portal, and to this deck."><svg class="ico"><use href="#i-globe" /></svg><span>Portal<small>open results</small></span></button>
+            <button class="hf-box" type="button"
+              data-text="Wave-model runs the metamodel never saw: does it get them right?"><svg class="ico">
+                <use href="#i-eye" />
+              </svg><span>Unseen runs<small>vs the physics</small></span></button>
+            <button class="hf-box" type="button" data-text="The real measurements: the final check."><svg class="ico">
+                <use href="#i-buoy" />
+              </svg><span>Buoys<small>vs the sea</small></span></button>
+            <button class="hf-box" type="button"
+              data-text="The results go to an open web portal, and to this deck."><svg class="ico">
+                <use href="#i-globe" />
+              </svg><span>Portal<small>open results</small></span></button>
           </div>
         </div>
         <div class="hf-detail" id="hf-detail">Click a box to see what it does.</div>
@@ -197,6 +303,39 @@
     </section>
 
     <section class="slide">
+      <p class="kicker">Optional &middot; local wind</p>
+      <h1>Wind on top, as one more contribution</h1>
+      <h2>The training runs have no wind: they carry the waves in from offshore. Where the wind keeps blowing over a
+        shallow shelf, the sea at the coast is bigger, so we add that energy back.</h2>
+      <div class="body">
+        <div class="sum-sketch wind-sketch" id="wind-sketch"></div>
+        <div class="cols-2 center" style="margin-top:1.6rem">
+          <ul class="points">
+            <li>In every hour, find the <strong>wind sea</strong>: the short, steep waves the local wind still grows.
+            </li>
+            <li><strong>K</strong> says how much bigger it gets with the wind, from wind speed, fetch, depth and
+              angle. Learned once, from ~100 runs with and without wind.</li>
+            <li>One switch: the goal sum stays the same, the wind is added after it.</li>
+          </ul>
+          <div>
+            <div class="stats">
+              <div class="stat">
+                <div class="num"><span class="from">&minus;0.52</span>&minus;0.09 m</div>
+                <div class="lbl">Hs bias</div>
+              </div>
+              <div class="stat">
+                <div class="num"><span class="from">0.85</span>0.48 m</div>
+                <div class="lbl">Hs RMSE</div>
+              </div>
+            </div>
+            <p class="wind-note">Netherlands: held-out runs, against SnapWave with wind,
+              without &rarr; with the correction.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide">
       <p class="kicker">Does it learn the physics?</p>
       <h1>A few hundred runs are "enough"</h1>
       <div class="body cols-2 center">
@@ -215,7 +354,8 @@
       <p class="kicker">One site, up close</p>
       <h1 data-config="featuredBuoyTitle">Featured buoy</h1>
       <h2><span data-config="featuredBuoyNote">A nearshore buoy</span>, hourly data for
-        <span data-main="buoy-period">a year</span>. HyWaves (purple) against the measurements (black).</h2>
+        <span data-main="buoy-period">a year</span>. HyWaves (purple) against the measurements (black).
+      </h2>
       <div class="body fig-row wide-left">
         <figure class="fig">
           <img id="site-fig" alt="Featured buoy: spectral metamodel vs buoy scatters, plus Hs time series" />
@@ -275,8 +415,6 @@
         <div class="card" style="border-top:3px solid var(--accent)">
           <h3>Next</h3>
           <ul class="points">
-            <li><strong>SWAN</strong> as a second physics engine: already in the pipeline, first full case in
-              progress.</li>
             <li><strong>More regions in HyGloW</strong>, contributed by other teams through the same case contract.</li>
             <li>Beyond hindcasts: <strong>forecasts</strong> and <strong>climate projections</strong> through the same
               trained HyWaves metamodels, with no new physics runs.</li>
@@ -296,18 +434,35 @@
       <div class="title-meta">
         <div><strong data-config="presenter">Presenter</strong><span data-config="contact">tausiaj@unican.es</span>
         </div>
-        <div><strong><a href="https://github.com/GeoOcean/HyGloW" target="_blank" rel="noopener noreferrer">github.com/GeoOcean/HyGloW</a></strong>open code, cases and this deck</div>
+        <div><strong><a href="https://github.com/GeoOcean/HyGloW" target="_blank"
+              rel="noopener noreferrer">github.com/GeoOcean/HyGloW</a></strong>open code, cases and this deck</div>
       </div>
       <div class="built-on">
         <span class="built-on-lbl">Built on</span>
-        <span class="chip"><svg class="ico"><use href="#i-mountain" /></svg>GEBCO</span>
-        <span class="chip"><svg class="ico"><use href="#i-waves" /></svg>WHACS</span>
-        <span class="chip"><svg class="ico"><use href="#i-wind" /></svg>ERA5</span>
-        <span class="chip"><svg class="ico"><use href="#i-waves" /></svg>CODEC</span>
-        <span class="chip"><svg class="ico"><use href="#i-satellite" /></svg>IMOS altimetry</span>
-        <span class="chip"><svg class="ico"><use href="#i-cpu" /></svg>SnapWave</span>
-        <span class="chip"><svg class="ico"><use href="#i-cpu" /></svg>SWAN</span>
-        <span class="chip"><svg class="ico"><use href="#i-net" /></svg>bluemath-tk</span>
+        <span class="chip"><svg class="ico">
+            <use href="#i-mountain" />
+          </svg>GEBCO</span>
+        <span class="chip"><svg class="ico">
+            <use href="#i-waves" />
+          </svg>WHACS</span>
+        <span class="chip"><svg class="ico">
+            <use href="#i-wind" />
+          </svg>ERA5</span>
+        <span class="chip"><svg class="ico">
+            <use href="#i-waves" />
+          </svg>CODEC</span>
+        <span class="chip"><svg class="ico">
+            <use href="#i-satellite" />
+          </svg>IMOS altimetry</span>
+        <span class="chip"><svg class="ico">
+            <use href="#i-cpu" />
+          </svg>SnapWave</span>
+        <span class="chip"><svg class="ico">
+            <use href="#i-cpu" />
+          </svg>SWAN</span>
+        <span class="chip"><svg class="ico">
+            <use href="#i-net" />
+          </svg>bluemath-tk</span>
       </div>
     </section>
 
@@ -859,40 +1014,6 @@ Data variables:
             arriving from different directions still appear as two peaks at the coast.</li>
           <li>A cheaper <strong>bulk</strong> mode (one sea state per hour) is also available.</li>
         </ul>
-      </div>
-    </section>
-
-    <section data-depth="deep" class="slide">
-      <p class="kicker">Before the results</p>
-      <h1>What HyWaves simplifies, on purpose</h1>
-      <h2>Three choices keep HyWaves cheap and general, and each costs some accuracy. Keep them in mind for the
-        numbers that follow.</h2>
-      <div class="body cols-3">
-        <div class="card v1-card">
-          <span class="v1-n">1</span>
-          <h3>Hour by hour</h3>
-          <p>Every training run is <strong>stationary</strong>: each hour is treated as a sea state on its own, as if
-            the waves reached the coast instantly. There is no travel time and no memory of the hours before.</p>
-          <p class="v1-effect"><strong>Effect:</strong> storm peaks can arrive a little early at the coast.<br />
-            <strong>Fix:</strong> a travel-time lag per site (being explored).</p>
-        </div>
-        <div class="card v1-card">
-          <span class="v1-n">2</span>
-          <h3>A linear sum</h3>
-          <p>Each offshore goal and each wave system is propagated <strong>on its own</strong>, and the nearshore
-            spectrum is their sum. Processes that depend on the whole sea at once, like breaking or wave&ndash;wave
-            interactions, see one part at a time.</p>
-          <p class="v1-effect"><strong>Effect:</strong> small errors where several big wave systems meet in shallow
-            water.<br /><strong>Check:</strong> full simulations of real periods, compared site by site.</p>
-        </div>
-        <div class="card v1-card">
-          <span class="v1-n">3</span>
-          <h3>No wind in the training runs</h3>
-          <p>Training runs only propagate waves from the offshore boundary. <strong>Local wind</strong> blowing over
-            the domain, which grows new sea on the way to the coast, is left out.</p>
-          <p class="v1-effect"><strong>Effect:</strong> wave heights underestimated in strong onshore wind.<br />
-            <strong>Fix:</strong> an optional wind correction, trained on runs with and without wind.</p>
-        </div>
       </div>
     </section>
   </div>

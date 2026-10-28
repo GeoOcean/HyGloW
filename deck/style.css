@@ -1978,33 +1978,13 @@ body.mode-short .slide[data-depth="deep"] {
   stroke-width: 2;
 }
 
-.problem-sketch .grid-dot {
-  fill: var(--text-muted);
-}
-
 .problem-sketch .site-dot {
   fill: var(--series-2);
-}
-
-.problem-sketch .iso {
-  fill: none;
-  stroke: var(--series-1);
-  stroke-width: 1.5;
-  stroke-dasharray: 4 4;
-  opacity: 0.6;
 }
 
 .problem-sketch text {
   fill: var(--text-secondary);
   font: 600 13px var(--font);
-}
-
-.problem-sketch .gap {
-  fill: none;
-  stroke: var(--text-muted);
-  stroke-width: 1.5;
-  stroke-dasharray: 3 5;
-  marker-end: url(#pb-arrow);
 }
 
 /* ---- Icons (inline sprite, stroke = currentColor) ---- */
@@ -2332,4 +2312,101 @@ body.mode-short .slide[data-depth="deep"] {
   .sum-sketch {
     grid-template-columns: 1fr;
   }
+}
+
+/* ---- The problem: hindcast cells, coastal mesh, loupe ---- */
+.problem-sketch .cell {
+  fill: var(--series-1);
+}
+
+.problem-sketch .grid-dot {
+  fill: var(--surface-2);
+  stroke: var(--series-1);
+  stroke-width: 1.5;
+}
+
+.problem-sketch .mesh-base {
+  fill: var(--accent-soft);
+}
+
+.problem-sketch .mesh polygon:not(.mesh-base),
+.problem-sketch .zoom-tri {
+  fill: var(--series-1);
+  stroke: var(--surface-2);
+  stroke-width: 0.45;
+  stroke-linejoin: round;
+}
+
+.problem-sketch .zoom-tri {
+  stroke-width: 1;
+}
+
+.problem-sketch .cell-lines line {
+  stroke: var(--text-secondary);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+  opacity: 0.45;
+}
+
+.problem-sketch .site-dot {
+  stroke: var(--surface-2);
+  stroke-width: 1.5;
+}
+
+.problem-sketch .loupe {
+  fill: none;
+  stroke: var(--text-primary);
+  stroke-width: 2.5;
+}
+
+.problem-sketch .loupe-target {
+  fill: none;
+  stroke: var(--text-primary);
+  stroke-width: 1.8;
+}
+
+.problem-sketch .loupe-ray {
+  stroke: var(--text-primary);
+  stroke-width: 1;
+  opacity: 0.5;
+}
+
+.problem-sketch .dim {
+  fill: none;
+  stroke: var(--text-primary);
+  stroke-width: 1.6;
+}
+
+.problem-sketch text {
+  paint-order: stroke;
+  stroke: var(--surface-2);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+.problem-sketch .dim-txt {
+  fill: var(--text-primary);
+  font: 700 14px var(--font);
+}
+
+/* ---- Optional wind contribution ---- */
+.wind-sketch {
+  max-width: 980px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.sum-sketch .area.strong {
+  opacity: 0.5;
+}
+
+.sum-sketch .curve.dashed {
+  stroke-width: 1.8;
+  stroke-dasharray: 4 4;
+}
+
+.wind-note {
+  margin: 0.7rem 0 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
 }

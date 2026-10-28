@@ -224,48 +224,184 @@
   })();
 
   /* ---------------------------------------------------------------------
-   * Each goal alone, then add -- two JONSWAP spectra and their sum
-   * (illustrative shapes, not case data).
+   * The problem: ~50 km hindcast cells offshore, a mesh refined to ~100 m
+   * at the coast, and a loupe on the finest triangles (illustrative).
    * ------------------------------------------------------------------- */
+  (function renderProblem() {
+    const root = document.querySelector("#problem-sketch");
+    if (!root) return;
+    const W = 560, H = 320, CELL = 80;
+    const coast = (y) => 425 - 52 * Math.exp(-(((y - 135) / 36) ** 2)) + 14 * Math.sin(y / 46) - 18 * Math.exp(-(((y - 255) / 30) ** 2));
+    const f = (v) => v.toFixed(1);
+    const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, role: "img" });
+    svg.setAttribute("aria-label", "Coarse offshore hindcast cells next to a coastal mesh refined towards the shore, with a zoom on the finest triangles");
+    const defs = svgEl("defs");
+    const clip = svgEl("clipPath", { id: "pb-loupe" });
+    const L = { x: 118, y: 212, r: 70 };
+    clip.appendChild(svgEl("circle", { cx: L.x, cy: L.y, r: L.r }));
+    defs.appendChild(clip);
+    svg.append(defs, svgEl("rect", { class: "sea", x: 0, y: 0, width: W, height: H }));
+
+    // Offshore hindcast: one value per ~50 km cell
+    const cells = svgEl("g");
+    for (let i = 0; i * CELL < 260; i++)
+      for (let j = 0; j * CELL < H; j++) {
+        const op = 0.3 + 0.12 * Math.sin(i * 1.7 + j * 2.3);
+        cells.appendChild(svgEl("rect", { class: "cell", x: i * CELL, y: j * CELL, width: CELL, height: CELL, style: `fill-opacity:${f(op * 100)}%` }));
+        cells.appendChild(svgEl("circle", { class: "grid-dot", cx: i * CELL + CELL / 2, cy: j * CELL + CELL / 2, r: 3.2 }));
+      }
+    svg.appendChild(cells);
+
+    // Coastal mesh: rows parallel to the coast, closer and denser towards it
+    const D = [150, 116, 89, 67, 50, 37, 27, 19.5, 14, 10, 7, 4.8, 3.2, 2, 1, 0];
+    const rows = D.map((d, k) => {
+      const gap = k < D.length - 1 ? d - D[k + 1] : D[k - 1] - d;
+      const n = Math.max(4, Math.round((H + 8) / (gap * 1.15)));
+      return Array.from({ length: n + 1 }, (_, j) => {
+        const y = -4 + ((H + 8) * j) / n;
+        return { t: j / n, x: coast(y) - d, y, d };
+      });
+    });
+    const hs = (x, y, d) => {
+      const focus = Math.exp(-(((y - 135) / 40) ** 2)) - 0.8 * Math.exp(-(((y - 215) / 35) ** 2));
+      return 0.34 + 0.2 * Math.min(1, d / 150) + 0.22 * focus * (1 - Math.min(1, d / 120)) + 0.04 * Math.sin(y / 19 + d / 13);
+    };
+    const mesh = svgEl("g", { class: "mesh" });
+    const outer = rows[0].map((p) => `${f(p.x)},${f(p.y)}`).join(" ");
+    mesh.appendChild(svgEl("polygon", { class: "mesh-base", points: `${outer} ${W},${H + 4} ${W},-4` }));
+    const tri = (a, b, c) => {
+      const op = hs((a.x + b.x + c.x) / 3, (a.y + b.y + c.y) / 3, (a.d + b.d + c.d) / 3);
+      mesh.appendChild(svgEl("polygon", { points: [a, b, c].map((p) => `${f(p.x)},${f(p.y)}`).join(" "), style: `fill-opacity:${f(op * 100)}%` }));
+    };
+    for (let k = 0; k < rows.length - 1; k++) {
+      const A = rows[k], B = rows[k + 1];
+      let i = 0, j = 0;
+      while (i < A.length - 1 || j < B.length - 1) {
+        if (j === B.length - 1 || (i < A.length - 1 && A[i + 1].t <= B[j + 1].t)) {
+          tri(A[i], A[i + 1], B[j]);
+          i++;
+        } else {
+          tri(A[i], B[j + 1], B[j]);
+          j++;
+        }
+      }
+    }
+    svg.appendChild(mesh);
+
+    // The hindcast grid carries on under the mesh: one cell spans the whole coastal zone
+    const lines = svgEl("g", { class: "cell-lines" });
+    for (let x = CELL; x < W; x += CELL) lines.appendChild(svgEl("line", { x1: x, x2: x, y1: 0, y2: H }));
+    for (let y = CELL; y < H; y += CELL) lines.appendChild(svgEl("line", { x1: 0, x2: W, y1: y, y2: y }));
+    svg.appendChild(lines);
+
+    const shore = Array.from({ length: H / 4 + 3 }, (_, j) => `${f(coast(j * 4 - 4))},${j * 4 - 4}`).join(" ");
+    svg.appendChild(svgEl("polygon", { class: "land", points: `${shore} ${W + 4},${H + 4} ${W + 4},-4` }));
+    [[300, 3], [178, 4], [225, 4], [75, 5]].forEach(([y, d]) => svg.appendChild(svgEl("circle", { class: "site-dot", cx: f(coast(y) - d), cy: y, r: 4.5 })));
+
+    // ~50 km scale on one cell
+    svg.appendChild(svgEl("path", { class: "dim", d: `M${CELL + 6},${CELL - 14} h${CELL - 12} M${CELL + 6},${CELL - 19} v10 M${2 * CELL - 6},${CELL - 19} v10` }));
+    svg.appendChild(svgEl("text", { class: "dim-txt", x: 1.5 * CELL, y: CELL - 22, "text-anchor": "middle" }, "~50 km"));
+
+    // Loupe on the headland: the finest triangles, ~100 m
+    const T = { x: coast(135) - 2, y: 135 };
+    const ang = Math.atan2(T.y - L.y, T.x - L.x), dist = Math.hypot(T.x - L.x, T.y - L.y);
+    const spread = Math.asin((L.r - 7) / dist);
+    [1, -1].forEach((s) => {
+      const a = ang + s * (Math.PI / 2 - spread);
+      svg.appendChild(svgEl("line", { class: "loupe-ray", x1: f(L.x + L.r * Math.cos(a)), y1: f(L.y + L.r * Math.sin(a)), x2: f(T.x + 7 * Math.cos(a)), y2: f(T.y + 7 * Math.sin(a)) }));
+    });
+    svg.appendChild(svgEl("circle", { class: "loupe-target", cx: f(T.x), cy: T.y, r: 7 }));
+    const zoom = svgEl("g", { "clip-path": "url(#pb-loupe)" });
+    zoom.appendChild(svgEl("circle", { class: "sea", cx: L.x, cy: L.y, r: L.r }));
+    const S = 15, hS = (S * Math.sqrt(3)) / 2;
+    const zc = (y) => L.x + 30 + 16 * Math.sin((y - L.y) / 28);
+    for (let r = -6; r <= 6; r++)
+      for (let c = -7; c <= 7; c++) {
+        const y0 = L.y + r * hS, x0 = L.x + c * S + (r % 2 ? S / 2 : 0);
+        [[[x0, y0], [x0 + S, y0], [x0 + S / 2, y0 + hS]], [[x0 + S, y0], [x0 + 1.5 * S, y0 + hS], [x0 + S / 2, y0 + hS]]].forEach((t) => {
+          const cx = (t[0][0] + t[1][0] + t[2][0]) / 3, cy = (t[0][1] + t[1][1] + t[2][1]) / 3;
+          if (cx > zc(cy) + 4) return;
+          const op = 0.3 + 0.18 * Math.min(1, (zc(cy) - cx) / 90) + 0.06 * Math.sin(cx / 9 + cy / 13);
+          zoom.appendChild(svgEl("polygon", { class: "zoom-tri", points: t.map(([x, y]) => `${f(x)},${f(y)}`).join(" "), style: `fill-opacity:${f(op * 100)}%` }));
+        });
+      }
+    const zshore = Array.from({ length: 41 }, (_, j) => { const y = L.y - L.r + (2 * L.r * j) / 40; return `${f(zc(y))},${f(y)}`; }).join(" ");
+    zoom.appendChild(svgEl("polygon", { class: "land", points: `${zshore} ${L.x + L.r},${L.y + L.r} ${L.x + L.r},${L.y - L.r}` }));
+    svg.append(zoom, svgEl("circle", { class: "loupe", cx: L.x, cy: L.y, r: L.r }));
+    svg.appendChild(svgEl("path", { class: "dim", d: `M${L.x - 40},${L.y + 22} h${S} M${L.x - 40},${L.y + 17} v10 M${L.x - 40 + S},${L.y + 17} v10` }));
+    svg.appendChild(svgEl("text", { class: "dim-txt", x: L.x - 40 + S / 2, y: L.y + 42, "text-anchor": "middle" }, "~100 m"));
+
+    svg.appendChild(svgEl("text", { x: 14, y: 24 }, "Offshore hindcast: one value per cell"));
+    svg.appendChild(svgEl("text", { x: W - 14, y: H - 14, "text-anchor": "end" }, "Coastal mesh: finer towards the shore"));
+    root.appendChild(svg);
+  })();
+
+  /* ---------------------------------------------------------------------
+   * Small spectra added up (illustrative JONSWAP shapes, not case data):
+   * each goal alone, then add; and the optional wind contribution.
+   * ------------------------------------------------------------------- */
+  const SPEC = { W: 200, H: 110, f0: 0.03, f1: 0.3 };
+  SPEC.fs = Array.from({ length: 120 }, (_, i) => SPEC.f0 + ((SPEC.f1 - SPEC.f0) * i) / 119);
+  const jonswap = (fp, scale) =>
+    SPEC.fs.map((f) => {
+      const s = f <= fp ? 0.07 : 0.09;
+      const r = Math.exp(-((f - fp) ** 2) / (2 * s * s * fp * fp));
+      return scale * f ** -5 * Math.exp(-1.25 * (fp / f) ** 4) * 3.3 ** r * fp ** 4;
+    });
+  const addSpectra = (a, b) => a.map((v, i) => v + b[i]);
+
+  // items: [[series, caption], "op", ...]; series: [[energy, color, style?], ...], style "dashed" | "area"
+  function spectraSketch(root, items) {
+    const { W, H, fs, f0, f1 } = SPEC;
+    const top = 1.08 * Math.max(...items.flatMap((it) => (typeof it === "string" ? [] : it[0].flatMap(([e]) => e))));
+    const pts = (e) => e.map((v, i) => `${((fs[i] - f0) / (f1 - f0)) * W},${H - (v / top) * (H - 6)}`);
+    root.append(
+      ...items.map((it) => {
+        if (typeof it === "string") return Object.assign(document.createElement("span"), { className: "op", textContent: it });
+        const [series, caption] = it;
+        const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H + 4}`, role: "img" });
+        svg.setAttribute("aria-label", caption);
+        svg.appendChild(svgEl("line", { class: "axis-line", x1: 0, x2: W, y1: H, y2: H }));
+        series.forEach(([e, color, style]) => {
+          const p = pts(e);
+          if (style !== "dashed") svg.appendChild(svgEl("polygon", { class: style === "area" ? "area strong" : "area", points: `0,${H} ${p.join(" ")} ${W},${H}`, style: `fill:${color}` }));
+          if (style !== "area") svg.appendChild(svgEl("polyline", { class: style === "dashed" ? "curve dashed" : "curve", points: p.join(" "), style: `stroke:${color}` }));
+        });
+        const fig = document.createElement("figure");
+        fig.appendChild(svg);
+        fig.insertAdjacentHTML("beforeend", `<figcaption>${caption}</figcaption>`);
+        return fig;
+      }),
+    );
+  }
+
   (function renderSum() {
     const root = document.querySelector("#sum-sketch");
     if (!root) return;
-    const W = 200, H = 110, N = 120, f0 = 0.03, f1 = 0.3;
-    const fs = Array.from({ length: N }, (_, i) => f0 + ((f1 - f0) * i) / (N - 1));
-    const jonswap = (fp, scale) =>
-      fs.map((f) => {
-        const s = f <= fp ? 0.07 : 0.09;
-        const r = Math.exp(-((f - fp) ** 2) / (2 * s * s * fp * fp));
-        return scale * f ** -5 * Math.exp(-1.25 * (fp / f) ** 4) * 3.3 ** r * fp ** 4;
-      });
     const swell = jonswap(0.075, 1.6);
     const sea = jonswap(0.17, 0.5);
-    const sum = swell.map((v, i) => v + sea[i]);
-    const top = Math.max(...sum) * 1.08;
-    const pts = (e) => e.map((v, i) => `${((fs[i] - f0) / (f1 - f0)) * W},${H - (v / top) * (H - 6)}`);
+    spectraSketch(root, [
+      [[[swell, "var(--series-1)"]], "Goal A: long swell"],
+      "+",
+      [[[sea, "var(--series-2)"]], "Goal B: wind sea"],
+      "=",
+      [[[addSpectra(swell, sea), "var(--violet)"]], "At the coast: both"],
+    ]);
+  })();
 
-    function panel(series, caption) {
-      const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H + 4}`, role: "img" });
-      svg.setAttribute("aria-label", caption);
-      svg.appendChild(svgEl("line", { class: "axis-line", x1: 0, x2: W, y1: H, y2: H }));
-      series.forEach(([e, color]) => {
-        const p = pts(e);
-        svg.appendChild(svgEl("polygon", { class: "area", points: `0,${H} ${p.join(" ")} ${W},${H}`, style: `fill:${color}` }));
-        svg.appendChild(svgEl("polyline", { class: "curve", points: p.join(" "), style: `stroke:${color}` }));
-      });
-      const fig = document.createElement("figure");
-      fig.appendChild(svg);
-      fig.insertAdjacentHTML("beforeend", `<figcaption>${caption}</figcaption>`);
-      return fig;
-    }
-    const op = (t) => Object.assign(document.createElement("span"), { className: "op", textContent: t });
-    root.append(
-      panel([[swell, "var(--series-1)"]], "Goal A: long swell"),
-      op("+"),
-      panel([[sea, "var(--series-2)"]], "Goal B: wind sea"),
-      op("="),
-      panel([[sum, "var(--violet)"]], "At the coast: both"),
-    );
+  (function renderWind() {
+    const root = document.querySelector("#wind-sketch");
+    if (!root) return;
+    const sum = addSpectra(jonswap(0.075, 1.6), jonswap(0.17, 0.5));
+    const windSea = jonswap(0.17, 0.5);
+    const extra = jonswap(0.155, 0.55);
+    spectraSketch(root, [
+      [[[sum, "var(--violet)"], [windSea, "var(--series-2)", "area"]], "Goal sum and its <strong>wind sea</strong>"],
+      "+",
+      [[[extra, "var(--teal)"]], "(K&sup2; &minus; 1) &times; wind sea"],
+      "=",
+      [[[addSpectra(sum, extra), "var(--violet)"], [sum, "var(--text-muted)", "dashed"]], "At the coast, with wind"],
+    ]);
   })();
 
   /* ---------------------------------------------------------------------

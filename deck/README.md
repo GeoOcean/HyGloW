@@ -25,7 +25,7 @@ and committing `portal/`, the online deck updates itself.
 - Slides with `data-steps="N"` (the whole-flow slide) reveal N steps with the
   arrow keys before moving on; click a flow box for its one-line explanation.
 - The short deck (default) is the talk, ~15 min: title, problem, idea, flow,
-  linear sum, holdout, cases, portal, thanks. `s` (or the "Full/Short deck"
+  linear sum, wind correction, holdout, cases, portal, thanks. `s` (or the "Full/Short deck"
   button) adds the slides marked `data-depth="deep"`: the featured buoy and
   the limits in place, then the appendix (team, BlueMath, toolkit, wrappers,
   training design, spectra, simplifications).
