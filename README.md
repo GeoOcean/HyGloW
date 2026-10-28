@@ -2,6 +2,13 @@
   <img src="assets/logo.svg" alt="HyGloW — Hybrid Global Wave downscaling" width="100%">
 </p>
 
+> [!NOTE]
+> HyGloW is part of the [BlueMath](https://github.com/GeoOcean/BlueMath)
+> ecosystem and follows its philosophy: open-source, hybrid methods (a few
+> physics runs + statistics), generic code in
+> [bluemath_tk](https://github.com/GeoOcean/BlueMath_tk) and shared,
+> reproducible use cases built on it.
+
 HyGloW turns an offshore wave hindcast into nearshore waves for any coast:
 a few hundred runs of a nearshore wave model (SnapWave or SWAN) train a
 metamodel that reconstructs decades of hourly waves, bulk or full spectra.

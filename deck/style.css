@@ -2410,3 +2410,31 @@ body.mode-short .slide[data-depth="deep"] {
   font-size: 0.82rem;
   color: var(--text-muted);
 }
+
+/* ---- Title slide: BlueMath ecosystem badge ---- */
+.ecosystem-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 2rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  text-decoration: none;
+  box-shadow: var(--shadow);
+}
+
+.ecosystem-badge:hover {
+  border-color: var(--accent);
+}
+
+.ecosystem-badge strong {
+  color: var(--accent);
+}
+
+.ecosystem-badge .ico {
+  color: var(--accent);
+}
