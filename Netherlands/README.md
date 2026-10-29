@@ -23,12 +23,13 @@ order, `python -m hywaves validate Netherlands/` to see what is missing.
 | 03 | `03_Generate_Observations_Configuration` | Processed buoys and their GeoJSON, then the output sites on the mesh |
 | 04 | `04_Select_Goals_by_Hindcasts` | Goals and sectors |
 | 05 | `05_Metamodel_Cases_Generation` | Training cases (SLURM) |
-| 05b | `05b_Wind_Correction` | Wind growth factor K |
+| 05b | `05b_Wind_Correction` | Wind growth factor K; runs vs correction, K response |
 | 06 | `06_Validate_Metamodel` | Fit (MDA sizes 100, 550) and holdout check |
-| 07a | `07a_Offshore_WHACS` / `07a_Offshore_ERA5` | Offshore waves at the goals |
-| 07b | `07b_Satellite_Calibration` | WHACS vs IMOS altimetry, `WHACS_cal` |
+| 07a | `07a_Offshore_WHACS` / `07a_Offshore_ERA5` | Offshore waves at the goals (ERA5: partition Tm-1,0 -> Tp) |
+| 07b | `07b_Satellite_Calibration` | WHACS / ERA5 vs IMOS altimetry, `WHACS_cal`, `ERA5_cal` |
 | 08 | `08_Dynamic_Cases_Generation` | Hourly reference runs with wind and water level |
 | 09–12 | validation and figures | Reconstruction vs reference runs, buoys, spectra, portal figures |
+| 10b | `10b_Storm_Event` | Xaver (Dec 2013) in detail: forcing, buoys, wind correction, maps |
 
 ## Case-specific code
 
@@ -36,6 +37,7 @@ order, `python -m hywaves validate Netherlands/` to see what is missing.
 | --- | --- |
 | `utils/buoy_archive.py` | Builds the processed buoys (Waterinfo, CMEMS and older Rijkswaterstaat exports) |
 | `utils/rijkswaterstaat.py` | Reads the older Rijkswaterstaat exports |
+| `reconstruct_buoys.py` | Fills the reconstruction cache of notebook 10 (`WHACS_cal`, `ERA5_cal` x wind off/on, 1979-2018) |
 
 The rest of `utils/` is the template's: `python -m hywaves update Netherlands/`
 keeps it current.

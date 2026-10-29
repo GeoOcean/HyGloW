@@ -1267,6 +1267,59 @@ def reconstruct(
     return req.stores[0].read(time, req.site_ids).assign_coords(site_meta(req.site_ids).coords)
 
 
+def wind_sea_diagnostics(
+    time: str | slice,
+    n: int,
+    *,
+    metamodel: str,
+    resources: ReconstructionResources,
+    offshore_name: str = "WHACS",
+    goals: Iterable[str | int] | None = None,
+    wl: WaterLevel = 0.0,
+    sites: str | Iterable[str] | None = None,
+) -> xr.Dataset:
+    """
+    What the wind correction sees at each site and step: the wind sea, the inputs of ``K``, ``K``.
+
+    Computes the goal contributions as :func:`reconstruct` does with
+    ``wind_correction=True`` (no cache: meant for short periods, e.g. one
+    storm), then :func:`bluemath_tk.waves.hywaves.wind_correction.wind_sea_inputs`.
+
+    Parameters
+    ----------
+    time, n, metamodel, resources, offshore_name, goals, wl, sites
+        As for :func:`reconstruct`.
+
+    Returns
+    -------
+    xarray.Dataset
+        ``e_ws``, ``hs_ws``, ``tp_ws``, ``ws_dir``, ``u10``, ``u10dir``,
+        ``angle``, ``fetch``, ``mean_depth``, ``depth``, ``hs_ws_u2`` and
+        ``k`` on ``(time, sites)``, with the site metadata.
+
+    Raises
+    ------
+    ValueError
+        If nothing in the period is wind sea.
+    """
+    from bluemath_tk.waves.hywaves.wind_correction import wind_sea_inputs
+
+    from utils.wind import reconstruction_inputs
+
+    goals = _goals(goals)
+    require_models(metamodel, n, goals)
+    site_ids = reconstruction_sites(metamodel, sites, goals)
+    offshore = open_offshore_waves(offshore_name).sel(time=time)
+    chunks = goal_contributions(offshore, n, metamodel=metamodel, sites=site_ids, spectral=True,
+                                resources=resources, goals=goals, wl=wl, wind_sea=True)
+    cube = xr.merge(chunks, join="outer", compat="no_conflicts")
+    inputs = reconstruction_inputs(cube["time"].values, site_ids)
+    ws = wind_sea_inputs(cube, inputs["correction"], inputs["fetch"], inputs["wind"])
+    if ws is None:
+        raise ValueError(f"No wind sea in {time!r}")
+    return ws.assign_coords(site_meta(site_ids).coords)
+
+
 def load_reconstruction_spectra(time: str | slice, n: int, *, sites: str | Iterable[str] | None = None,
                                 **setup: Any) -> xr.Dataset:
     """

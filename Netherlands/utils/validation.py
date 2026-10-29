@@ -552,6 +552,118 @@ def load_offshore_hindcast_at_buoys(
     return estimates, mapping
 
 
+#: CF-style attributes of the buoy variables (validation plots).
+BUOY_VAR_ATTRS = {
+    "hs": {"standard_name": "sea_surface_wave_significant_height", "units": "m"},
+    "tp": {"standard_name": "sea_surface_wave_period", "units": "s"},
+    "dir": {"standard_name": "sea_surface_wave_from_direction", "units": "degree"},
+    "spr": {"standard_name": "sea_surface_wave_directional_spread", "units": "degree"},
+}
+
+
+def _buoy_record(path: Path, period: str | slice, variables: list[str]) -> xr.Dataset:
+    """One processed buoy file in HyWaves names (bulk, or stats of its spectra)."""
+    raw = xr.open_dataset(path).sel(time=period)
+    if "Efth" in raw or "efth" in raw:
+        spec = raw["Efth" if "Efth" in raw else "efth"]
+        return spec.spec.stats(["hs", "tp", "dm", "dspr"]).load().rename({"dm": "dir", "dspr": "spr"})
+    if "dspr" in raw.data_vars and "spr" not in raw.data_vars:
+        raw = raw.rename({"dspr": "spr"})
+    out = {name: raw[name] for name in variables if name in raw.data_vars}
+    if "dir" in variables and "dir" not in out and "dm" in raw.data_vars:
+        out["dir"] = raw["dm"]
+    if "hs" not in out:
+        raise ValueError(f"{path.name}: processed buoy file must contain hs or Efth")
+    return xr.Dataset(out)
+
+
+def load_buoy_observations(
+    period: str | slice, sites: Iterable[str] | None = None, variables: Iterable[str] | None = None
+) -> xr.Dataset:
+    """
+    Processed hourly buoy records on ``(time, sites)``, the buoys with ``hs`` in *period*.
+
+    Reads ``inputs/Observations/processed/<instrument_id>.nc`` (notebook 03).
+
+    Parameters
+    ----------
+    period
+        Time selection.
+    sites
+        Buoy sites; default every ``ok`` buoy
+        (:func:`utils.onshore_sites.list_snapwave_buoy_sites`).
+    variables
+        Default ``hs``, ``tp``, ``dir``, ``spr``; missing ones are skipped.
+
+    Returns
+    -------
+    xarray.Dataset
+        With CF-style attributes and the site metadata.
+    """
+    variables = _variables(variables)
+    chunks = []
+    for site in sites if sites is not None else obs.list_snapwave_buoy_sites():
+        path = resolve("inputs/Observations/processed") / f"{obs.instrument_id(site)}.nc"
+        ds = _buoy_record(path, period, variables)
+        if int(ds["hs"].notnull().sum()) == 0:
+            logger.info("%s: no hs in %s, skipped", site, period)
+            continue
+        ds = ds.expand_dims(sites=[site]).transpose("time", "sites")
+        for name, attrs in BUOY_VAR_ATTRS.items():
+            if name in ds:
+                ds[name].attrs.update(attrs)
+        chunks.append(ds)
+    return attach_site_meta(xr.concat(chunks, dim="sites"))
+
+
+def event_peaks(
+    reference: xr.Dataset, estimates: Mapping[str, xr.Dataset], variable: str = "hs",
+    reference_label: str = "Buoy",
+) -> pd.DataFrame:
+    """
+    Peak of *variable* per site in an event: reference and estimates, value and time.
+
+    Parameters
+    ----------
+    reference
+        On ``(time, sites)`` over the event (e.g. the buoys).
+    estimates
+        Label -> dataset on ``(time, sites)``.
+    variable
+        Variable to compare.
+    reference_label
+        Label of *reference* in the columns.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per site with a reference peak: ``{label}`` (peak value) and
+        ``{label} time``, and for each estimate also ``{label} - {reference_label}``
+        (peak difference) and ``{label} lag (h)`` (positive: estimate later).
+    """
+    sources = {reference_label: reference, **estimates}
+    rows = {}
+    for site in reference["sites"].values:
+        ref = reference[variable].sel(sites=site).dropna("time")
+        if ref.size == 0:
+            continue
+        row = {}
+        for label, ds in sources.items():
+            if site not in ds["sites"].values:
+                continue
+            series = ds[variable].sel(sites=site).sel(time=reference["time"]).dropna("time")
+            if series.size == 0:
+                continue
+            i = int(series.argmax())
+            row[label] = float(series[i])
+            row[f"{label} time"] = pd.Timestamp(series["time"].values[i])
+            if label != reference_label:
+                row[f"{label} - {reference_label}"] = row[label] - float(ref.max())
+                row[f"{label} lag (h)"] = (row[f"{label} time"] - pd.Timestamp(ref["time"].values[int(ref.argmax())])) / pd.Timedelta("1h")
+        rows[site] = row
+    return pd.DataFrame.from_dict(rows, orient="index")
+
+
 # ---------------------------------------------------------------------------
 # Plots
 # ---------------------------------------------------------------------------
@@ -559,7 +671,7 @@ def load_offshore_hindcast_at_buoys(
 
 def _scatter_panel(
     ax: plt.Axes, reference: np.ndarray, estimate: np.ndarray, variable: str,
-    reference_label: str, estimate_label: str,
+    reference_label: str, estimate_label: str, cmap: str = "viridis",
 ) -> None:
     """One density scatter (reference on x), annotated like :func:`compute_metrics`."""
     spec = PARAMETERS[variable]
@@ -574,7 +686,7 @@ def _scatter_panel(
         circular=spec["circular"],
         metrics=SCATTER_METRICS,
         qq=False,
-        cmap="viridis",
+        cmap=cmap,
         s=10,
         max_points=MAX_DENSITY_POINTS,
         bounds=PHYSICAL_BOUNDS.get(variable),
@@ -694,11 +806,13 @@ def plot_buoy_summary(
     reference_label: str = "Buoy",
     estimate_label: str = "Spectral metamodel",
     period_label: str | None = None,
+    cmap: str = "viridis",
 ) -> Figure:
     """
     One figure per buoy for the GUI: density scatters, then Hs (and Tp) over time.
 
-    The time series is cropped to the span where the buoy has data.
+    The time series is cropped to the span where the buoy has data; *cmap*
+    colours the scatter density.
     """
     ref, est = xr.align(reference.sel(sites=site), estimate.sel(sites=site), join="inner")
     keys = resolve_comparison_variables(ref, est, variables=variables)
@@ -706,7 +820,7 @@ def plot_buoy_summary(
     gs = fig.add_gridspec(2, len(keys), height_ratios=[1.15, 0.85], hspace=0.35)
     for col, key in enumerate(keys):
         _scatter_panel(fig.add_subplot(gs[0, col]), ref[key].values, est[key].values, key,
-                       reference_label, estimate_label)
+                       reference_label, estimate_label, cmap)
 
     ax = fig.add_subplot(gs[1, :])
     has_data = ref["hs"].notnull().values if "hs" in keys else np.ones(ref.sizes["time"], bool)

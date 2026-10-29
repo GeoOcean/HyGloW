@@ -19,6 +19,11 @@
         {
             "name": "ERA5",
             "data_path": "inputs/ERA5/processed/Netherlands_ERA5_goal.zarr"
+        },
+        {
+            "name": "ERA5_cal",
+            "data_path": "inputs/ERA5/processed/Netherlands_ERA5_goal_cal.zarr",
+            "hindcast": "ERA5"
         }
     ],
     "satellite": {

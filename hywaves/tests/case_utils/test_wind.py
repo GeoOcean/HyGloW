@@ -91,6 +91,8 @@ class TestFitWindCorrection(unittest.TestCase):
                         "fetch_eff": (("sites", "dir"), np.full((3, 72), 4e4)),
                         "mean_depth": (("sites", "dir"), np.full((3, 72), 25.0)),
                         "site_depth": ("sites", [10.0, 20.0, 15.0]),
+                        "point_x": ("sites", [4.0, 3.9, 4.1]),
+                        "point_y": ("sites", [52.0, 52.1, 52.2]),
                     },
                     coords={"sites": SITES, "dir": dirs},
                 ).to_netcdf(wind.fetch_table_path())
@@ -106,6 +108,29 @@ class TestFitWindCorrection(unittest.TestCase):
                 self.assertTrue(wind.correction_path().is_file())
                 loaded = wind.load_wind_correction()
                 self.assertEqual(loaded.n_samples, correction.n_samples)
+
+                held = wind.holdout_cases(test_fraction=0.25)
+                self.assertEqual(set(held.index), set(k_df["case"]))
+                ids = list(held.index[:2])
+                maps = wind.case_comparison(ids, test_fraction=0.25)
+                self.assertEqual(dict(maps.sizes), {"case": 2, "sites": 3})
+                np.testing.assert_allclose(maps["hs0"].sel(case=ids[0]), hs0[ids[0]], rtol=1e-6)
+                np.testing.assert_allclose(maps["hs1"].sel(case=ids[0]), (hs0 * k)[ids[0]], rtol=1e-6)
+                np.testing.assert_allclose(maps["latitude"], [52.0, 52.1, 52.2])
+                self.assertIn("hs_ws_u2", maps.coords)
+                ranges = wind.training_range()
+                self.assertEqual(set(ranges), {"u10", "angle", "hs_ws_u2"})
+                self.assertLess(ranges["u10"][0], ranges["u10"][1])
+                curves = wind.k_response(SITES[:2], 300.0, n=7)
+                self.assertEqual(curves["k_u10"].shape, (2, 7))
+                self.assertEqual(curves["k_hs_ws_u2"].shape, (2, 7))
+                for name in ("k_u10", "k_angle", "k_hs_ws_u2"):
+                    self.assertTrue(bool(((curves[name] >= 0.5) & (curves[name] <= 4.0)).all()), name)
+                np.testing.assert_allclose(curves["fetch"], 4e4)
+                self.assertEqual(curves.attrs["wind_dir"], 300.0)
+                with self.assertRaises(ValueError):
+                    wind.case_comparison([int(next(i for i in range(n_cases) if i not in held.index))],
+                                         test_fraction=0.25)
 
         rmse = scores.pivot_table(index="group", columns="estimate", values="rmse")
         self.assertTrue((rmse["wind correction"] < rmse["no correction"]).all())

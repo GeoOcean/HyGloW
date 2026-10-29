@@ -196,8 +196,13 @@ no `tests/`.
   `min_depth`, flags 1-2, one median per pass; Mínguez 2011 directional
   energy fit, no intercept, sea/swell × 16 sectors. Netherlands WHACS (50 km):
   slope 0.81-0.92 -> 0.90-0.98, test bias −0.03..−0.12 -> −0.03..+0.08 m (the
-  energy fit overshoots moderate seas: open). ERA5 (`EDH_API_KEY`; `ptp` are
-  Tm-1,0) beats WHACS RMSE at 8/10 goals at 10 km, with few passes.
+  energy fit overshoots moderate seas: open). ERA5 (`EDH_API_KEY`) beats WHACS RMSE
+  at 8/10 goals at 10 km, with few passes (before the Tp conversion).
+- *ERA5 partition periods* (07a, `offshore.peak_period_samples` /
+  `partition_peak_periods`): ERA5 gives Tm-1,0 per partition; Tp / Tm-1,0 is
+  the median of bulk `pp1d / ptp{i}` where one partition holds >= 90 % of the
+  energy. Netherlands 1979-2023: sea 1.156 (PM 1.167), swell 1.132 (above a
+  narrow JONSWAP: broad swell partitions). One processed ERA5 zarr, with Tp.
 
 ## Where we are (2026-10-26)
 

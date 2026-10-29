@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
+from unittest import mock
 
 import numpy as np
 import pandas as pd
@@ -95,6 +98,33 @@ class TestValidationHelpers(unittest.TestCase):
         from bluemath_tk.core.geo import geodesic_distance
 
         self.assertAlmostEqual(np.radians(geodesic_distance(0.0, 0.0, 1.0, 0.0)) * 6371.0, 111.19, 1)
+
+    def test_load_buoy_observations(self) -> None:
+        time = pd.date_range("2013-12-01", periods=48, freq="h")
+        with tempfile.TemporaryDirectory() as tmp:
+            hs = np.linspace(1.0, 3.0, 48)
+            xr.Dataset({"hs": ("time", hs), "dspr": ("time", np.full(48, 30.0))},
+                       coords={"time": time}).to_netcdf(Path(tmp) / "A.nc")
+            xr.Dataset({"hs": ("time", np.full(48, np.nan))}, coords={"time": time}).to_netcdf(Path(tmp) / "B.nc")
+            with mock.patch.object(val, "resolve", lambda _: Path(tmp)), \
+                    mock.patch.object(val.obs, "instrument_id", lambda s: s.removeprefix("buoy_")), \
+                    mock.patch.object(val, "attach_site_meta", lambda ds: ds):
+                buoy = val.load_buoy_observations(slice("2013-12-01", "2013-12-01 23:00"), ["buoy_A", "buoy_B"])
+        self.assertEqual(list(buoy.sites.values), ["buoy_A"])
+        self.assertEqual(set(buoy.data_vars), {"hs", "spr"})
+        self.assertEqual(buoy.sizes["time"], 24)
+        self.assertEqual(buoy["hs"].attrs["units"], "m")
+
+    def test_event_peaks(self) -> None:
+        time = pd.date_range("2013-12-05", periods=10, freq="h")
+        ref = xr.Dataset({"hs": (("time", "sites"), np.r_[np.zeros(4), 5.0, np.zeros(5)][:, None])},
+                         coords={"time": time, "sites": ["a"]})
+        est = xr.Dataset({"hs": (("time", "sites"), np.r_[np.zeros(6), 4.0, np.zeros(3)][:, None])},
+                         coords={"time": time, "sites": ["a"]})
+        peaks = val.event_peaks(ref, {"model": est})
+        self.assertEqual(peaks.loc["a", "Buoy"], 5.0)
+        self.assertEqual(peaks.loc["a", "model - Buoy"], -1.0)
+        self.assertEqual(peaks.loc["a", "model lag (h)"], 2.0)
 
 
 if __name__ == "__main__":

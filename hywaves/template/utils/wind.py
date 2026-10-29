@@ -16,6 +16,10 @@ is the case layer, driven by ``metamodel.wind_correction`` in the case JSON:
   (``outputs/wind/wind_correction_{model}.pkl``);
 - :func:`formula_k` / :func:`k_comparison` — the growth-curve ``K`` next to
   the fitted one and the runs', on held-out cases (notebook 05b);
+- :func:`holdout_cases` / :func:`case_comparison` — held-out cases at every
+  site: with and without wind, and corrected (notebook 05b);
+- :func:`k_response` / :func:`training_range` — ``K`` of the fitted model
+  against each input, and where the training cases lie (notebook 05b);
 - :func:`reconstruction_inputs` — what :func:`utils.metamodel.reconstruct`
   passes to the spectral sum when the correction is on.
 """
@@ -428,6 +432,27 @@ def _holdout(pairs: pd.DataFrame, test_fraction: float, seed: int) -> pd.Series:
     return pairs["case"].isin(rng.choice(case_ids, n_test, replace=False))
 
 
+def _held_out(pairs: pd.DataFrame, test_fraction: float, seed: int) -> tuple[pd.DataFrame, WindCorrection]:
+    """
+    Held-out pairs with the ``K`` of a model fitted on the other cases.
+
+    Adds ``hs_ws`` (wind-sea Hs without wind), ``k_fitted`` and
+    ``hs_corrected`` (as in the reconstruction: ``K`` scales the wind-sea
+    energy ``w hs^2`` only); returns the model too.
+    """
+    test = _holdout(pairs, test_fraction, seed)
+    held = pairs[test].copy()
+    fitted = _fit(pairs[~test])
+    w = held["ws_weight"].to_numpy()
+    held["hs_ws"] = np.sqrt(w) * held["hs0"]
+    held["k_fitted"] = fitted.predict(
+        held["hs_ws"].to_numpy(), held["u10"].to_numpy(), held["fetch"].to_numpy(),
+        held["depth"].to_numpy(), held["mean_depth"].to_numpy(), held["angle"].to_numpy(),
+    )
+    held["hs_corrected"] = held["hs0"] * np.sqrt(1.0 + (held["k_fitted"] ** 2 - 1.0) * w)
+    return held, fitted
+
+
 def fit_wind_correction(
     model: str | None = None, test_fraction: float = 0.2, seed: int = 0
 ) -> tuple[WindCorrection, pd.DataFrame]:
@@ -454,16 +479,7 @@ def fit_wind_correction(
         of Hs, m) per site group, without and with the correction.
     """
     pairs = training_pairs(model).dropna(subset=["hs0", "hs1"])
-    test = _holdout(pairs, test_fraction, seed)
-    held = pairs[test].copy()
-    held_fit = _fit(pairs[~test])
-    w = held["ws_weight"].to_numpy()
-    k = held_fit.predict(
-        np.sqrt(w) * held["hs0"].to_numpy(), held["u10"].to_numpy(), held["fetch"].to_numpy(),
-        held["depth"].to_numpy(), held["mean_depth"].to_numpy(), held["angle"].to_numpy(),
-    )
-    # as in the reconstruction: K scales the wind-sea energy w hs^2 only
-    held["hs_corrected"] = held["hs0"] * np.sqrt(1.0 + (k**2 - 1.0) * w)
+    held, _ = _held_out(pairs, test_fraction, seed)
     group = "site_label" if "site_label" in held else None
     rows = []
     for name, sub in (held.groupby(group) if group else [("all", held)]):
@@ -540,18 +556,13 @@ def k_comparison(model: str | None = None, test_fraction: float = 0.2, seed: int
         present.
     """
     pairs = training_pairs(model).dropna(subset=["hs0", "hs1"])
-    test = _holdout(pairs, test_fraction, seed)
-    fitted = _fit(pairs[~test])
-    held = pairs[test].copy()
+    held, fitted = _held_out(pairs, test_fraction, seed)
     w = held["ws_weight"].to_numpy()
-    held["hs_ws"] = np.sqrt(w) * held["hs0"]
     with np.errstate(invalid="ignore", divide="ignore"):
         k2 = 1.0 + (held["hs1"] ** 2 - held["hs0"] ** 2) / (w * held["hs0"] ** 2)
     held["k_runs"] = np.sqrt(np.clip(k2, fitted.k_range[0] ** 2, fitted.k_range[1] ** 2))
     held = held[(held["u10"] >= fitted.u10_min) & (held["hs_ws"] >= fitted.hs_min) & np.isfinite(held["k_runs"])]
     held = held.dropna(subset=["fetch", "depth", "mean_depth"])
-    args = [held[c].to_numpy() for c in ("hs_ws", "u10", "fetch", "depth", "mean_depth", "angle")]
-    held["k_fitted"] = fitted.predict(*args)
     # same bounds as the runs' and the fitted K (tiny wind seas would give huge K)
     bounds = fitted.k_range
     held["k_formula_deep"] = np.clip(formula_k(held["hs_ws"], held["u10"], held["fetch"]), *bounds)
@@ -562,6 +573,153 @@ def k_comparison(model: str | None = None, test_fraction: float = 0.2, seed: int
     keep = ["case", "sites", "hs_ws", "u10", "fetch", "depth", "angle", "hs_ws_u2",
             "k_runs", "k_fitted", "k_formula_deep", "k_formula_depth"]
     return held[[c for c in keep + ["site_label"] if c in held]].reset_index(drop=True)
+
+
+def holdout_cases(model: str | None = None, test_fraction: float = 0.2, seed: int = 0) -> pd.DataFrame:
+    """
+    The training cases held out by :func:`fit_wind_correction` (same *test_fraction*, *seed*).
+
+    Returns
+    -------
+    pandas.DataFrame
+        Rows of ``wind_cases.csv`` (index = case), plus ``hs_ws_u2``
+        (``g Hs_ws / U^2`` offshore: how developed the wind sea is, 0.24 =
+        fully developed).
+    """
+    model = simulation_model(model)
+    pairs = training_pairs(model).dropna(subset=["hs0", "hs1"])
+    ids = np.sort(pairs.loc[_holdout(pairs, test_fraction, seed), "case"].unique())
+    cases = pd.read_csv(wind_cases_dir(True, model).parent / "wind_cases.csv").loc[ids]
+    cases["hs_ws_u2"] = 9.81 * cases["hs"] * np.sqrt(cases["ws_weight"]) / cases["u10"] ** 2
+    return cases
+
+
+def case_comparison(
+    case_ids: list[int], model: str | None = None, test_fraction: float = 0.2, seed: int = 0
+) -> xr.Dataset:
+    """
+    Held-out training cases at every site: the runs with and without wind, and the correction.
+
+    The model is fitted without the held-out cases (as :func:`k_comparison`),
+    so the corrected Hs is a fair test against the run with wind.
+
+    Parameters
+    ----------
+    case_ids
+        Cases of :func:`holdout_cases`.
+    model
+        Default ``simulations.model``.
+    test_fraction, seed
+        Held-out cases, as in :func:`fit_wind_correction`.
+
+    Returns
+    -------
+    xarray.Dataset
+        ``hs0`` (without wind), ``hs1`` (with wind), ``hs_corrected`` and
+        ``k_fitted`` on ``(case, sites)``; site ``longitude`` / ``latitude``
+        and the case parameters (``wind_cases.csv``, ``hs_ws_u2``) as
+        coordinates.
+    """
+    model = simulation_model(model)
+    cases = holdout_cases(model, test_fraction, seed)
+    missing = sorted(set(case_ids) - set(cases.index))
+    if missing:
+        raise ValueError(f"cases {missing} are not held out: pick them from holdout_cases()")
+    pairs = training_pairs(model).dropna(subset=["hs0", "hs1"])
+    held, _ = _held_out(pairs, test_fraction, seed)
+    held = held[held["case"].isin(case_ids)]
+    ds = held.set_index(["case", "sites"])[["hs0", "hs1", "hs_corrected", "k_fitted"]].to_xarray()
+    ds = ds.sel(sites=list(dict.fromkeys(held["sites"])))  # the runs' site order, not sorted
+    table = fetch_table(model=model).sel(sites=ds["sites"].values)
+    ds = ds.assign_coords(longitude=("sites", table["point_x"].values), latitude=("sites", table["point_y"].values))
+    return ds.assign_coords({name: ("case", cases.loc[ds["case"].values, name].to_numpy()) for name in cases.columns})
+
+
+def training_range(model: str | None = None, q: tuple[float, float] = (1.0, 99.0)) -> dict[str, tuple[float, float]]:
+    """
+    Range of the ``K`` inputs in the training pairs (percentiles *q*), as seen at the sites.
+
+    Returns
+    -------
+    dict
+        ``u10`` (m/s), ``angle`` (deg) and ``hs_ws_u2`` (``g Hs_ws / U^2``)
+        -> (low, high).
+    """
+    pairs = training_pairs(model).dropna(subset=["hs0", "hs1"])
+    pairs = pairs[pairs["hs0"] > 0]
+    values = {
+        "u10": pairs["u10"],
+        "angle": pairs["angle"],
+        "hs_ws_u2": 9.81 * np.sqrt(pairs["ws_weight"]) * pairs["hs0"] / pairs["u10"] ** 2,
+    }
+    return {name: tuple(float(v) for v in np.nanpercentile(s, q)) for name, s in values.items()}
+
+
+def k_response(
+    site_ids: list[str],
+    wind_dir: float,
+    hs_ws: float = 2.0,
+    u10: float = 15.0,
+    angle: float = 0.0,
+    n: int = 60,
+    model: str | None = None,
+) -> xr.Dataset:
+    """
+    ``K`` of the fitted model at sites, one input varied at a time around a base state.
+
+    The wind blows from *wind_dir*; fetch and mean depth along it come from
+    the fetch table (nearest direction), depth from the site.
+
+    Parameters
+    ----------
+    site_ids
+        Sites of the fetch table.
+    wind_dir
+        Wind direction (deg, nautical, coming from).
+    hs_ws, u10, angle
+        Base state: wind-sea Hs at the site (m), wind speed (m/s), wind-wave
+        angle (deg).
+    n
+        Points per curve.
+    model
+        Default ``simulations.model``.
+
+    Returns
+    -------
+    xarray.Dataset
+        ``k_u10`` on ``(sites, u10)`` (``hs_ws`` fixed), ``k_angle`` on
+        ``(sites, angle)`` and ``k_hs_ws_u2`` on ``(sites, hs_ws_u2)``
+        (``u10`` fixed, ``hs_ws`` varied); site ``depth`` and ``fetch``
+        (m) coordinates; the base state in the attributes.
+    """
+    correction = load_wind_correction(model)
+    table = fetch_table(model=model).sel(sites=list(site_ids))
+    table = table.sel(dir=float(wind_dir) % 360.0, method="nearest")
+    fetch = table["fetch_eff"].values[:, None]
+    depth = table["site_depth"].values[:, None]
+    mean_depth = table["mean_depth"].values[:, None]
+    axes = {
+        "u10": np.linspace(1.0, 40.0, n),
+        "angle": np.linspace(-90.0, 90.0, n),
+        "hs_ws_u2": np.geomspace(0.002, 0.6, n),
+    }
+    inputs = {
+        "u10": (hs_ws, axes["u10"][None, :], angle),
+        "angle": (hs_ws, u10, axes["angle"][None, :]),
+        "hs_ws_u2": (axes["hs_ws_u2"][None, :] * u10**2 / 9.81, u10, angle),
+    }
+    data = {}
+    for name, (h, u, a) in inputs.items():
+        shape = (len(site_ids), n)
+        k = correction.predict(
+            *(np.broadcast_to(v, shape).ravel() for v in (h, u, fetch, depth, mean_depth, a))
+        )
+        data[f"k_{name}"] = (("sites", name), k.reshape(shape))
+    return xr.Dataset(
+        data,
+        coords={"sites": list(site_ids), **axes, "depth": ("sites", depth[:, 0]), "fetch": ("sites", fetch[:, 0])},
+        attrs={"wind_dir": float(wind_dir), "hs_ws": hs_ws, "u10": u10, "angle": angle},
+    )
 
 
 def load_wind_correction(model: str | None = None) -> WindCorrection:
@@ -651,14 +809,18 @@ __all__ = [
     "correction_path",
     "enabled",
     "fetch_table",
+    "case_comparison",
     "fit_wind_correction",
     "formula_k",
     "generate_wind_cases",
+    "holdout_cases",
+    "k_response",
     "k_comparison",
     "load_wind_correction",
     "postprocessed_path",
     "reconstruction_inputs",
     "training_pairs",
+    "training_range",
     "wind_at_sites",
     "wind_case_wrappers",
     "wind_cases_dir",

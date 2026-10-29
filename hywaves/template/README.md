@@ -19,13 +19,14 @@ A HyGloW case: nearshore waves from an offshore hindcast (the method:
 | 03 | `03_Generate_Observations_Configuration` | Buoys, and the output sites on the mesh | `onshore_waves`, `simulations.output_sites_config` |
 | 04 | `04_Select_Goals_by_Hindcasts` | Goals (offshore points) and their sectors | `simulations.goals_file` |
 | 05 | `05_Metamodel_Cases_Generation` | Training cases per goal (model runs) | `simulations` (`model`, `bounds`, `num_samples_per_goal`) |
-| 05b | `05b_Wind_Correction` | *Optional:* wind growth factor | `metamodel.wind_correction`, `forcing.wind` |
+| 05b | `05b_Wind_Correction` | *Optional:* wind growth factor; runs vs correction, K response | `metamodel.wind_correction`, `forcing.wind` |
 | 06 | `06_Validate_Metamodel` | Fit the metamodel, holdout check | `metamodel` |
-| 07a | `07a_Offshore_WHACS` **or** `07a_Offshore_ERA5` | Offshore waves at the goals | `offshore_waves` |
+| 07a | `07a_Offshore_WHACS` **or** `07a_Offshore_ERA5` | Offshore waves at the goals (ERA5: partition Tm-1,0 -> Tp) | `offshore_waves` |
 | 07b | `07b_Satellite_Calibration` | *Optional:* check and calibrate them | `satellite` |
 | 08 | `08_Dynamic_Cases_Generation` | Reference runs, every hour, all goals | `forcing` (optional) |
 | 09 | `09_Validate_Linear_Summation` | Reconstruction vs reference runs | |
 | 10 | `10_Validate_Buoys` | Everything vs the buoys | |
+| 10b | `10b_Storm_Event` | One storm in detail: forcing, buoys, wind correction, maps | |
 | 11 | `11_Validate_Spectra` | Spectra at the buoys | |
 | 12 | `12_Final_Plots` | Figures for the results portal | |
 
