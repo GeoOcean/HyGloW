@@ -2,13 +2,13 @@
  "hywaves_version": "0.15.0",
  "bluemath_tk": {
   "version": "1.3.dev49",
-  "commit": "8470e5ef1813cebd69fffcdec38ed08691673a42",
-  "branch": "hywaves/reconstruct-store",
-  "dirty": false
+  "commit": "a3ea55d098f866a3e4b49dbdf40a6b330eb6a9ec",
+  "branch": "feature/more-hywaves",
+  "dirty": true
  },
  "case": "Netherlands",
  "model": "snapwave",
- "published_at": "2026-10-16T10:24:19+00:00",
+ "published_at": "2026-11-01T19:20:17+00:00",
  "max_image_px": 2400,
  "book": true,
  "book_url": "/case-book/netherlands@snapwave",
@@ -19,120 +19,140 @@
    "sha256": "9caae135475789f6384723f9c7f59411987744722e1cf9541bd123c5f2580f8d"
   },
   "buoy_validation/figures/buoy_AWG.png": {
-   "size": 570598,
-   "sha256": "96c70b0de654dc6e3407394108c370188dfd723fea97885b365ff2e2ac96fc7d"
+   "size": 506003,
+   "sha256": "a876c006c1046424ac21c16898a00976d888aba0c14e2cbc08b23b3409d254bf"
+  },
+  "buoy_validation/figures/buoy_Akkaert.png": {
+   "size": 379713,
+   "sha256": "e491a9abba660a9d115dc4dc01c8a2164ead27af18f5ac45b39be59e7de84e1b"
   },
   "buoy_validation/figures/buoy_Amelander31.png": {
-   "size": 650691,
-   "sha256": "f6d8edda17afdb5bc44fcfed8e329eca78beb7c5f384142c259fa5ba21549d0d"
+   "size": 529453,
+   "sha256": "71465eefc4c6ad8cdfdd8aed21691180affc36277d70cac9a0b26cb8457559df"
   },
   "buoy_validation/figures/buoy_AmelanderZeegat_1_1.png": {
-   "size": 563235,
-   "sha256": "c052776b6de3a84afacdc98b5890b3291c512bb880ed049482154ba3d80da0a0"
+   "size": 520823,
+   "sha256": "c17563b26c608f8a6249d657c1b3d186bf47e6366127c560a8076c0233aef9bf"
+  },
+  "buoy_validation/figures/buoy_BolVanHeistBuoy.png": {
+   "size": 396072,
+   "sha256": "2d8d69bfa9d8ef89ee01ac0fe194a86526c3fb3fc7374d6b0057240b4f6bb1c2"
   },
   "buoy_validation/figures/buoy_Brouwershavensegat.png": {
-   "size": 500783,
-   "sha256": "8e835dc23e31a25360e0d604a3caef8c50dc83b21fde251bceb10806f42538ee"
+   "size": 428187,
+   "sha256": "995441f04608b15e085a4b043d3009b6d6d4283fbf4e32102c463f7b1eb8ef94"
   },
   "buoy_validation/figures/buoy_CadzandBoei.png": {
-   "size": 684654,
-   "sha256": "308024d8ab9a0b6d65fad82c154eeb75398663c64f919c7aea66cb43eeff3c10"
+   "size": 516550,
+   "sha256": "9b4f7672943755e4ba9a1c4bcd129263f0cbd4f134ac21ebdbc003fe09d3995d"
   },
   "buoy_validation/figures/buoy_Deurlo.png": {
-   "size": 622502,
-   "sha256": "b08d6ae18bb0fce271c314f4c903cfac3f991f1deb2664c2af166c1990f405ad"
+   "size": 524718,
+   "sha256": "8ffb95b6366ef2a0cd6f0c7ef724ad20fea69668045424d8c483b90dae42f8ce"
+  },
+  "buoy_validation/figures/buoy_DomburgerRassen.png": {
+   "size": 471425,
+   "sha256": "f26aa814f08de65f6e3b31f0dd9118abffaed17c85649b6cae57e60d153815ef"
   },
   "buoy_validation/figures/buoy_EierlandseGat.png": {
-   "size": 667229,
-   "sha256": "1a4a9424d345482a83214c689c96c11a9badef6626a05cdba608815d0e9e705a"
+   "size": 537175,
+   "sha256": "54a93af2fe890637cb64570845fa6087cf3acee1bb0ec897a84698620a3d5524"
   },
   "buoy_validation/figures/buoy_EurogeulDWE.png": {
-   "size": 502713,
-   "sha256": "f76ca2cd366bf7f22a8fccfa5343f28616ce2d21d8c3742c52f0474f8bfd698f"
+   "size": 417515,
+   "sha256": "5833f5eee0b0333a78fe6cd15b47369458c0226fbc12247dfd3b6119cae49cb6"
   },
   "buoy_validation/figures/buoy_EurogeulE13.png": {
-   "size": 497146,
-   "sha256": "9c55409fec0d7e3f5f77cd3ad921adb5c30185dc70a692a717eca952eefc1d13"
+   "size": 582973,
+   "sha256": "7a8205f2339a29a1d17f8d5049cc970a5aef193cbe69aaa589fdad02c501b86c"
   },
   "buoy_validation/figures/buoy_EurogeulE5.png": {
-   "size": 467932,
-   "sha256": "5e0912c02e5df355946c230b2d78d0788ac024cd3620b8567143be45e727bce5"
+   "size": 427540,
+   "sha256": "5e3859c362cf3d25f1cb5e7e68fe29a6cd42187d2cdce6173d853b6539afb15c"
   },
   "buoy_validation/figures/buoy_Europlatform.png": {
-   "size": 729595,
-   "sha256": "474f8b7e743f083d5100347257a72fe4b1cb6876bf0f9a294881a5a370a14231"
+   "size": 542849,
+   "sha256": "40a83790a16fd472ce150b5f6c841455b60fa360eaf531d054c03264969905cb"
   },
   "buoy_validation/figures/buoy_GoereeLichteiland.png": {
-   "size": 506876,
-   "sha256": "f0b97798df65dc2a804e66b92796ceac4a60f788cb34bf27de3431aa8356939d"
+   "size": 387655,
+   "sha256": "7d4ee647fd4adca080205c3d75cdca73f8af8308568adaa5b9008510e81ac932"
   },
   "buoy_validation/figures/buoy_IJgeul.png": {
-   "size": 503508,
-   "sha256": "744a823e9c9c7dc67c189a6fbbf16bb0acb4641475aa4dfdd27be4faf5019a21"
+   "size": 374119,
+   "sha256": "57fbfce3dbf68bcc039f921e5274b42a905412f943436df49315c82fb4396bd6"
   },
   "buoy_validation/figures/buoy_IJgeulStroommeetpaal.png": {
-   "size": 561511,
-   "sha256": "2ab7852a8b7ced5a93830e69e83c869a9a7529d588292fe1a640f145087e04d7"
+   "size": 465391,
+   "sha256": "1309016f89eb0ad61e117e00e80fa062144a4026d4812360f177386fa6767a8b"
   },
   "buoy_validation/figures/buoy_IJmuidenMunitiestort_1.png": {
-   "size": 732672,
-   "sha256": "e2986cb3ce813feab668cbc07e90d335cfc4403aef8c6981bc73a479d456e968"
+   "size": 543521,
+   "sha256": "6918c43bc5240238d5e5590a53745bbda8cfd13a10b11fa74ad8a977beab57e3"
+  },
+  "buoy_validation/figures/buoy_KwintebankBuoy.png": {
+   "size": 400195,
+   "sha256": "a1ef3bf24b0e807b4c135e034952c9ab21eafcac3aee4b8400e25d20facf7ee9"
   },
   "buoy_validation/figures/buoy_L91.png": {
-   "size": 506790,
-   "sha256": "f4540da70d422402b3ff7a2bc6a1d0a6edb5e3a6e8962fec45e979731c342b41"
+   "size": 494955,
+   "sha256": "6ebd206b5a9ee2f989da29fdd4c86d4c8247cb774d3432da872128d52ff69ef1"
   },
   "buoy_validation/figures/buoy_MeetboeiWEO1.png": {
-   "size": 479901,
-   "sha256": "3b45fcaceb5fe885c05fd5fdd2a63eee6b024eaf899e016ff1ab4ca811e1d3bc"
+   "size": 450275,
+   "sha256": "5cbdcf16fb7a4c754ec6d69da92fbc2fccbb2d4819bbe4edc0b3485d4f0cce27"
+  },
+  "buoy_validation/figures/buoy_Oosterschelde11.png": {
+   "size": 489476,
+   "sha256": "5ac23d17fd6f9749fdc62e1a00a44ba3924894bf6678c19758293a28dae5414e"
   },
   "buoy_validation/figures/buoy_PettenMeetraai01.png": {
-   "size": 441650,
-   "sha256": "ac80ea31cb63595767f573c573b49d710a350752f425311842cdcbba856d2596"
+   "size": 394988,
+   "sha256": "d7cc261c7168eb2d80c9d82dfdc8e702b812555b6e365a7397b6920816cda009"
   },
   "buoy_validation/figures/buoy_Q1.png": {
-   "size": 724568,
-   "sha256": "0644b197b724cf74083167980ddb0fbcd83933021066aa38763f5ae36ec4a82c"
+   "size": 622697,
+   "sha256": "ca3c2de1eb75d87f0b13c2b6139821042042d06998ba6271ead37d74523f3371"
   },
   "buoy_validation/figures/buoy_ScheurWest.png": {
-   "size": 508707,
-   "sha256": "8307f1b0e933d2a9bd4819eb9776a37d0a1ff0a2e713c1cbaf86e9a6fd8055a7"
+   "size": 412937,
+   "sha256": "c295f44332515a1a86b5ee049db32d34924e2bca5a8874e1c70e297153625a92"
   },
   "buoy_validation/figures/buoy_SchiermonnikoogNoord.png": {
-   "size": 701220,
-   "sha256": "b705f34186ff7b7dd7cd06015cfac2163215b1ea62f50f623fa17be49c74fd9a"
+   "size": 530302,
+   "sha256": "525210aaede05e7695f54ec1e97dae655e5ec09c2bee3ce83abef986cf248078"
   },
   "buoy_validation/figures/buoy_SchiermonnikoogWestgat.png": {
-   "size": 664318,
-   "sha256": "edeb745b0eca8475b6546ca2f4db13a68143d9cba3fb5a53475e2f2301360abc"
+   "size": 604978,
+   "sha256": "cc4e8040f79401b9bd5879010c37576dda7582e47be376f8bb3495d2eb8e0e6e"
   },
   "buoy_validation/figures/buoy_Schouwenbank.png": {
-   "size": 726101,
-   "sha256": "f6a438b7117c2ef2f7a6b5adce49739a333a728b5521134fed162341056e145f"
+   "size": 541815,
+   "sha256": "b180ec5f80f94421b1b61526b04d58b8cdc7aa40c6225e17d6044d92c3118923"
   },
   "buoy_validation/figures/buoy_StortemelkWest.png": {
-   "size": 630581,
-   "sha256": "2ca1a3d1ec1ea79f7ef6a263f11f64fcc0e0cc2ea1c686aecfa4a7a768424a8e"
+   "size": 600338,
+   "sha256": "9ceac51e8efea79848875cf0e76f63734c06c76b61cf73fe9f187f2b6bfcd25c"
   },
   "buoy_validation/figures/buoy_WestereemsWest.png": {
-   "size": 679249,
-   "sha256": "7675e89625442454e3902a03a72823d553ae73722e13d60bb9ecb74e03581587"
+   "size": 601115,
+   "sha256": "24f42714b7bd60ca312d7fff1ea7d383eb13df0772b9b4d38df1f4c30a688595"
   },
   "buoy_validation/figures/buoy_WielingenNoord.png": {
-   "size": 489249,
-   "sha256": "1a742d56eb360bcdabd0afc239f993c1ee5a79baff1b9ee455fb19893deb9d77"
+   "size": 406447,
+   "sha256": "6f4ca0625730759ce33f1c85b65cd726d911cd67b2003a978fe9980fe82483cb"
   },
   "buoy_validation/figures/buoy_zdv8-2d-MMND.png": {
-   "size": 472299,
-   "sha256": "a1c6524feeb65c1459faefd7e07e55422f7a08b025f789537d5f3b3e7d4ddcf6"
+   "size": 441826,
+   "sha256": "e34f69cb2aeb6113f8bf22c9ca9489bb8973409477dcf9f77d0821b5fbb49c84"
   },
-  "buoy_validation/onshore_summary_2013-01-01-2013-12-31.csv": {
-   "size": 162421,
-   "sha256": "21ceb18e38810e44bb05c6f1eac4a4dff438392647370ea88563a4c47505e89e"
+  "buoy_validation/onshore_summary_1979-01-01-2018-12-31.csv": {
+   "size": 134675,
+   "sha256": "ae089897763f15361b2512e002906a7ab2c5141618f9876b8a30abe11377626a"
   },
   "case.json": {
-   "size": 7083,
-   "sha256": "4ec2a37e320fe17873b0df80a2a937bf091bda7a1fc3258452e5026eac922de5"
+   "size": 7248,
+   "sha256": "a022b5722d8f4cd408bd5d21770e7122518524939d2e35319ba521286b3ccf8c"
   },
   "goals.json": {
    "size": 8432,
@@ -177,9 +197,9 @@
  },
  "sources": {
   "Netherlands.json": {
-   "size": 7083,
-   "mtime_ns": 1792058255000000000,
-   "sha256": "4ec2a37e320fe17873b0df80a2a937bf091bda7a1fc3258452e5026eac922de5"
+   "size": 7248,
+   "mtime_ns": 1793263628000000000,
+   "sha256": "a022b5722d8f4cd408bd5d21770e7122518524939d2e35319ba521286b3ccf8c"
   },
   "inputs/Goals/Netherlands_Goals.json": {
    "size": 8432,
@@ -381,145 +401,170 @@
    "mtime_ns": 1792138629000000000,
    "sha256": "6425398878c77005934b899052d702445ca8fd41af3411d65a9638f10f5d9830"
   },
-  "outputs/buoy_validation/onshore_summary_2013-01-01-2013-12-31.csv": {
-   "size": 162421,
-   "mtime_ns": 1792141450000000000,
-   "sha256": "21ceb18e38810e44bb05c6f1eac4a4dff438392647370ea88563a4c47505e89e"
+  "outputs/buoy_validation/onshore_summary_1979-01-01-2018-12-31.csv": {
+   "size": 134675,
+   "mtime_ns": 1793284555000000000,
+   "sha256": "ae089897763f15361b2512e002906a7ab2c5141618f9876b8a30abe11377626a"
   },
   "outputs/buoy_validation/figures/buoy_AWG.png": {
-   "size": 570598,
-   "mtime_ns": 1792141530000000000,
-   "sha256": "96c70b0de654dc6e3407394108c370188dfd723fea97885b365ff2e2ac96fc7d"
+   "size": 506003,
+   "mtime_ns": 1793284565000000000,
+   "sha256": "a876c006c1046424ac21c16898a00976d888aba0c14e2cbc08b23b3409d254bf"
+  },
+  "outputs/buoy_validation/figures/buoy_Akkaert.png": {
+   "size": 379713,
+   "mtime_ns": 1793284566000000000,
+   "sha256": "e491a9abba660a9d115dc4dc01c8a2164ead27af18f5ac45b39be59e7de84e1b"
   },
   "outputs/buoy_validation/figures/buoy_Amelander31.png": {
-   "size": 650691,
-   "mtime_ns": 1792141532000000000,
-   "sha256": "f6d8edda17afdb5bc44fcfed8e329eca78beb7c5f384142c259fa5ba21549d0d"
+   "size": 529453,
+   "mtime_ns": 1793284568000000000,
+   "sha256": "71465eefc4c6ad8cdfdd8aed21691180affc36277d70cac9a0b26cb8457559df"
   },
   "outputs/buoy_validation/figures/buoy_AmelanderZeegat_1_1.png": {
-   "size": 563235,
-   "mtime_ns": 1792141534000000000,
-   "sha256": "c052776b6de3a84afacdc98b5890b3291c512bb880ed049482154ba3d80da0a0"
+   "size": 520823,
+   "mtime_ns": 1793284569000000000,
+   "sha256": "c17563b26c608f8a6249d657c1b3d186bf47e6366127c560a8076c0233aef9bf"
+  },
+  "outputs/buoy_validation/figures/buoy_BolVanHeistBuoy.png": {
+   "size": 396072,
+   "mtime_ns": 1793284571000000000,
+   "sha256": "2d8d69bfa9d8ef89ee01ac0fe194a86526c3fb3fc7374d6b0057240b4f6bb1c2"
   },
   "outputs/buoy_validation/figures/buoy_Brouwershavensegat.png": {
-   "size": 500783,
-   "mtime_ns": 1792141535000000000,
-   "sha256": "8e835dc23e31a25360e0d604a3caef8c50dc83b21fde251bceb10806f42538ee"
+   "size": 428187,
+   "mtime_ns": 1793284572000000000,
+   "sha256": "995441f04608b15e085a4b043d3009b6d6d4283fbf4e32102c463f7b1eb8ef94"
   },
   "outputs/buoy_validation/figures/buoy_CadzandBoei.png": {
-   "size": 684654,
-   "mtime_ns": 1792141537000000000,
-   "sha256": "308024d8ab9a0b6d65fad82c154eeb75398663c64f919c7aea66cb43eeff3c10"
+   "size": 516550,
+   "mtime_ns": 1793284574000000000,
+   "sha256": "9b4f7672943755e4ba9a1c4bcd129263f0cbd4f134ac21ebdbc003fe09d3995d"
   },
   "outputs/buoy_validation/figures/buoy_Deurlo.png": {
-   "size": 622502,
-   "mtime_ns": 1792141538000000000,
-   "sha256": "b08d6ae18bb0fce271c314f4c903cfac3f991f1deb2664c2af166c1990f405ad"
+   "size": 524718,
+   "mtime_ns": 1793284576000000000,
+   "sha256": "8ffb95b6366ef2a0cd6f0c7ef724ad20fea69668045424d8c483b90dae42f8ce"
+  },
+  "outputs/buoy_validation/figures/buoy_DomburgerRassen.png": {
+   "size": 471425,
+   "mtime_ns": 1793284577000000000,
+   "sha256": "f26aa814f08de65f6e3b31f0dd9118abffaed17c85649b6cae57e60d153815ef"
   },
   "outputs/buoy_validation/figures/buoy_EierlandseGat.png": {
-   "size": 667229,
-   "mtime_ns": 1792141539000000000,
-   "sha256": "1a4a9424d345482a83214c689c96c11a9badef6626a05cdba608815d0e9e705a"
+   "size": 537175,
+   "mtime_ns": 1793284579000000000,
+   "sha256": "54a93af2fe890637cb64570845fa6087cf3acee1bb0ec897a84698620a3d5524"
   },
   "outputs/buoy_validation/figures/buoy_EurogeulDWE.png": {
-   "size": 502713,
-   "mtime_ns": 1792141540000000000,
-   "sha256": "f76ca2cd366bf7f22a8fccfa5343f28616ce2d21d8c3742c52f0474f8bfd698f"
+   "size": 417515,
+   "mtime_ns": 1793284581000000000,
+   "sha256": "5833f5eee0b0333a78fe6cd15b47369458c0226fbc12247dfd3b6119cae49cb6"
   },
   "outputs/buoy_validation/figures/buoy_EurogeulE13.png": {
-   "size": 497146,
-   "mtime_ns": 1792141541000000000,
-   "sha256": "9c55409fec0d7e3f5f77cd3ad921adb5c30185dc70a692a717eca952eefc1d13"
+   "size": 582973,
+   "mtime_ns": 1793284583000000000,
+   "sha256": "7a8205f2339a29a1d17f8d5049cc970a5aef193cbe69aaa589fdad02c501b86c"
   },
   "outputs/buoy_validation/figures/buoy_EurogeulE5.png": {
-   "size": 467932,
-   "mtime_ns": 1792141542000000000,
-   "sha256": "5e0912c02e5df355946c230b2d78d0788ac024cd3620b8567143be45e727bce5"
+   "size": 427540,
+   "mtime_ns": 1793284584000000000,
+   "sha256": "5e3859c362cf3d25f1cb5e7e68fe29a6cd42187d2cdce6173d853b6539afb15c"
   },
   "outputs/buoy_validation/figures/buoy_Europlatform.png": {
-   "size": 729595,
-   "mtime_ns": 1792141544000000000,
-   "sha256": "474f8b7e743f083d5100347257a72fe4b1cb6876bf0f9a294881a5a370a14231"
+   "size": 542849,
+   "mtime_ns": 1793284587000000000,
+   "sha256": "40a83790a16fd472ce150b5f6c841455b60fa360eaf531d054c03264969905cb"
   },
   "outputs/buoy_validation/figures/buoy_GoereeLichteiland.png": {
-   "size": 506876,
-   "mtime_ns": 1792141544000000000,
-   "sha256": "f0b97798df65dc2a804e66b92796ceac4a60f788cb34bf27de3431aa8356939d"
+   "size": 387655,
+   "mtime_ns": 1793284588000000000,
+   "sha256": "7d4ee647fd4adca080205c3d75cdca73f8af8308568adaa5b9008510e81ac932"
   },
   "outputs/buoy_validation/figures/buoy_IJgeul.png": {
-   "size": 503508,
-   "mtime_ns": 1792141545000000000,
-   "sha256": "744a823e9c9c7dc67c189a6fbbf16bb0acb4641475aa4dfdd27be4faf5019a21"
+   "size": 374119,
+   "mtime_ns": 1793284590000000000,
+   "sha256": "57fbfce3dbf68bcc039f921e5274b42a905412f943436df49315c82fb4396bd6"
   },
   "outputs/buoy_validation/figures/buoy_IJgeulStroommeetpaal.png": {
-   "size": 561511,
-   "mtime_ns": 1792141546000000000,
-   "sha256": "2ab7852a8b7ced5a93830e69e83c869a9a7529d588292fe1a640f145087e04d7"
+   "size": 465391,
+   "mtime_ns": 1793284591000000000,
+   "sha256": "1309016f89eb0ad61e117e00e80fa062144a4026d4812360f177386fa6767a8b"
   },
   "outputs/buoy_validation/figures/buoy_IJmuidenMunitiestort_1.png": {
-   "size": 732672,
-   "mtime_ns": 1792141548000000000,
-   "sha256": "e2986cb3ce813feab668cbc07e90d335cfc4403aef8c6981bc73a479d456e968"
+   "size": 543521,
+   "mtime_ns": 1793284593000000000,
+   "sha256": "6918c43bc5240238d5e5590a53745bbda8cfd13a10b11fa74ad8a977beab57e3"
+  },
+  "outputs/buoy_validation/figures/buoy_KwintebankBuoy.png": {
+   "size": 400195,
+   "mtime_ns": 1793284594000000000,
+   "sha256": "a1ef3bf24b0e807b4c135e034952c9ab21eafcac3aee4b8400e25d20facf7ee9"
   },
   "outputs/buoy_validation/figures/buoy_L91.png": {
-   "size": 506790,
-   "mtime_ns": 1792141549000000000,
-   "sha256": "f4540da70d422402b3ff7a2bc6a1d0a6edb5e3a6e8962fec45e979731c342b41"
+   "size": 494955,
+   "mtime_ns": 1793284596000000000,
+   "sha256": "6ebd206b5a9ee2f989da29fdd4c86d4c8247cb774d3432da872128d52ff69ef1"
   },
   "outputs/buoy_validation/figures/buoy_MeetboeiWEO1.png": {
-   "size": 479901,
-   "mtime_ns": 1792141550000000000,
-   "sha256": "3b45fcaceb5fe885c05fd5fdd2a63eee6b024eaf899e016ff1ab4ca811e1d3bc"
+   "size": 450275,
+   "mtime_ns": 1793284597000000000,
+   "sha256": "5cbdcf16fb7a4c754ec6d69da92fbc2fccbb2d4819bbe4edc0b3485d4f0cce27"
+  },
+  "outputs/buoy_validation/figures/buoy_Oosterschelde11.png": {
+   "size": 489476,
+   "mtime_ns": 1793284598000000000,
+   "sha256": "5ac23d17fd6f9749fdc62e1a00a44ba3924894bf6678c19758293a28dae5414e"
   },
   "outputs/buoy_validation/figures/buoy_PettenMeetraai01.png": {
-   "size": 441650,
-   "mtime_ns": 1792141550000000000,
-   "sha256": "ac80ea31cb63595767f573c573b49d710a350752f425311842cdcbba856d2596"
+   "size": 394988,
+   "mtime_ns": 1793284600000000000,
+   "sha256": "d7cc261c7168eb2d80c9d82dfdc8e702b812555b6e365a7397b6920816cda009"
   },
   "outputs/buoy_validation/figures/buoy_Q1.png": {
-   "size": 724568,
-   "mtime_ns": 1792141552000000000,
-   "sha256": "0644b197b724cf74083167980ddb0fbcd83933021066aa38763f5ae36ec4a82c"
+   "size": 622697,
+   "mtime_ns": 1793284602000000000,
+   "sha256": "ca3c2de1eb75d87f0b13c2b6139821042042d06998ba6271ead37d74523f3371"
   },
   "outputs/buoy_validation/figures/buoy_ScheurWest.png": {
-   "size": 508707,
-   "mtime_ns": 1792141554000000000,
-   "sha256": "8307f1b0e933d2a9bd4819eb9776a37d0a1ff0a2e713c1cbaf86e9a6fd8055a7"
+   "size": 412937,
+   "mtime_ns": 1793284604000000000,
+   "sha256": "c295f44332515a1a86b5ee049db32d34924e2bca5a8874e1c70e297153625a92"
   },
   "outputs/buoy_validation/figures/buoy_SchiermonnikoogNoord.png": {
-   "size": 701220,
-   "mtime_ns": 1792141558000000000,
-   "sha256": "b705f34186ff7b7dd7cd06015cfac2163215b1ea62f50f623fa17be49c74fd9a"
+   "size": 530302,
+   "mtime_ns": 1793284606000000000,
+   "sha256": "525210aaede05e7695f54ec1e97dae655e5ec09c2bee3ce83abef986cf248078"
   },
   "outputs/buoy_validation/figures/buoy_SchiermonnikoogWestgat.png": {
-   "size": 664318,
-   "mtime_ns": 1792141559000000000,
-   "sha256": "edeb745b0eca8475b6546ca2f4db13a68143d9cba3fb5a53475e2f2301360abc"
+   "size": 604978,
+   "mtime_ns": 1793284608000000000,
+   "sha256": "cc4e8040f79401b9bd5879010c37576dda7582e47be376f8bb3495d2eb8e0e6e"
   },
   "outputs/buoy_validation/figures/buoy_Schouwenbank.png": {
-   "size": 726101,
-   "mtime_ns": 1792141561000000000,
-   "sha256": "f6a438b7117c2ef2f7a6b5adce49739a333a728b5521134fed162341056e145f"
+   "size": 541815,
+   "mtime_ns": 1793284611000000000,
+   "sha256": "b180ec5f80f94421b1b61526b04d58b8cdc7aa40c6225e17d6044d92c3118923"
   },
   "outputs/buoy_validation/figures/buoy_StortemelkWest.png": {
-   "size": 630581,
-   "mtime_ns": 1792141563000000000,
-   "sha256": "2ca1a3d1ec1ea79f7ef6a263f11f64fcc0e0cc2ea1c686aecfa4a7a768424a8e"
+   "size": 600338,
+   "mtime_ns": 1793284613000000000,
+   "sha256": "9ceac51e8efea79848875cf0e76f63734c06c76b61cf73fe9f187f2b6bfcd25c"
   },
   "outputs/buoy_validation/figures/buoy_WestereemsWest.png": {
-   "size": 679249,
-   "mtime_ns": 1792141565000000000,
-   "sha256": "7675e89625442454e3902a03a72823d553ae73722e13d60bb9ecb74e03581587"
+   "size": 601115,
+   "mtime_ns": 1793284615000000000,
+   "sha256": "24f42714b7bd60ca312d7fff1ea7d383eb13df0772b9b4d38df1f4c30a688595"
   },
   "outputs/buoy_validation/figures/buoy_WielingenNoord.png": {
-   "size": 489249,
-   "mtime_ns": 1792141566000000000,
-   "sha256": "1a742d56eb360bcdabd0afc239f993c1ee5a79baff1b9ee455fb19893deb9d77"
+   "size": 406447,
+   "mtime_ns": 1793284616000000000,
+   "sha256": "6f4ca0625730759ce33f1c85b65cd726d911cd67b2003a978fe9980fe82483cb"
   },
   "outputs/buoy_validation/figures/buoy_zdv8-2d-MMND.png": {
-   "size": 472299,
-   "mtime_ns": 1792141568000000000,
-   "sha256": "a1c6524feeb65c1459faefd7e07e55422f7a08b025f789537d5f3b3e7d4ddcf6"
+   "size": 441826,
+   "mtime_ns": 1793284617000000000,
+   "sha256": "e34f69cb2aeb6113f8bf22c9ca9489bb8973409477dcf9f77d0821b5fbb49c84"
   },
   "outputs/gui_figures/fig01_domain.png": {
    "size": 1664447,
@@ -552,6 +597,6 @@
  "snapshot": {
   "tag": "snapwave",
   "note": "",
-  "created": "2026-10-26T08:22:03+00:00"
+  "created": "2026-11-01T19:30:37+00:00"
  }
 }
