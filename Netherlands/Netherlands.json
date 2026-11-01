@@ -52,7 +52,7 @@
     },
     "simulations": {
         "goals_file": "inputs/Goals/Netherlands_Goals.json",
-        "model": "snapwave",
+        "model": "swan",
         "snapwave": {
             "grid_file": "inputs/GRID/Netherlands_mesh.nc",
             "metamodel_templates": "templates-snapwave-metamodel",
