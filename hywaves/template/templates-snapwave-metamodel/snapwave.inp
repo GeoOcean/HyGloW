@@ -21,7 +21,8 @@ hmin           = {{ min_depth }}
 restart        = 0
 jonswapfile    = 
 uuupwindfile   = 
-niter          = 40
+niter          = 200
+upwindref      = 1
 map_ee         = 1
 
 obsfile        = output_sites.txt

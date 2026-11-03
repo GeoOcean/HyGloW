@@ -2,8 +2,10 @@ $ HyWaves dynamic reference: one stationary case per time step, the offshore
 $ hindcast at every goal; SWAN interpolates the spectra (energy) linearly
 $ along the open boundary between them.
 $ Physics as the metamodel cases (depth-induced breaking, bottom friction,
-$ triads; whitecapping on), plus wind generation (GEN3, quadruplets on) when
-$ the case has wind: a field (wind_file) or a uniform u10 / u10dir.
+$ triads, whitecapping and quadruplets off), plus wind generation (Komen, which
+$ switches whitecapping and quadruplets on) when the case has wind: a field
+$ (wind_file) or a uniform u10 / u10dir. Komen beat Westhuysen and ST6 at the
+$ buoys; friction 0.019 tested against buoys (Netherlands, 2013).
 PROJECT 'HyWaves' '{{ "%04d" % case_num }}'
 MODE STATIONARY TWODIMENSIONAL
 COORDINATES SPHERICAL CCM
@@ -19,10 +21,11 @@ BOUND SHAPE JONSWAP 3.3 PEAK DSPR DEGREES
 BOUNDSPEC SIDE {{ boundary_side }} VARIABLE PAR &
 {% for row in boundary_par %}    {{ row }}{% if not loop.last %} &{% endif %}
 {% endfor %}$
-{% if wind %}GEN3
+{% if wind %}GEN3 KOMEN
 {% else %}OFF QUAD
+OFF WCAP
 {% endif %}BREAKING CONSTANT 1.0 0.73
-FRICTION JONSWAP CONSTANT 0.038
+FRICTION JONSWAP CONSTANT 0.019
 TRIAD
 NUMERIC STOPC 0.005 0.01 0.005 99.5 STATIONARY 50
 $
@@ -30,8 +33,9 @@ POINTS 'sites' FILE '{{ points_file }}'
 TABLE 'sites' NOHEAD '{{ table_file }}' {{ table_quantities }}
 $ Grid map (save_map cases only):
 {% if map_file %}BLOCK 'COMPGRID' NOHEAD '{{ map_file }}' LAY 3 {{ map_quantities }}
-{% endif %}$ 2D spectra at the sites (not used by the pipeline):
-$ SPECOUT 'sites' SPEC2D ABS 'output_sites.spc'
-$
+{% endif %}$ 2D spectra at the buoys:
+{% if spectra_file %}POINTS 'buoys' FILE '{{ spectra_points_file }}'
+SPECOUT 'buoys' SPEC2D ABS '{{ spectra_file }}'
+{% endif %}$
 COMPUTE
 STOP

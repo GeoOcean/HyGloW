@@ -13,7 +13,7 @@ import pandas as pd
 import xarray as xr
 from bluemath_tk.wrappers.snapwave import (
     SnapWaveMetaModelWrapper,
-    build_enclosure_polygon,
+    open_boundary_enclosure,
     read_forcing_table,
 )
 from bluemath_tk.wrappers.swan.swan_wrapper import SwanMetaModelWrapper
@@ -40,11 +40,9 @@ def _sites() -> pd.DataFrame:
 
 
 def _setup(model: str = "snapwave") -> sws.HyWavesWrapperSetup:
-    aoi = box(0, 0, 1, 1)
     return sws.HyWavesWrapperSetup(
-        aoi_gdf=gpd.GeoDataFrame(geometry=[aoi], crs="EPSG:4326"),
-        enclosure_polygon=build_enclosure_polygon(aoi),
-        enclosure_buffer_m=0.0,
+        aoi_gdf=gpd.GeoDataFrame(geometry=[box(0, 0, 1, 1)], crs="EPSG:4326"),
+        enclosure_polygon=open_boundary_enclosure(np.array([[0.0, 1.0], [1.0, 1.0]])) if model == "snapwave" else None,
         goals_config={
             "1": {"lon": 0.0, "lat": 1.0, "angles": [0, 90]},
             "2": {"lon": 1.0, "lat": 1.0, "angles": [0, 90]},
@@ -172,6 +170,7 @@ class TestMetamodelCases(unittest.TestCase):
                     },
                     coords={"time": [0.0]},
                 ).to_netcdf(Path(d) / "output_sites.nc")
+                (Path(d) / "wrapper_out.log").write_text("   iteration      1 error =    0.00001   %ok =  100.00\n")
             written = wrapper.postprocess_cases()
 
             self.assertEqual(Path(written[2]).name, "output_sites_2.nc")
@@ -216,7 +215,7 @@ class TestMetamodelCases(unittest.TestCase):
 
             for d in wrapper.cases_dirs:
                 (Path(d) / "output_sites.tab").write_text(
-                    "0.4 9.0 300.0 20.0\n0.8 9.5 305.0 22.0\n"
+                    "0.4 9.0 8.0 300.0 20.0\n0.8 9.5 8.5 305.0 22.0\n"
                 )
                 (Path(d) / "norm_end").touch()
             written = wrapper.postprocess_cases()

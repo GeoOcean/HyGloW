@@ -9,7 +9,8 @@
   :func:`plot_dynamic_configuration`), built on
   :mod:`bluemath_tk.waves.hywaves.plots`;
 - finished model cases (:func:`plot_metamodel_case`, :func:`plot_dynamic_case`);
-- the offshore calibration (:func:`plot_satellite_pairs`, :func:`plot_calibration_metrics`).
+- the offshore calibration (:func:`plot_satellite_pairs`, :func:`plot_calibration_metrics`,
+  :func:`plot_quantile_mapping_goals`, :func:`plot_calibrated_record`, :func:`plot_buoy_check`).
 """
 
 from __future__ import annotations
@@ -431,7 +432,6 @@ def plot_metamodel_configuration(
     num_samples_per_goal: int | None = None,
     max_steepness: float | None = None,
     mesh_file: str | None = None,
-    enclosure_buffer_m: float | None = None,
     show_topobathy: bool | None = None,
     show_satellite: bool = False,
     title: str = "Metamodel pre-run diagnostic",
@@ -445,7 +445,7 @@ def plot_metamodel_configuration(
         Case geometry (:class:`utils.simulation.HyWavesWrapperSetup`).
     cases_df
         Cases with ``goal``, ``hs``, ``tp``, ``dir``, ``spr``, ``wl``.
-    bounds, num_samples_per_goal, max_steepness, mesh_file, enclosure_buffer_m
+    bounds, num_samples_per_goal, max_steepness, mesh_file
         Shown in the text panel.
     show_topobathy, show_satellite
         Map background (:func:`plot_base_map`).
@@ -460,8 +460,6 @@ def plot_metamodel_configuration(
         f"Cases            : {len(cases)} ({per_goal.mean():.0f} / goal kept of {num_samples_per_goal or '-'})",
         f"Output sites     : {len(output_sites_df)}",
     ]
-    if enclosure_buffer_m is not None:
-        lines.append(f"Enclosure buffer : {enclosure_buffer_m / 1000:g} km")
     if mesh_file:
         lines.append(f"Mesh             : {Path(mesh_file).name}")
     if bounds:
@@ -520,7 +518,6 @@ def plot_dynamic_configuration(
     output_sites_df: pd.DataFrame,
     offshore_name: str | None = None,
     mesh_file: str | None = None,
-    enclosure_buffer_m: float | None = None,
     maps_to_save: int | None = None,
     wind: xr.Dataset | None = None,
     water_level: xr.DataArray | None = None,
@@ -541,7 +538,7 @@ def plot_dynamic_configuration(
         Case geometry (:class:`utils.simulation.HyWavesWrapperSetup`).
     offshore
         ``hs``, ``tp``, ``dir``, ``spr`` on ``(time, goal)``.
-    offshore_name, mesh_file, enclosure_buffer_m, maps_to_save
+    offshore_name, mesh_file, maps_to_save
         Shown in the text panel.
     wind, water_level, wind_name, water_level_name
         Forcing of the cases, summarised in the text panel.
@@ -557,8 +554,6 @@ def plot_dynamic_configuration(
         f"Cases (time steps): {len(times)}  {times[0]:%Y-%m-%d %H:%M} → {times[-1]:%Y-%m-%d %H:%M}",
         f"Output sites      : {len(output_sites_df)}",
     ]
-    if enclosure_buffer_m is not None:
-        lines.append(f"Enclosure buffer  : {enclosure_buffer_m / 1000:g} km")
     if mesh_file:
         lines.append(f"Mesh              : {Path(mesh_file).name}")
     if maps_to_save is not None:
@@ -740,3 +735,181 @@ def plot_calibration_metrics(metrics: pd.DataFrame, *, subset: str = "test", tit
     fig.suptitle(title or f"Hindcast vs satellite Hs per goal · {n} {subset} passes")
     fig.tight_layout()
     return fig
+
+
+CALIBRATION_STAGES = {"hs_raw": ("raw", "0.6"), "hs": ("directional", "tab:blue"), "hs_mapped": ("mapped", "tab:orange")}
+
+
+def plot_quantile_mapping_goals(
+    pairs: pd.DataFrame,
+    mapping: Any,
+    *,
+    probabilities: tuple[float, ...] = (0.5, 0.9, 0.99),
+    title: str | None = None,
+) -> Figure:
+    """
+    Does the one pooled map fit each goal? Quantile error per goal and stage.
+
+    Parameters
+    ----------
+    pairs
+        :func:`utils.calibration.quantile_mapping_pairs`.
+    mapping
+        The fitted :class:`bluemath_tk.waves.calibration.QuantileMapping`.
+    probabilities
+        One panel each: hindcast − satellite Hs at that quantile.
+    title
+        Figure title.
+    """
+    pairs = pairs.assign(hs_mapped=mapping.map(pairs["hs"].to_numpy()))
+    goals = sorted(pairs["goal"].astype(str).unique(), key=int)
+    grouped = pairs.groupby("goal")
+    x = np.arange(len(goals))
+    width = 0.8 / len(CALIBRATION_STAGES)
+    fig, axes = plt.subplots(1, len(probabilities), figsize=(5 * len(probabilities), 4.2), sharey=True)
+    for ax, p in zip(np.atleast_1d(axes), probabilities):
+        reference = grouped["sat_hs"].quantile(p).reindex(goals)
+        for k, (column, (label, color)) in enumerate(CALIBRATION_STAGES.items()):
+            error = grouped[column].quantile(p).reindex(goals) - reference
+            ax.bar(x + (k - 1) * width, error.to_numpy(), width=width, color=color, label=label)
+        n_above = int(np.median(grouped.size().to_numpy()) * (1 - p))
+        ax.axhline(0.0, color="k", lw=0.8)
+        ax.set_xticks(x, [f"G{g}" for g in goals])
+        ax.set_title(f"p{100 * p:g} · ~{n_above} passes above per goal")
+        ax.grid(axis="y", alpha=0.3)
+    np.atleast_1d(axes)[0].set_ylabel("hindcast − satellite quantile (m)")
+    np.atleast_1d(axes)[0].legend()
+    fig.suptitle(title or "One map for all goals: Hs quantile error per goal (all passes)")
+    fig.tight_layout()
+    return fig
+
+
+def plot_calibrated_record(
+    raw: xr.DataArray,
+    calibrated: xr.DataArray,
+    pairs: pd.DataFrame,
+    *,
+    ncols: int = 5,
+    title: str | None = None,
+) -> Figure:
+    """
+    The whole record before and after the calibration, against the passes, per goal.
+
+    Below one over the number of passes (grey) no pass checks the record: there
+    the calibrated tail is the constant offset of the quantile map.
+
+    Parameters
+    ----------
+    raw, calibrated
+        Hs on ``(time, goal)`` of the source and of the calibrated hindcast.
+    pairs
+        :func:`utils.calibration.satellite_pairs` (``sat_hs`` per goal).
+    ncols
+        Panels per row.
+    title
+        Figure title.
+    """
+    goals = [str(int(g)) for g in raw["goal"].values]
+    nrows = int(np.ceil(len(goals) / ncols))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(3.6 * ncols, 3.4 * nrows), sharex=True, sharey=True, squeeze=False)
+    for ax, gid in zip(axes.flat, goals):
+        series = {
+            "raw": raw.sel(goal=int(gid)).values,
+            "calibrated": calibrated.sel(goal=int(gid)).values,
+            "satellite": pairs.loc[pairs["goal"] == gid, "sat_hs"].to_numpy(),
+        }
+        for label, color in (("raw", "0.6"), ("calibrated", "tab:orange")):
+            values = series[label][np.isfinite(series[label])]
+            p = np.unique(1.0 - np.logspace(0, np.log10(1.0 / values.size), 300))
+            ax.semilogy(np.quantile(values, p), 1.0 - p, color=color, lw=1.5, label=label)
+        sat = np.sort(series["satellite"][np.isfinite(series["satellite"])])
+        ax.semilogy(sat, 1.0 - np.arange(1, sat.size + 1) / (sat.size + 1), "k.", ms=3,
+                    label=f"satellite ({sat.size} passes)")
+        ax.axhspan(1e-7, 1.0 / sat.size, color="0.9", zorder=0)
+        ax.set_title(f"G{gid}", fontsize=10)
+        ax.grid(alpha=0.3, which="both")
+        ax.legend(fontsize=7, loc="lower left")
+    for ax in axes.flat[len(goals):]:
+        ax.set_visible(False)
+    for ax in axes[-1]:
+        ax.set_xlabel("Hs (m)")
+    for ax in axes[:, 0]:
+        ax.set_ylabel("exceedance probability")
+    ax.set_ylim(bottom=0.5 / raw["time"].size)
+    times = pd.to_datetime(raw["time"].values[[0, -1]])
+    fig.suptitle(title or f"Whole record per goal ({times[0]:%Y}–{times[1]:%Y}, hourly): raw and calibrated "
+                 "vs the satellite passes (grey: beyond the passes)")
+    fig.tight_layout()
+    return fig
+
+
+def plot_buoy_check(
+    buoy: xr.DataArray,
+    estimates: dict[str, xr.DataArray],
+    sites: pd.DataFrame,
+    metrics: pd.DataFrame,
+    *,
+    ncols: int = 5,
+) -> list[Figure]:
+    """
+    Raw and calibrated hindcast against deep buoys near the goals.
+
+    Parameters
+    ----------
+    buoy, estimates
+        :func:`utils.calibration.buoy_check`; the first estimate is the raw
+        source, the second the calibrated one.
+    sites
+        :func:`utils.calibration.buoy_check_sites`.
+    metrics
+        :func:`utils.calibration.buoy_check_metrics`.
+    ncols
+        Panels per row of the exceedance figure.
+
+    Returns
+    -------
+    list[Figure]
+        Exceedance curves per buoy (shared hours), and the metrics per buoy.
+    """
+    colors = dict(zip(estimates, ("0.6", "tab:orange")))
+    info = sites.set_index("site")
+    names = list(buoy["sites"].values)
+    nrows = int(np.ceil(len(names) / ncols))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(3.6 * ncols, 3.4 * nrows), sharey=True, squeeze=False)
+    for ax, site in zip(axes.flat, names):
+        reference = buoy.sel(sites=site).values
+        ok = np.isfinite(reference) & np.all([np.isfinite(hs.sel(sites=site).values) for hs in estimates.values()], axis=0)
+        p = np.unique(1.0 - np.logspace(0, np.log10(1.0 / ok.sum()), 300))
+        ax.semilogy(np.quantile(reference[ok], p), 1.0 - p, "k", lw=2, label="buoy")
+        for name, hs in estimates.items():
+            ax.semilogy(np.quantile(hs.sel(sites=site).values[ok], p), 1.0 - p, color=colors[name], lw=1.3, label=name)
+        row = info.loc[site]
+        ax.set_title(f"{site.removeprefix('buoy_')} · G{int(row['goal'])} · {row['distance_km']:.0f} km · "
+                     f"{row['depth']:.0f} m\n{ok.sum() / 8766:.1f} years of hours", fontsize=9)
+        ax.grid(alpha=0.3, which="both")
+        ax.set_xlabel("Hs (m)")
+    for ax in axes.flat[len(names):]:
+        ax.set_visible(False)
+    for ax in axes[:, 0]:
+        ax.set_ylabel("exceedance probability")
+    axes.flat[0].legend(fontsize=7, loc="lower left")
+    fig.suptitle("Deep buoys near the goals: Hs exceedance on the shared hours")
+    fig.tight_layout()
+
+    columns = ["bias", "rmse", *[c for c in metrics if c.startswith("q")]]
+    x = np.arange(len(names))
+    width = 0.8 / len(estimates)
+    fig_m, axes_m = plt.subplots(1, len(columns), figsize=(3.4 * len(columns), 4.2), sharex=True)
+    for ax, column in zip(axes_m, columns):
+        for k, name in enumerate(estimates):
+            values = metrics[metrics["estimate"] == name].set_index("site")[column].reindex(names)
+            ax.bar(x + (k - (len(estimates) - 1) / 2) * width, values.to_numpy(), width=width,
+                   color=colors[name], label=name)
+        ax.axhline(0.0, color="k", lw=0.8)
+        ax.set_title(f"{column} (m)" if column in ("bias", "rmse") else f"{column} error (m)")
+        ax.set_xticks(x, [n.removeprefix("buoy_") for n in names], rotation=60, ha="right", fontsize=8)
+        ax.grid(axis="y", alpha=0.3)
+    axes_m[0].legend(fontsize=8)
+    fig_m.suptitle("Hindcast − buoy per buoy (bias, RMSE, quantile errors)")
+    fig_m.tight_layout()
+    return [fig, fig_m]

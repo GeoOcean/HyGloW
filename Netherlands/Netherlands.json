@@ -28,7 +28,7 @@
     ],
     "satellite": {
         "name": "IMOS altimeter",
-        "data_path": "https://geoocean.unican.es/zarr/IMOS/imos_altimeter_1985_2020.zarr",
+        "data_path": "https://geoocean.unican.es/zarr/IMOS/imos_altimeter_dm00.zarr",
         "radius_km": 25,
         "min_depth": 15,
         "flags": [
@@ -52,7 +52,7 @@
     },
     "simulations": {
         "goals_file": "inputs/Goals/Netherlands_Goals.json",
-        "model": "swan",
+        "model": "snapwave",
         "snapwave": {
             "grid_file": "inputs/GRID/Netherlands_mesh.nc",
             "metamodel_templates": "templates-snapwave-metamodel",
@@ -80,13 +80,13 @@
                 ]
             }
         },
-        "num_samples_per_goal": 1000,
+        "num_samples_per_goal": 1500,
         "max_steepness": 0.06,
         "min_depth": 0.1,
         "bounds": {
             "hs": [
                 0.05,
-                8.0
+                10.0
             ],
             "tp": [
                 1,
@@ -149,8 +149,13 @@
             }
         },
         "mda_candidates": [
+            50,
             100,
-            550
+            150,
+            200,
+            300,
+            400,
+            600
         ],
         "mda_inputs": [
             "hs",

@@ -20,9 +20,9 @@ import time
 from utils import metamodel as mm
 
 PERIOD = slice("1979-01-01", "2018-12-31")  # CODEC water level ends in 2018
-MDA_N = 550
+MDA_N = 600
 METAMODEL = "buoys"
-OFFSHORE = ["WHACS_cal", "ERA5_cal"]
+OFFSHORE = ["WHACS", "WHACS_cal", "ERA5", "ERA5_cal"]
 
 logger = logging.getLogger("hywaves.reconstruct_buoys")
 

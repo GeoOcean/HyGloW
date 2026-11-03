@@ -16,8 +16,13 @@ spectral partitions (wind sea and swells).
 **Training cases.** For every goal, a few hundred stationary runs of a
 nearshore model (SnapWave or SWAN) force waves at that goal only, sampling its
 sea states with a Latin hypercube: significant height Hs, peak period Tp,
-direction, directional spreading and water level. Implausibly steep seas
-(Hs / L0 above a limit) are dropped. Each run gives Hs, Tp, direction and
+direction, directional spreading and water level. Hs and Tp are sampled
+independently, so the design also holds seas that do not occur (a 9 m sea at
+4 s): samples steeper than `simulations.max_steepness` (Hs / L0, with the
+deep-water wavelength L0 = g Tp² / 2π; 0.06, beyond which waves break by
+whitecapping) are dropped, not resampled, so a goal keeps fewer cases than
+sampled. The limit is a minimum period per height (at 0.06: 3.3 s for 1 m,
+7.3 s for 5 m, 10.3 s for 10 m). Each run gives Hs, Tp, direction and
 spreading at the output sites (isobaths, buoys, mesh areas), which are chosen
 inside the model mesh and always wet.
 
@@ -46,8 +51,21 @@ so the sum of single-goal runs equals a run with every goal forced.
   speed).
 - *Water level.* A metamodel input: constant, or a tide and surge series per
   goal.
-- *Offshore bias.* The hindcast can be checked and calibrated against
-  satellite altimetry per goal and direction sector before reconstructing.
+- *Offshore bias.* The hindcast can be calibrated against satellite
+  altimetry before reconstructing (notebook 07b), in two steps. First, per
+  goal, the level: each partition Hs is multiplied by a factor for its family
+  (wind sea or swell) and the 22.5° sector of its own direction, and the bulk
+  Hs follows the change in partition energy. Then, over the passes of all
+  goals, the storm tail: one quantile map of the bulk Hs (a constant offset
+  beyond p99.9), whose ratio map(Hs)/Hs multiplies the bulk and every
+  partition, so the sea/swell shares of the first step are kept. The
+  altimeter only sees bulk Hs: how the tail correction is shared among the
+  partitions is a choice, not data. In the Netherlands WHACS record
+  (1979-2023) it hardly matters: swell holds at most 0.6 % of the energy in
+  hours above 4 m, and putting the extra energy in the wind sea alone would
+  change swell Hs by less than 3 cm (p90). Check it again where storms can
+  be swell. Deep buoys near the goals, never used in the fit, are the
+  independent check.
 - *Non-linear processes* (strong breaking, wave-current interaction, time lag
   across a large domain) are what the **dynamic runs** check: the model run
   hour by hour with every goal, wind and water level, against which the

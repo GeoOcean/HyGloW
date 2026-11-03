@@ -13,9 +13,16 @@ direction sector). This module is the case layer, driven by the
 - :func:`fit_calibration` — one :class:`CalVal` per goal, fitted on
   ``train_fraction`` of the passes and validated on the rest
   (``calval_goal_XX.pkl``, ``coefficients.csv``, ``metrics.csv``);
+- :func:`fit_quantile_mapping` — one tail map over the passes of every goal
+  (:func:`quantile_mapping_pairs`; ``quantile_mapping.pkl``,
+  ``quantile_mapping.csv``), on the directionally calibrated hindcast: the
+  sectors fix the level, this the storm tail;
 - :func:`write_calibrated_hindcast` — the calibrated hindcast as a new zarr,
   to be added to ``offshore_waves`` (e.g. ``WHACS_cal``) and used by the
-  dynamic runs and the reconstruction like any other offshore source.
+  dynamic runs and the reconstruction like any other offshore source;
+- :func:`buoy_check_sites`, :func:`buoy_check`, :func:`buoy_check_metrics` —
+  the independent check: raw and calibrated Hs at the closest goal node
+  against deep buoys near the goals.
 
 Notebook ``07b_Satellite_Calibration.ipynb``; method in
 :mod:`bluemath_tk.waves.calibration` and :mod:`bluemath_tk.waves.altimetry`.
@@ -28,11 +35,13 @@ import logging
 from pathlib import Path
 from typing import Any, Iterable
 
+import numpy as np
 import pandas as pd
 import xarray as xr
 from bluemath_tk.core.io import load_model
+from bluemath_tk.core.metrics import compute_metrics
 from bluemath_tk.waves.altimetry import altimeter_near, altimeter_passes, collocate
-from bluemath_tk.waves.calibration import CalVal
+from bluemath_tk.waves.calibration import CalVal, QuantileMapping
 
 from utils.config import (
     SATELLITE,
@@ -43,6 +52,9 @@ from utils.config import (
     open_satellite,
     resolve,
 )
+from utils import onshore_sites as obs
+from utils.geometry import site_meta
+from utils import validation as val
 
 logger = logging.getLogger("hywaves.calibration")
 
@@ -60,6 +72,7 @@ DEFAULTS: dict[str, Any] = {
     "seed": 0,
     "sector_size": 22.5,
     "min_samples": 20,
+    "tail_quantile": 0.999,
 }
 
 
@@ -222,6 +235,69 @@ def fit_calibration(
     return out
 
 
+def quantile_mapping_path(offshore_name: str) -> Path:
+    """``outputs/calibration/{offshore_name}/quantile_mapping.pkl``."""
+    return calibration_dir(offshore_name) / "quantile_mapping.pkl"
+
+
+def quantile_mapping_pairs(offshore_name: str) -> pd.DataFrame:
+    """Passes of every goal with the hindcast Hs before and after the directional step.
+
+    Parameters
+    ----------
+    offshore_name
+        ``offshore_waves`` entry, already through :func:`fit_calibration`.
+
+    Returns
+    -------
+    pd.DataFrame
+        ``goal``, ``time``, ``sat_hs``, ``hs_raw`` and ``hs`` (directionally
+        calibrated), in the order :func:`fit_quantile_mapping` fits them.
+    """
+    calibrations = load_calibration(offshore_name)
+    corrected = []
+    for gid, group in satellite_pairs(offshore_name).groupby("goal", sort=False):
+        data = group.set_index("time")
+        corrected.append(
+            pd.DataFrame(
+                {
+                    "goal": str(gid),
+                    "sat_hs": data["sat_hs"],
+                    "hs_raw": data["hs"],
+                    "hs": calibrations[str(gid)].correct(data.drop(columns="goal"))["hs"],
+                }
+            )
+        )
+    return pd.concat(corrected).reset_index()
+
+
+def fit_quantile_mapping(offshore_name: str) -> QuantileMapping:
+    """Fit the tail map on every pass of every goal, after the directional step.
+
+    Pooled because one goal has too few storm passes; on all the passes, so the
+    test passes of :func:`fit_calibration` are not independent of this step.
+
+    Parameters
+    ----------
+    offshore_name
+        ``offshore_waves`` entry, already through :func:`fit_calibration`.
+
+    Returns
+    -------
+    QuantileMapping
+        Fitted on :func:`quantile_mapping_pairs`. Also writes
+        ``quantile_mapping.pkl`` and ``quantile_mapping.csv`` in
+        ``outputs/calibration/{offshore_name}/``.
+    """
+    pairs = quantile_mapping_pairs(offshore_name)
+    mapping = QuantileMapping(tail_quantile=float(config()["tail_quantile"])).fit(
+        pairs["hs"].to_numpy(), pairs["sat_hs"].to_numpy()
+    )
+    mapping.save_model(str(quantile_mapping_path(offshore_name)))
+    mapping.table.to_csv(calibration_dir(offshore_name) / "quantile_mapping.csv", index=False)
+    return mapping
+
+
 def load_calibration(offshore_name: str) -> dict[str, CalVal]:
     """Fitted calibrations of *offshore_name* by goal id (from :func:`fit_calibration`)."""
     found = {}
@@ -246,8 +322,10 @@ def write_calibrated_hindcast(
     """Apply the per-goal calibration to the whole hindcast and write a zarr.
 
     Partition Hs are multiplied by their sector factor and the bulk Hs scaled
-    by the change in partition energy; periods, directions and spreads are
-    unchanged. Goals without a fitted calibration are copied as they are.
+    by the change in partition energy; then the tail map of
+    :func:`fit_quantile_mapping` corrects the bulk Hs and the partitions by
+    the same ratio. Periods, directions and spreads are unchanged. Goals
+    without a fitted calibration only get the tail map.
 
     Parameters
     ----------
@@ -278,7 +356,8 @@ def write_calibrated_hindcast(
         node = ds.sel(goal=gid)
         cv = calibrations.get(str(int(gid)))
         parts.append(cv.correct(node) if cv is not None else node)
-    out = xr.concat(parts, dim="goal")
+    mapping = load_model(str(quantile_mapping_path(offshore_name)))
+    out = mapping.correct(xr.concat(parts, dim="goal"))
     cfg = config()
     out.attrs = {
         **ds.attrs,
@@ -286,7 +365,8 @@ def write_calibrated_hindcast(
             {
                 "source": offshore_name,
                 "reference": cfg["name"],
-                "method": "directional CalVal (wind sea / swell per sector)",
+                "method": "directional CalVal (wind sea / swell per sector), QuantileMapping",
+                "tail_quantile": cfg["tail_quantile"],
                 "radius_km": cfg["radius_km"],
                 "min_depth": cfg["min_depth"],
                 "train_fraction": cfg["train_fraction"],
@@ -308,3 +388,94 @@ def write_calibrated_hindcast(
     }
     logger.info("Calibrated %s written to %s; add to offshore_waves: %s", offshore_name, target, new_entry)
     return new_entry
+
+
+def buoy_check_sites(
+    offshore_name: str, *, max_distance_km: float = 50.0, min_depth: float = 24.0
+) -> pd.DataFrame:
+    """Buoys where the offshore hindcast itself can be checked: deep and near a goal node.
+
+    Parameters
+    ----------
+    offshore_name
+        ``offshore_waves`` entry whose goal nodes are used.
+    max_distance_km, min_depth
+        Largest distance to the closest goal node and smallest mesh depth.
+
+    Returns
+    -------
+    pd.DataFrame
+        ``site``, ``goal``, ``distance_km``, ``depth`` of the kept buoys.
+    """
+    table = val.closest_goals_table(obs.list_snapwave_buoy_sites(), [offshore_name])
+    depth = site_meta(table["site"])["site_mesh_depth"].to_numpy()
+    table = table.assign(distance_km=table["distance_m"] / 1000.0, depth=depth)
+    keep = (table["distance_km"] <= max_distance_km) & (table["depth"] >= min_depth)
+    return table.loc[keep, ["site", "goal", "distance_km", "depth"]].reset_index(drop=True)
+
+
+def buoy_check(
+    offshore_name: str,
+    entry: dict[str, str],
+    sites: pd.DataFrame,
+    period: str | slice = slice(None),
+) -> tuple[xr.DataArray, dict[str, xr.DataArray]]:
+    """Buoy Hs and the raw and calibrated hindcast Hs at each buoy's closest goal node.
+
+    Parameters
+    ----------
+    offshore_name
+        Source ``offshore_waves`` entry.
+    entry
+        Calibrated entry (:func:`write_calibrated_hindcast`); need not be in
+        the case JSON yet.
+    sites
+        :func:`buoy_check_sites`.
+    period
+        Time selection.
+
+    Returns
+    -------
+    buoy, estimates
+        Hs on ``(time, sites)``; ``{offshore_name: ..., entry["name"]: ...}``
+        on the buoy hours.
+    """
+    buoy = val.load_buoy_observations(period, sites["site"], variables=["hs"])["hs"]
+    rows = sites.set_index("site").loc[buoy["sites"].values]
+    estimates = {}
+    for name, ds in (
+        (offshore_name, open_offshore_waves(offshore_name)),
+        (entry["name"], open_offshore_waves(entry=entry)),
+    ):
+        hs = ds["hs"].sel(goal=rows["goal"].to_numpy()).rename(goal="sites")
+        hs = hs.assign_coords(sites=rows.index.to_numpy()).drop_vars("seapoint", errors="ignore")
+        estimates[name] = hs.reindex(time=buoy["time"]).transpose("time", "sites").load()
+    return buoy, estimates
+
+
+def buoy_check_metrics(
+    buoy: xr.DataArray,
+    estimates: dict[str, xr.DataArray],
+    probabilities: tuple[float, ...] = (0.5, 0.99, 0.999),
+) -> pd.DataFrame:
+    """Per buoy and estimate: metrics and quantile errors on the shared hours.
+
+    Returns
+    -------
+    pd.DataFrame
+        ``site``, ``estimate``, ``n``, ``bias``, ``rmse``, ``r2`` (reference
+        first: bias = hindcast − buoy) and ``q{p}``: hindcast − buoy Hs at
+        that quantile (m).
+    """
+    rows = []
+    for site in buoy["sites"].values:
+        reference = buoy.sel(sites=site).values
+        for name, hs in estimates.items():
+            estimate = hs.sel(sites=site).values
+            ok = np.isfinite(reference) & np.isfinite(estimate)
+            row = {"site": site, "estimate": name, "n": int(ok.sum())}
+            row.update(compute_metrics(reference=reference[ok], estimate=estimate[ok], metrics=("bias", "rmse", "r2")))
+            for p in probabilities:
+                row[f"q{100 * p:g}"] = np.quantile(estimate[ok], p) - np.quantile(reference[ok], p)
+            rows.append(row)
+    return pd.DataFrame(rows)

@@ -92,7 +92,7 @@ after publishing, commit `portal/`.
   -> 05 training cases (05b wind correction) -> 06 fit + holdout -> 07a
   offshore (`07a_Offshore_WHACS` or `_ERA5`; 07b satellite calibration) ->
   08 dynamic runs -> 09 linear sum vs dynamic -> 10 buoys
-  (`10_Validate_Buoys`) -> 11 spectra -> 12 GUI figures. Netherlands case studies in progress (storms, time lag) live untracked in `Netherlands/tmp/storm_validation/`.
+  (`10_Validate_Buoys`) -> 11 spectra -> 12 GUI figures. Netherlands case studies in progress (storms, time lag) live untracked in `Netherlands/tmp/storm_validation/`. `Netherlands/model_decisions/` records how the SWAN and SnapWave templates were chosen (tests, scores, notebooks; `runs/` git-ignored). Netherlands only: `05c_Compare_Models_Metamodel` / `08c_Compare_Models_Dynamic` (`utils/model_comparison.py`, case-only) compare SnapWave and SWAN to select a model.
   Save cells of 06/09/10/12 write the `outputs/` that `publish` bundles.
 - Conventions: directions nautical, coming-from, clockwise; goal `angles` =
   `[left, right]` (left may be negative across North); goal ids are string
@@ -181,8 +181,19 @@ no `tests/`.
   01/0000 boundary Hs = 1.02 × the energy-linear profile.
 - *SWAN*: ADCIRC `.grd` with counter-clockwise triangles (else it stops);
   ~32 min/case serial (SnapWave ~2 s); test case 01/0000 median Hs ratio to
-  SnapWave 1.00. Xaver pilot (Dec 2013, 48 h, 7 buoys, no wind): Hs bias WHACS
-  −0.60, SnapWave −1.42, SWAN −1.88 m; with 20 m/s wind −0.53 / −0.21 m.
+  SnapWave 1.00.
+- *SWAN physics* (templates; 39 hours of 2013, 27 buoys, `Netherlands/model_decisions/`, README + 01/02 notebooks): dynamic `GEN3 KOMEN` beat Westhuysen and ST6; no-wind cases `OFF QUAD` + `OFF WCAP` (Hs ratio to SnapWave at steep seas 0.75 -> 0.95); friction 0.019 (Xaver Hs bias/RMSE, WHACS_cal −0.40/0.62 -> −0.31/0.56, ERA5_cal −0.24/0.47 -> −0.14/0.43; 29 pairs above 6 m, small overestimate at 1-2 m). Friction 0.019 confirmed on 120 other hours (all-pairs RMSE 0.31 -> 0.30, above 3 m better, 0-1 m +0.02 m). No gain: `BREAKING BKD`, 100 iterations, no triads, water-level field, `AGROW`, 5° directions, wind × 1.1 (Xaver better, calm RMSE 0.17 -> 0.25). Dynamic runs add 2D spectra at the buoys (`output_spectra.spc`).
+- *SnapWave setup* (39 hours of 2013, 27 buoys, `Netherlands/model_decisions/`): the
+  enclosure holds only the open boundary (`open_boundary_nodes`: outline through the goals,
+  out to where the laterals meet the coast; 767 nodes = SWAN's `.grd`); the old AoI rectangle
+  forced all 6,329 outline nodes, coast included (up to 0.3 m too high nearshore).
+  `upwindref = 1`, `niter = 200` (sweeps): every goal case converges and the low-steepness
+  ratio to SWAN drops from 1.09-1.17 to 1.03. Wind mode adds ~0.4 m in calm hours (SWAN ~0.2),
+  so SnapWave stays ~+0.2 m high there, and the SnapWave K inherits it; `fw` 0.02/0.04 trade it
+  for worse storms. Wind mode does not converge in 241 of 8760 hours of 2013 (swell, light
+  wind; Hs up to ~10 m); no setting fixes it, so postprocessing drops non-converged cases
+  (last error > `MAX_ERROR` 0.01 in `wrapper_out.log`): metamodel cases are left out, dynamic
+  hours are NaN.
 - *Wind correction* (05b, `bluemath_tk.waves.hywaves.wind_correction`):
   cases stay without wind; `E_ws = Σ w·hs²` (w: steepness 0.02-0.03 ×
   spreading 20-25° ramps), K from a GBM on g·Hs_ws/U², g·F/U², g·d/U², g·d̄/U²,
@@ -198,48 +209,39 @@ no `tests/`.
   slope 0.81-0.92 -> 0.90-0.98, test bias −0.03..−0.12 -> −0.03..+0.08 m (the
   energy fit overshoots moderate seas: open). ERA5 (`EDH_API_KEY`) beats WHACS RMSE
   at 8/10 goals at 10 km, with few passes (before the Tp conversion).
+  Then `QuantileMapping` (`fit_quantile_mapping`, satellite only): one map over the
+  passes of all goals, constant beyond p99.9 (per goal fails: too few storm passes).
+  WHACS_cal vs 9 deep buoys 1979-2023, buoys not used in the fit: RMSE 0.27 -> 0.25,
+  bias +0.09 -> +0.04, p99.9 -0.48 -> +0.02 m, p99.99 -1.06 -> -0.14 m, hours >= 5 m
+  880 -> 2755 (buoys 2719). ERA5_cal does not need it (RMSE 0.248 -> 0.252). Binning
+  errors by observed Hs overstates storm bias (regression to the mean): use quantiles.
 - *ERA5 partition periods* (07a, `offshore.peak_period_samples` /
   `partition_peak_periods`): ERA5 gives Tm-1,0 per partition; Tp / Tm-1,0 is
   the median of bulk `pp1d / ptp{i}` where one partition holds >= 90 % of the
   energy. Netherlands 1979-2023: sea 1.156 (PM 1.167), swell 1.132 (above a
   narrow JONSWAP: broad swell partitions). One processed ERA5 zarr, with Tp.
 
-## Where we are (2026-10-26)
+## Where we are (2026-11-03)
 
 hywaves **0.15.0** on `main` (HyGloW) and `develop` (bluemath_tk).
 
-**Netherlands** (`Netherlands.json`): SnapWave; 10 goals, 629 cases/goal;
-mesh `inputs/GRID/Netherlands_mesh.nc` / `.grd` (153k nodes); 5156 ok sites
-(5m 1175, 10m 1875, 20m 1927, DeenHaag 141, 38 buoys); site filter keeps 38 /
-4971 / 139 in `buoys` / `isobaths` / `deenhaag`; `mda_candidates` [100, 550]
-(fitted with 5000 epochs; the GP stops early, patience 30); wind correction
-fitted; dynamic runs `Dynamic_Cases_WHACS_cal_2013.nc` (ERA5 wind, CODEC
-water level, CODEC only to 2018). Buoys: `utils/buoy_archive.py` (stations
-< 1 km merged, hourly; 27 Tp, 17 dir, 12 spr; Belgian ones Hs-only 2020-25).
-Earlier results (2012-2013, MDA 550, `buoys`, median over 27 buoys, before
-the 0.14 sites): bulk metamodel Hs bias −0.10 / RMSE 0.31 / R² 0.78, with
-wind correction +0.08 / 0.29 / 0.83; WHACS closest goal +0.19 / 0.41; dynamic
-SnapWave +0.19 / 0.42; Tp R² negative everywhere (`tp` raw).
+**Netherlands** (`Netherlands.json`): SnapWave, re-running 05-12 with the
+`model_decisions/` setup (open-boundary enclosure, `upwindref`, `niter` 200,
+Hs up to 10 m; training cases rebuilt 2026-11-03 and checked). Mesh
+`inputs/GRID/Netherlands_mesh.nc` / `.grd`; CODEC water level ends in 2018.
+Buoys: `utils/buoy_archive.py` (stations < 1 km merged, hourly; Belgian ones
+Hs-only 2020-25). `portal_snapwave/` holds the results before this re-run.
 
-**Reconstruction cache and resources** (user summary: `hywaves/README.md`;
-how it runs, buoy timings, open points: `hywaves/RECONSTRUCTION.md`). bluemath_tk `waves/hywaves/store.py`: one zarr per
-setup on `(month, step, sites)`, chunk = 1 site x 1 month, bulk sharded per
-month (zarr 3.1.5 cannot write scattered sites into a shard: writes
-read-modify-write the month under a file lock), spectra one file per
-site-month; setup `key` + input `fingerprint` in the attrs, any change
-rebuilds; hours with no energy are NaN. `core/resources.py` (machine, 75%
-cap, spawn pool) + `waves/hywaves/resources.py` (plans, memory model, rates
-measured on the 48-core node; re-measure there if the sum changes). The sum
-runs in site x hour blocks (`reconstruction.batch_shape`); fits run as
-single-thread processes; the GP step runs per (goal, partition) in processes
-(2 threads, 512-row kernels). 38 buoys 1979-2023 spectral with spectra
-saved: ~73 min, ~90 GB. Open: the time model runs short for long calls over
-many sites (blocks of 1 site x ~2,600 h sum ~1.7x slower per site-hour), K
-is a step function.
+**Reconstruction internals** (bluemath_tk `waves/hywaves/store.py`,
+`core/resources.py`, `waves/hywaves/resources.py`; details and open points in
+`hywaves/RECONSTRUCTION.md`): bulk zarr sharded per month, and zarr 3.1.5
+cannot write scattered sites into a shard, so writes read-modify-write the
+month under a file lock; the setup `key` + input `fingerprint` in the attrs
+rebuild the store on any change; hours with no energy are NaN. Rates are
+measured on the 48-core node: re-measure there if the sum changes.
 
-**Next (user)**: notebook 10 spectral 1979-2023 (running 2026-10-26), then
-09-12, publish, re-snapshot `portal_snapwave`, deck; notebook 11
-still has the template `TODO_Buoy`; decide on `WHACS_cal` (overshoot); SWAN
-pass (05-12 with `model: swan`, `tp` as PCA target, then snapshot `swan`);
-migrate Samoa and NewSouthWales (`update` + config + re-run). Cluster: arrays
-<= 9999 tasks and 20000 job records (bigger runs in `OFFSET` blocks).
+**Next (user)**: 05-12 on SnapWave, publish, re-snapshot `portal_snapwave`,
+deck; notebook 11 still has the template `TODO_Buoy`; SWAN pass (05-12 with
+`model: swan`, `tp` as PCA target, then snapshot `swan`); migrate Samoa and
+NewSouthWales (`update` + config + re-run). Cluster: arrays <= 9999 tasks
+and 20000 job records (bigger runs in `OFFSET` blocks).
