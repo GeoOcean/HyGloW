@@ -52,9 +52,7 @@ the number of years times one year.
   min, the sum alone took ~37). In those calls the sum blocks hold one site
   over ~2,600 hours and run ~1.7x slower per site-hour than the 3 sites x
   720 hours of a one-month call; capping the hours per block may fix both.
-- **Wind correction K.** The K regressor is a step function: mm-level input
-  changes flip it at ~1% of site-hours (up to 2.6). Smooth it before
-  trusting wind-corrected extremes.
+- **Wind correction.** Open points in [`WIND.md`](WIND.md).
 - **One site, spectral.** ~12 s of sum per year on one core; a worker pool
   kept between calls would roughly halve it.
 - **GPU.** Untested (the GP jobs then run in the main process).

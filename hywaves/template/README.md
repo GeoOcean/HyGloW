@@ -23,7 +23,7 @@ A HyGloW case: nearshore waves from an offshore hindcast (the method:
 | 06 | `06_Validate_Metamodel` | Fit the metamodel, holdout check | `metamodel` |
 | 07a | `07a_Offshore_WHACS` **or** `07a_Offshore_ERA5` | Offshore waves at the goals (ERA5: partition Tm-1,0 -> Tp) | `offshore_waves` |
 | 07b | `07b_Satellite_Calibration` | *Optional:* check and calibrate them | `satellite` |
-| 08 | `08_Dynamic_Cases_Generation` | Reference runs, every hour, all goals | `forcing` (optional) |
+| 08 | `08_Dynamic_Cases_Generation` | Reference runs, every hour, all goals; one folder per forcing (`<dynamic_cases>_<offshore>_wind-<on|off>`) | `forcing` (optional) |
 | 09 | `09_Validate_Linear_Summation` | Reconstruction vs reference runs | |
 | 10 | `10_Validate_Buoys` | Everything vs the buoys | |
 | 10b | `10b_Storm_Event` | One storm in detail: forcing, buoys, wind correction, maps | |

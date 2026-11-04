@@ -594,6 +594,14 @@ def _check_engine(case_dir: Path, config: dict, report: _Report) -> None:
                         "engine.wind_correction",
                         f"metamodel.wind_correction.{key} must be an increasing [low, high] pair",
                     )
+            sector = wind.get("directions")
+            if sector is not None and not (
+                isinstance(sector, list) and len(sector) == 2 and all(_is_number(v) for v in sector)
+            ):
+                report.error(
+                    "engine.wind_correction",
+                    "metamodel.wind_correction.directions must be null or a clockwise [left, right] sector",
+                )
 
     forcing = config.get("forcing", {})
     if not isinstance(forcing, dict):

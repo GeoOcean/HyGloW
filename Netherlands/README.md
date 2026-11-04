@@ -30,7 +30,7 @@ order, `python -m hywaves validate Netherlands/` to see what is missing.
 | 06 | `06_Validate_Metamodel` | Fit (MDA sizes `metamodel.mda_candidates`) and holdout check |
 | 07a | `07a_Offshore_WHACS` / `07a_Offshore_ERA5` | Offshore waves at the goals (ERA5: partition Tm-1,0 -> Tp) |
 | 07b | `07b_Satellite_Calibration` | WHACS / ERA5 vs IMOS altimetry, `WHACS_cal`, `ERA5_cal` |
-| 08 | `08_Dynamic_Cases_Generation` | Hourly reference runs with wind and water level |
+| 08 | `08_Dynamic_Cases_Generation` | Hourly reference runs with water level, one folder per forcing (`<dynamic_cases>_<offshore>_wind-<on|off>`) |
 | 08c | `08c_Compare_Models_Dynamic` | SnapWave vs SWAN on the hourly runs and against the buoys, to select a model |
 | 09–12 | validation and figures | Reconstruction vs reference runs, buoys, spectra, portal figures |
 | 10b | `10b_Storm_Event` | Xaver (Dec 2013) in detail: forcing, buoys, wind correction, maps |

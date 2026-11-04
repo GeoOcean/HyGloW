@@ -27,7 +27,7 @@ from bluemath_tk.wrappers.swan.swan_utils import (
 from matplotlib.figure import Figure
 
 from utils import simulation as sim
-from utils.config import open_wind
+from utils.config import model_config, open_wind, resolve
 from utils.validation import METRICS, PHYSICAL_BOUNDS
 
 #: SWAN ``TABLE`` quantities of the case templates, in order.
@@ -53,10 +53,26 @@ def load_snapwave_metamodel(goals: dict) -> xr.Dataset:
     return xr.concat(parts, dim="case_num", data_vars="minimal", coords="minimal", compat="override")
 
 
-def load_snapwave_dynamic(file_name: str) -> xr.Dataset:
-    """SnapWave dynamic cases on ``(time, sites)`` from the cases folder."""
-    with xr.open_dataset(sim.cases_dir("dynamic", model="snapwave") / file_name) as ds:
-        return ds[VARIABLES].load()
+def load_snapwave_dynamic(offshore: str, wind: bool, period: str) -> xr.Dataset:
+    """
+    SnapWave dynamic cases on ``(time, sites)`` of one run (notebook 08).
+
+    Parameters
+    ----------
+    offshore, wind
+        The run (:func:`utils.simulation.cases_dir`); kept in the attrs, so
+        :func:`case_folders` finds the SWAN run with the same forcing.
+    period
+        ``Dynamic_Cases_{period}.nc`` of the run.
+
+    Returns
+    -------
+    xarray.Dataset
+    """
+    folder = sim.cases_dir("dynamic", "snapwave", offshore=offshore, wind=wind)
+    with xr.open_dataset(folder / f"Dynamic_Cases_{period}.nc") as ds:
+        dynamic = ds[VARIABLES].load()
+    return dynamic.assign_attrs(offshore=offshore, wind=int(wind))
 
 
 def case_folders(reference: xr.Dataset) -> dict:
@@ -67,7 +83,8 @@ def case_folders(reference: xr.Dataset) -> dict:
             int(case): root / f"{int(goal):02}" / f"{int(case):04}"
             for case, goal in zip(reference.case_num.values, reference.goal.values)
         }
-    root = sim.cases_dir("dynamic", model="swan")
+    run = {"offshore": reference.attrs["offshore"], "wind": bool(reference.attrs["wind"])}
+    root = sim.cases_dir("dynamic", "swan", **run)
     return {
         time: root / pd.Timestamp(time).strftime("%Y%m%d %H%M%S")
         for time in reference.time.values
@@ -263,9 +280,16 @@ def map_rows(reference: xr.Dataset) -> list:
 
 
 def _snapwave_folder(swan_folder: Path) -> Path:
+    """The same case in SnapWave: the SWAN cases folder name with SnapWave's base name."""
     kind = "metamodel" if swan_folder.parent.name.isdigit() else "dynamic"
-    swan_root = sim.cases_dir(kind, model="swan")
-    return sim.cases_dir(kind, model="snapwave") / swan_folder.relative_to(swan_root)
+    swan_root = swan_folder.parents[1] if kind == "metamodel" else swan_folder.parent
+    swan_base, snapwave_base = (
+        resolve(model_config(model)[f"{kind}_cases"]) for model in ("swan", "snapwave")
+    )
+    snapwave_root = snapwave_base.parent / swan_root.name.replace(
+        swan_base.name, snapwave_base.name, 1
+    )
+    return snapwave_root / swan_folder.relative_to(swan_root)
 
 
 def plot_map_comparison(swan_folder: Path, vmax: float | None = None) -> Figure:

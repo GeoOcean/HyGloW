@@ -51,7 +51,7 @@
             "slurm": {
                 "cpus_per_task": 2,
                 "mem": "4gb",
-                "setup": "module use /nfs/software/geocean/modulefiles\nmodule load snapwave/b663c81-wind1"
+                "setup": "module use /nfs/software/geocean/modulefiles\nmodule load snapwave"
             }
         },
         "swan": {
@@ -142,9 +142,10 @@
             "enabled": false,
             "wind": "inferred",
             "num_cases": 100,
-            "speed_ratio": [0.8, 2.0],
+            "speed_ratio": [0.7, 1.7],
             "wind_wave_angle": [-60.0, 60.0],
-            "u10_range": [3.0, 35.0],
+            "directions": null,
+            "u10_range": [3.0, 25.0],
             "steepness_range": [0.02, 0.03],
             "spr_range": [20.0, 25.0],
             "speed_factor": 1.0,

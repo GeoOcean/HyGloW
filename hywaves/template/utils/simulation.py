@@ -10,7 +10,7 @@ module turns the case JSON into their inputs:
 - :func:`generate_cases` — Latin Hypercube per goal within its sector
   (``simulations.bounds``, ``num_samples_per_goal``), keeping plausible sea
   states (``simulations.max_steepness``);
-- :func:`templates_dir`, :func:`cases_dir`, :func:`grid_file`,
+- :func:`templates_dir`, :func:`cases_dir` (:func:`dynamic_run`), :func:`grid_file`,
   :func:`slurm_kwargs` — the ``simulations.<model>`` block;
 - :class:`HyWavesWrapperSetup` — goals as boundary nodes (goal id = 1-based
   ``active_node``), the model boundary (SnapWave's open-boundary enclosure or SWAN's
@@ -175,9 +175,39 @@ def templates_dir(kind: str, model: str | None = None) -> str:
     return str(resolve(model_config(model)[f"{_check_kind(kind)}_templates"]))
 
 
-def cases_dir(kind: str, model: str | None = None) -> Path:
+def dynamic_run(offshore: str, wind: bool) -> str:
+    """
+    Suffix of a dynamic run: its offshore source and whether wind forces it.
+
+    Parameters
+    ----------
+    offshore
+        ``offshore_waves`` entry name (e.g. ``"WHACS_cal"``).
+    wind
+        Whether the cases are forced by wind.
+
+    Returns
+    -------
+    str
+        E.g. ``"WHACS_cal_wind-off"``.
+    """
+    return f"{offshore}_wind-{'on' if wind else 'off'}"
+
+
+def cases_dir(
+    kind: str,
+    model: str | None = None,
+    *,
+    offshore: str | None = None,
+    wind: bool | None = None,
+) -> Path:
     """
     Cases folder of the model (``simulations.<model>.metamodel_cases`` / ``dynamic_cases``).
+
+    Dynamic runs keep one folder per forcing: ``dynamic_cases`` + ``_`` +
+    :func:`dynamic_run` (e.g. ``SnapWave_CASES_Dynamic_WHACS_cal_wind-off``);
+    their years share it (case folders and ``Dynamic_Cases_{period}.nc`` are
+    named by time).
 
     Parameters
     ----------
@@ -185,13 +215,22 @@ def cases_dir(kind: str, model: str | None = None) -> Path:
         ``"metamodel"`` or ``"dynamic"``.
     model
         Model name; default ``simulations.model``.
+    offshore, wind
+        Dynamic only (required): offshore source and wind forcing of the run.
 
     Returns
     -------
     Path
         Cases folder.
     """
-    return resolve(model_config(model)[f"{_check_kind(kind)}_cases"])
+    folder = resolve(model_config(model)[f"{_check_kind(kind)}_cases"])
+    if kind == "metamodel":
+        if offshore is not None or wind is not None:
+            raise ValueError("offshore and wind only apply to dynamic cases")
+        return folder
+    if offshore is None or wind is None:
+        raise ValueError("dynamic cases need offshore and wind")
+    return folder.with_name(f"{folder.name}_{dynamic_run(offshore, wind)}")
 
 
 def grid_file(model: str | None = None) -> Path:
@@ -418,7 +457,7 @@ class HyWavesWrapperSetup:
         self,
         kind: str,
         parameters: pd.DataFrame | Mapping[str, list],
-        output_dir: str | Path | None,
+        output_dir: str | Path,
         templates: str | Path | None,
         **kwargs: Any,
     ) -> Any:
@@ -432,7 +471,7 @@ class HyWavesWrapperSetup:
             templates_dir=str(templates or templates_dir(kind, self.model)),
             metamodel_parameters=parameters,
             fixed_parameters=self.fixed_parameters(),
-            output_dir=str(output_dir or cases_dir(kind, self.model)),
+            output_dir=str(output_dir),
             **{**geometry, **kwargs},
         )
 
@@ -461,12 +500,15 @@ class HyWavesWrapperSetup:
         -------
         SnapWaveMetaModelWrapper or SwanMetaModelWrapper
         """
+        output_dir = output_dir or cases_dir("metamodel", self.model)
         return self._wrapper("metamodel", cases, output_dir, templates, **kwargs)
 
     def dynamic_wrapper(
         self,
         parameters: pd.DataFrame | Mapping[str, list],
         *,
+        offshore: str | None = None,
+        wind: xr.Dataset | None = None,
         output_dir: str | Path | None = None,
         templates: str | Path | None = None,
         **kwargs: Any,
@@ -479,12 +521,17 @@ class HyWavesWrapperSetup:
         parameters
             Per-case ``tref`` and per-node ``hs_nodes``, ``tp_nodes``, ... (see
             :func:`dynamic_parameters`); optional uniform ``u10`` / ``u10dir``.
+        offshore
+            ``offshore_waves`` entry that forces the boundary; with *wind* it
+            names the cases folder (:func:`cases_dir`). Required without *output_dir*.
+        wind
+            Wind field at each case time (:func:`utils.config.open_wind`); None
+            runs without it.
         output_dir, templates
-            Override ``simulations.<model>.dynamic_cases`` / ``dynamic_templates``.
+            Override the run's cases folder (e.g. the 05b wind training cases) /
+            ``simulations.<model>.dynamic_templates``.
         **kwargs
-            Further wrapper arguments, e.g. ``wind=open_wind(period)`` (see
-            :func:`utils.config.open_wind`): the field at each case time.
-            SWAN also writes 2D spectra at the buoys.
+            Further wrapper arguments. SWAN also writes 2D spectra at the buoys.
 
         Returns
         -------
@@ -493,7 +540,12 @@ class HyWavesWrapperSetup:
         if self.model == "swan":
             buoys = self.output_sites_df[self.output_sites_df["source"] == "buoy"]
             kwargs = {"spectra_points": buoys, **kwargs}
-        return self._wrapper("dynamic", parameters, output_dir, templates, **kwargs)
+        output_dir = output_dir or cases_dir(
+            "dynamic", self.model, offshore=offshore, wind=wind is not None
+        )
+        return self._wrapper(
+            "dynamic", parameters, output_dir, templates, wind=wind, **kwargs
+        )
 
     # ------------------------------------------------------------------
     # Pre-run diagnostics (HyGloW goal/sector plots, utils.viz)
@@ -589,6 +641,7 @@ __all__ = [
     "WRAPPERS",
     "cases_dir",
     "dynamic_parameters",
+    "dynamic_run",
     "generate_cases",
     "grid_file",
     "slurm_kwargs",

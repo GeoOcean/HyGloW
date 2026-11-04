@@ -47,6 +47,15 @@ class TestWindCases(unittest.TestCase):
         angle = np.mod(cases["u10dir"] - cases["dir"] + 180, 360) - 180
         np.testing.assert_allclose(angle, cases["wind_wave_angle"], atol=1e-6)
 
+    def test_design_directions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            p1, _, p3 = _patches(tmp)
+            cfg = {"wind_correction": {"num_cases": 6, "directions": [260, 350]}}
+            with p1, mock.patch.dict(wind.METAMODEL, cfg), p3:
+                cases = wind.generate_wind_cases(GOALS)
+        self.assertEqual(len(cases), 6)
+        self.assertTrue(cases["dir"].between(260, 350).all())
+
     def test_case_parameters(self) -> None:
         cases = pd.DataFrame(
             {"hs": [2.0, 3.0], "tp": [6.0, 7.0], "dir": [300.0, 310.0], "spr": [30.0, 30.0],

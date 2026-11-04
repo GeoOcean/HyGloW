@@ -232,16 +232,20 @@
             "wind": "forcing",
             "num_cases": 250,
             "speed_ratio": [
-                0.8,
-                2.0
+                0.7,
+                1.7
             ],
             "wind_wave_angle": [
                 -60.0,
                 60.0
             ],
+            "directions": [
+                -160.0,
+                70.0
+            ],
             "u10_range": [
                 3.0,
-                35.0
+                25.0
             ],
             "steepness_range": [
                 0.02,

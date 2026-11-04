@@ -28,7 +28,7 @@ nearshore series (bulk or spectra) is the **linear sum of the goal spectra**.
   SLURM arrays (`wrapper.run_cases_slurm(**sim.slurm_kwargs())`). SWAN: one
   serial `swan.exe` per task (module `swan/4151`; MPI misplaces
   `BOUNDSPEC ... VARIABLE PAR` on unstructured grids). SnapWave with wind
-  needs `snapwave/b663c81-wind1`.
+  needs `snapwave/b663c81-wind1`, the module default (cases load plain `snapwave`).
 - Heavy data (`*.nc`, `*.zarr`, `*.tiff`, `*_CASES_*`, `outputs/`, `logs/`,
   `tmp/`) is git-ignored and huge: don't scan it recklessly.
 
@@ -70,7 +70,9 @@ cd GUI && python app.py                            # http://localhost:8050
 7. **Docs stay minimal**: root README, `hywaves/README.md` (brief physics, resources + timings table: update it when timings are re-measured),
    the case README (one line per notebook + JSON keys), notebook markdown,
    short GUI/deck READMEs, `hywaves/RECONSTRUCTION.md` (how the
-   reconstruction uses the machine, buoy timings, open points). Method
+   reconstruction uses the machine, buoy timings, open points),
+   `hywaves/WIND.md` (the wind method, its numbers, the options under
+   review: wind facts go there, not here). Method
    details go in bluemath_tk docstrings, maintainer facts here. No other
    contract or method-note files.
 8. **Style**: Python 3.12, type hints, `from __future__ import annotations`,
@@ -188,19 +190,11 @@ no `tests/`.
   out to where the laterals meet the coast; 767 nodes = SWAN's `.grd`); the old AoI rectangle
   forced all 6,329 outline nodes, coast included (up to 0.3 m too high nearshore).
   `upwindref = 1`, `niter = 200` (sweeps): every goal case converges and the low-steepness
-  ratio to SWAN drops from 1.09-1.17 to 1.03. Wind mode adds ~0.4 m in calm hours (SWAN ~0.2),
-  so SnapWave stays ~+0.2 m high there, and the SnapWave K inherits it; `fw` 0.02/0.04 trade it
-  for worse storms. Wind mode does not converge in 241 of 8760 hours of 2013 (swell, light
-  wind; Hs up to ~10 m); no setting fixes it, so postprocessing drops non-converged cases
-  (last error > `MAX_ERROR` 0.01 in `wrapper_out.log`): metamodel cases are left out, dynamic
-  hours are NaN.
-- *Wind correction* (05b, `bluemath_tk.waves.hywaves.wind_correction`):
-  cases stay without wind; `E_ws = Σ w·hs²` (w: steepness 0.02-0.03 ×
-  spreading 20-25° ramps), K from a GBM on g·Hs_ws/U², g·F/U², g·d/U², g·d̄/U²,
-  cos(angle), trained on ~100 full-domain cases with/without wind; adds
-  `(K²−1)·E_ws` from the wind direction. Netherlands 05b held out: bias
-  −0.52 -> −0.09, RMSE 0.85 -> 0.48 m vs SnapWave with wind. Limits: uniform
-  training winds, flat beyond ±60°, SnapWave one period per node.
+  ratio to SWAN drops from 1.09-1.17 to 1.03. Postprocessing drops non-converged runs
+  (last error > `MAX_ERROR` 0.01 in `wrapper_out.log`): metamodel cases are left out,
+  dynamic hours are NaN (wind mode: `hywaves/WIND.md`).
+- *Wind*: `hywaves/WIND.md` (K correction of 05b, SnapWave wind mode, the
+  enclosure issue, options under review, the 2013 dynamic pairs).
 - *Satellite calibration* (07b, `bluemath_tk.waves.{altimetry,calibration}`):
   IMOS `/lustre/geocean/DATA/IMOS/processed/imos_altimeter_1985_2020.zarr`
   (also over HTTP); passes within `radius_km` of the hindcast node, depth >
@@ -221,7 +215,7 @@ no `tests/`.
   energy. Netherlands 1979-2023: sea 1.156 (PM 1.167), swell 1.132 (above a
   narrow JONSWAP: broad swell partitions). One processed ERA5 zarr, with Tp.
 
-## Where we are (2026-11-03)
+## Where we are (2026-11-04)
 
 hywaves **0.15.0** on `main` (HyGloW) and `develop` (bluemath_tk).
 
@@ -231,6 +225,8 @@ Hs up to 10 m; training cases rebuilt 2026-11-03 and checked). Mesh
 `inputs/GRID/Netherlands_mesh.nc` / `.grd`; CODEC water level ends in 2018.
 Buoys: `utils/buoy_archive.py` (stations < 1 km merged, hourly; Belgian ones
 Hs-only 2020-25). `portal_snapwave/` holds the results before this re-run.
+Wind: method under review (`hywaves/WIND.md`); 05b re-run with `directions`
+pending, then the analysis of the 2013 wind-on/off dynamic pairs decides.
 
 **Reconstruction internals** (bluemath_tk `waves/hywaves/store.py`,
 `core/resources.py`, `waves/hywaves/resources.py`; details and open points in

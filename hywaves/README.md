@@ -48,7 +48,7 @@ so the sum of single-goal runs equals a run with every goal forced.
   adds the wind sea once, after the goals are predicted: its growth factor K
   is learned from full-domain runs with and without wind, as a function of
   how developed the sea is, the fetch and the depth (all scaled with the wind
-  speed).
+  speed). Details, numbers and the options under review: [`WIND.md`](WIND.md).
 - *Water level.* A metamodel input: constant, or a tide and surge series per
   goal.
 - *Offshore bias.* The hindcast can be calibrated against satellite

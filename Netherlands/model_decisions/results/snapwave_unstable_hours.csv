@@ -1,0 +1,7 @@
+variant,unstable_of_24,median_error,median_pct_converged,median_hs_max,max_hs_max,median_sites_above_3m,median_seconds
+base,21.0,0.9861,31.6,6.6,10.19,396.0,452.0
+enc,21.0,0.953,29.2,6.38,8.4,1074.0,450.0
+enc_dt,14.0,0.744,72.2,2.06,11.56,0.0,328.0
+enc_iter,18.0,0.9054,73.4,6.18,11.84,233.0,1265.0
+enc_nodcg,19.0,0.9483,31.8,5.86,11.37,397.0,434.0
+enc_upw,19.0,0.916,43.3,6.64,8.71,692.0,394.0

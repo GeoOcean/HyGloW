@@ -8,7 +8,8 @@ is the case layer, driven by ``metamodel.wind_correction`` in the case JSON:
   wind direction, over the model grid (``outputs/wind/fetch_table_{model}.nc``);
 - :func:`generate_wind_cases` — the training design: full-domain sea states
   that are (partly) wind sea, each with a wind of ``speed_ratio`` times the
-  fully developed speed, blowing ``wind_wave_angle`` off the wave direction;
+  fully developed speed, blowing ``wind_wave_angle`` off the wave direction,
+  waves from ``directions`` (the sector where they reach the sites);
 - :func:`wind_case_wrappers` — the same cases with and without wind
   (dynamic templates, ``simulations.<model>.wind_cases``);
 - :func:`training_pairs` / :func:`fit_wind_correction` — ``K = Hs(with wind) /
@@ -67,9 +68,10 @@ DEFAULTS: dict[str, Any] = {
     "enabled": False,
     "wind": "inferred",
     "num_cases": 100,
-    "speed_ratio": [0.8, 2.0],
+    "speed_ratio": [0.7, 1.7],
     "wind_wave_angle": [-60.0, 60.0],
-    "u10_range": [3.0, 35.0],
+    "directions": None,
+    "u10_range": [3.0, 25.0],
     "steepness_range": list(WIND_SEA_STEEPNESS),
     "spr_range": list(WIND_SEA_SPREAD),
     "speed_factor": 1.0,
@@ -227,12 +229,15 @@ def generate_wind_cases(goals: dict[str, dict[str, Any]], seed: int = 0) -> pd.D
     Training design: full-domain wind seas with a wind, MDA-selected.
 
     A large LHS of ``hs``, ``tp``, ``spr``, ``wl`` (``simulations.bounds``),
-    ``dir`` (within some goal's sector), the wind-speed ratio to the fully
+    ``dir`` (within some goal's sector and, if set, the clockwise sector
+    ``directions`` = ``[left, right]``), the wind-speed ratio to the fully
     developed speed and the wind-wave angle is filtered to plausible
     (``max_steepness``) and at least partly wind seas (wind-sea weight > 0);
     MDA picks ``num_cases`` of them. Only cases whose wind-sea weight is at
     least :data:`MIN_TRAINING_WEIGHT` are kept. Each case forces every goal with the same
-    sea state.
+    sea state. ``K`` scales the wind sea already at a site, so ``directions``
+    should leave out waves that never reach the sites (e.g. from the land
+    side): there the wind grows the whole sea and ``K`` cannot learn it.
 
     Parameters
     ----------
@@ -265,6 +270,8 @@ def generate_wind_cases(goals: dict[str, dict[str, Any]], seed: int = 0) -> pd.D
     seen = np.zeros(len(pool), dtype=bool)
     for left, right in sectors:
         seen |= in_nautical_sector(pool["dir"].to_numpy(), left, right)
+    if cfg["directions"] is not None:
+        seen &= in_nautical_sector(pool["dir"].to_numpy(), *cfg["directions"])
     pool["ws_weight"] = wind_sea_weight(pool["hs"], pool["tp"], pool["spr"], **_ramps())
     keep = (
         seen

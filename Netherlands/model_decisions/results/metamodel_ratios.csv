@@ -1,0 +1,91 @@
+steepness,where,variant,ratio,experiment,reference
+0.00-0.01,deep,SWAN default,0.884,swan_whitecapping,SnapWave production
+0.00-0.01,deep,SWAN OFF WCAP,0.884,swan_whitecapping,SnapWave production
+0.00-0.01,<18m,SWAN default,0.77,swan_whitecapping,SnapWave production
+0.00-0.01,<18m,SWAN OFF WCAP,0.771,swan_whitecapping,SnapWave production
+0.01-0.02,deep,SWAN default,0.914,swan_whitecapping,SnapWave production
+0.01-0.02,deep,SWAN OFF WCAP,0.923,swan_whitecapping,SnapWave production
+0.01-0.02,<18m,SWAN default,0.879,swan_whitecapping,SnapWave production
+0.01-0.02,<18m,SWAN OFF WCAP,0.887,swan_whitecapping,SnapWave production
+0.02-0.03,deep,SWAN default,0.969,swan_whitecapping,SnapWave production
+0.02-0.03,deep,SWAN OFF WCAP,1.015,swan_whitecapping,SnapWave production
+0.02-0.03,<18m,SWAN default,0.977,swan_whitecapping,SnapWave production
+0.02-0.03,<18m,SWAN OFF WCAP,0.998,swan_whitecapping,SnapWave production
+0.03-0.04,deep,SWAN default,0.923,swan_whitecapping,SnapWave production
+0.03-0.04,deep,SWAN OFF WCAP,1.0,swan_whitecapping,SnapWave production
+0.03-0.04,<18m,SWAN default,0.882,swan_whitecapping,SnapWave production
+0.03-0.04,<18m,SWAN OFF WCAP,0.947,swan_whitecapping,SnapWave production
+0.04-0.07,deep,SWAN default,0.753,swan_whitecapping,SnapWave production
+0.04-0.07,deep,SWAN OFF WCAP,0.953,swan_whitecapping,SnapWave production
+0.04-0.07,<18m,SWAN default,0.773,swan_whitecapping,SnapWave production
+0.04-0.07,<18m,SWAN OFF WCAP,0.94,swan_whitecapping,SnapWave production
+0.00-0.01,deep,SWAN default,0.884,swan_friction_triads,SnapWave production
+0.00-0.01,deep,SWAN OFF WCAP,0.884,swan_friction_triads,SnapWave production
+0.00-0.01,deep,"SWAN OFF WCAP, friction 0.019",0.967,swan_friction_triads,SnapWave production
+0.00-0.01,deep,"SWAN OFF WCAP, no triads",0.884,swan_friction_triads,SnapWave production
+0.00-0.01,<18m,SWAN default,0.77,swan_friction_triads,SnapWave production
+0.00-0.01,<18m,SWAN OFF WCAP,0.771,swan_friction_triads,SnapWave production
+0.00-0.01,<18m,"SWAN OFF WCAP, friction 0.019",0.885,swan_friction_triads,SnapWave production
+0.00-0.01,<18m,"SWAN OFF WCAP, no triads",0.766,swan_friction_triads,SnapWave production
+0.01-0.02,deep,SWAN default,0.914,swan_friction_triads,SnapWave production
+0.01-0.02,deep,SWAN OFF WCAP,0.923,swan_friction_triads,SnapWave production
+0.01-0.02,deep,"SWAN OFF WCAP, friction 0.019",1.011,swan_friction_triads,SnapWave production
+0.01-0.02,deep,"SWAN OFF WCAP, no triads",0.923,swan_friction_triads,SnapWave production
+0.01-0.02,<18m,SWAN default,0.879,swan_friction_triads,SnapWave production
+0.01-0.02,<18m,SWAN OFF WCAP,0.887,swan_friction_triads,SnapWave production
+0.01-0.02,<18m,"SWAN OFF WCAP, friction 0.019",0.993,swan_friction_triads,SnapWave production
+0.01-0.02,<18m,"SWAN OFF WCAP, no triads",0.885,swan_friction_triads,SnapWave production
+0.02-0.03,deep,SWAN default,0.969,swan_friction_triads,SnapWave production
+0.02-0.03,deep,SWAN OFF WCAP,1.015,swan_friction_triads,SnapWave production
+0.02-0.03,deep,"SWAN OFF WCAP, friction 0.019",1.091,swan_friction_triads,SnapWave production
+0.02-0.03,deep,"SWAN OFF WCAP, no triads",1.014,swan_friction_triads,SnapWave production
+0.02-0.03,<18m,SWAN default,0.977,swan_friction_triads,SnapWave production
+0.02-0.03,<18m,SWAN OFF WCAP,0.998,swan_friction_triads,SnapWave production
+0.02-0.03,<18m,"SWAN OFF WCAP, friction 0.019",1.055,swan_friction_triads,SnapWave production
+0.02-0.03,<18m,"SWAN OFF WCAP, no triads",0.999,swan_friction_triads,SnapWave production
+0.03-0.04,deep,SWAN default,0.923,swan_friction_triads,SnapWave production
+0.03-0.04,deep,SWAN OFF WCAP,1.0,swan_friction_triads,SnapWave production
+0.03-0.04,deep,"SWAN OFF WCAP, friction 0.019",1.064,swan_friction_triads,SnapWave production
+0.03-0.04,deep,"SWAN OFF WCAP, no triads",1.0,swan_friction_triads,SnapWave production
+0.03-0.04,<18m,SWAN default,0.882,swan_friction_triads,SnapWave production
+0.03-0.04,<18m,SWAN OFF WCAP,0.947,swan_friction_triads,SnapWave production
+0.03-0.04,<18m,"SWAN OFF WCAP, friction 0.019",1.01,swan_friction_triads,SnapWave production
+0.03-0.04,<18m,"SWAN OFF WCAP, no triads",0.947,swan_friction_triads,SnapWave production
+0.04-0.07,deep,SWAN default,0.753,swan_friction_triads,SnapWave production
+0.04-0.07,deep,SWAN OFF WCAP,0.953,swan_friction_triads,SnapWave production
+0.04-0.07,deep,"SWAN OFF WCAP, friction 0.019",0.999,swan_friction_triads,SnapWave production
+0.04-0.07,deep,"SWAN OFF WCAP, no triads",0.953,swan_friction_triads,SnapWave production
+0.04-0.07,<18m,SWAN default,0.773,swan_friction_triads,SnapWave production
+0.04-0.07,<18m,SWAN OFF WCAP,0.94,swan_friction_triads,SnapWave production
+0.04-0.07,<18m,"SWAN OFF WCAP, friction 0.019",0.989,swan_friction_triads,SnapWave production
+0.04-0.07,<18m,"SWAN OFF WCAP, no triads",0.94,swan_friction_triads,SnapWave production
+0.00-0.02,deep,SnapWave production,1.096,snapwave_setup,SWAN OFF WCAP (friction 0.038)
+0.00-0.02,deep,SnapWave enclosure,1.089,snapwave_setup,SWAN OFF WCAP (friction 0.038)
+0.00-0.02,deep,"SnapWave enclosure, niter 200",1.089,snapwave_setup,SWAN OFF WCAP (friction 0.038)
+0.00-0.02,deep,"SnapWave enclosure + upwindref 1, niter 200",1.029,snapwave_setup,SWAN OFF WCAP (friction 0.038)
+0.00-0.02,deep,"SnapWave enclosure, sector 360, niter 200",1.089,snapwave_setup,SWAN OFF WCAP (friction 0.038)
+0.00-0.02,<18m,SnapWave production,1.179,snapwave_setup,SWAN OFF WCAP (friction 0.038)
+0.00-0.02,<18m,SnapWave enclosure,1.168,snapwave_setup,SWAN OFF WCAP (friction 0.038)
+0.00-0.02,<18m,"SnapWave enclosure, niter 200",1.168,snapwave_setup,SWAN OFF WCAP (friction 0.038)
+0.00-0.02,<18m,"SnapWave enclosure + upwindref 1, niter 200",1.035,snapwave_setup,SWAN OFF WCAP (friction 0.038)
+0.00-0.02,<18m,"SnapWave enclosure, sector 360, niter 200",1.171,snapwave_setup,SWAN OFF WCAP (friction 0.038)
+0.02-0.04,deep,SnapWave production,0.991,snapwave_setup,SWAN OFF WCAP (friction 0.038)
+0.02-0.04,deep,SnapWave enclosure,0.987,snapwave_setup,SWAN OFF WCAP (friction 0.038)
+0.02-0.04,deep,"SnapWave enclosure, niter 200",0.987,snapwave_setup,SWAN OFF WCAP (friction 0.038)
+0.02-0.04,deep,"SnapWave enclosure + upwindref 1, niter 200",0.935,snapwave_setup,SWAN OFF WCAP (friction 0.038)
+0.02-0.04,deep,"SnapWave enclosure, sector 360, niter 200",0.988,snapwave_setup,SWAN OFF WCAP (friction 0.038)
+0.02-0.04,<18m,SnapWave production,1.023,snapwave_setup,SWAN OFF WCAP (friction 0.038)
+0.02-0.04,<18m,SnapWave enclosure,1.009,snapwave_setup,SWAN OFF WCAP (friction 0.038)
+0.02-0.04,<18m,"SnapWave enclosure, niter 200",1.009,snapwave_setup,SWAN OFF WCAP (friction 0.038)
+0.02-0.04,<18m,"SnapWave enclosure + upwindref 1, niter 200",0.941,snapwave_setup,SWAN OFF WCAP (friction 0.038)
+0.02-0.04,<18m,"SnapWave enclosure, sector 360, niter 200",1.009,snapwave_setup,SWAN OFF WCAP (friction 0.038)
+0.04-0.07,deep,SnapWave production,1.049,snapwave_setup,SWAN OFF WCAP (friction 0.038)
+0.04-0.07,deep,SnapWave enclosure,1.038,snapwave_setup,SWAN OFF WCAP (friction 0.038)
+0.04-0.07,deep,"SnapWave enclosure, niter 200",1.038,snapwave_setup,SWAN OFF WCAP (friction 0.038)
+0.04-0.07,deep,"SnapWave enclosure + upwindref 1, niter 200",0.983,snapwave_setup,SWAN OFF WCAP (friction 0.038)
+0.04-0.07,deep,"SnapWave enclosure, sector 360, niter 200",1.038,snapwave_setup,SWAN OFF WCAP (friction 0.038)
+0.04-0.07,<18m,SnapWave production,1.064,snapwave_setup,SWAN OFF WCAP (friction 0.038)
+0.04-0.07,<18m,SnapWave enclosure,1.042,snapwave_setup,SWAN OFF WCAP (friction 0.038)
+0.04-0.07,<18m,"SnapWave enclosure, niter 200",1.042,snapwave_setup,SWAN OFF WCAP (friction 0.038)
+0.04-0.07,<18m,"SnapWave enclosure + upwindref 1, niter 200",0.973,snapwave_setup,SWAN OFF WCAP (friction 0.038)
+0.04-0.07,<18m,"SnapWave enclosure, sector 360, niter 200",1.043,snapwave_setup,SWAN OFF WCAP (friction 0.038)
