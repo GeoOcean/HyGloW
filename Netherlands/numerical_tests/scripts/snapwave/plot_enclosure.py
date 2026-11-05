@@ -1,7 +1,7 @@
 """Old and new SnapWave boundary nodes on the Netherlands mesh -> results/figures/snapwave_enclosure.png.
 
 Run from ``Netherlands/`` with GDAL_DATA and PROJ_DATA set:
-python model_decisions/scripts/snapwave/plot_enclosure.py
+python numerical_tests/scripts/snapwave/plot_enclosure.py
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from utils.config import load_goals  # noqa: E402
 from utils.geometry import model_grid  # noqa: E402
 from utils.simulation import goals_for_snapwave  # noqa: E402
 
-OUT = Path("model_decisions/results/figures/snapwave_enclosure.png")
+OUT = Path("numerical_tests/results/figures/snapwave_enclosure.png")
 
 
 def main() -> None:

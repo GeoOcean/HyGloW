@@ -308,39 +308,6 @@
     </section>
 
     <section class="slide">
-      <p class="kicker">Optional &middot; local wind</p>
-      <h1>Wind on top, as one more contribution</h1>
-      <h2>The training runs have no wind: they carry the waves in from offshore. Where the wind keeps blowing over a
-        shallow shelf, the sea at the coast is bigger, so we add that energy back.</h2>
-      <div class="body">
-        <div class="sum-sketch wind-sketch" id="wind-sketch"></div>
-        <div class="cols-2 center" style="margin-top:1.6rem">
-          <ul class="points">
-            <li>In every hour, find the <strong>wind sea</strong>: the short, steep waves the local wind still grows.
-            </li>
-            <li><strong>K</strong> says how much bigger it gets with the wind, from wind speed, fetch, depth and
-              angle. Learned once, from ~100 runs with and without wind.</li>
-            <li>One switch: the goal sum stays the same, the wind is added after it.</li>
-          </ul>
-          <div>
-            <div class="stats">
-              <div class="stat">
-                <div class="num"><span class="from">&minus;0.52</span>&minus;0.09 m</div>
-                <div class="lbl">Hs bias</div>
-              </div>
-              <div class="stat">
-                <div class="num"><span class="from">0.85</span>0.48 m</div>
-                <div class="lbl">Hs RMSE</div>
-              </div>
-            </div>
-            <p class="wind-note">Netherlands: held-out runs, against SnapWave with wind,
-              without &rarr; with the correction.</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="slide">
       <p class="kicker">Does it learn the physics?</p>
       <h1>A few hundred runs are "enough"</h1>
       <div class="body cols-2 center">

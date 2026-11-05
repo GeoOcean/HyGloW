@@ -1,4 +1,4 @@
-"""Write and execute the two decision notebooks. Run from ``Netherlands/model_decisions/``:
+"""Write and execute the two decision notebooks. Run from ``Netherlands/numerical_tests/``:
 
     python scripts/build_notebooks.py
 """
@@ -57,8 +57,8 @@ The goal cases have no wind. SWAN still applies whitecapping, which removes the 
 of steep seas. Hs ratio SWAN / SnapWave (energy weighted, sites with ≥ 25 % of the
 offshore Hs), by case steepness and depth."""),
     ("code", 'd.ratio_table("swan_whitecapping")'),
-    ("md", """**Decision: `OFF WCAP` in the goal cases** (and in the no-wind runs that train K, so
-both sides of K share the physics). Steep cases go from 0.75 to 0.95 of SnapWave; gentle
+    ("md", """**Decision: `OFF WCAP` in the goal cases** (no wind, so no whitecapping either).
+Steep cases go from 0.75 to 0.95 of SnapWave; gentle
 ones do not change. With wind, Komen switches whitecapping back on."""),
     ("md", """## 3. Offshore forcing
 
@@ -110,7 +110,7 @@ fall on the Xaver days and 3 on St Jude."""),
 Same hours with and without wind (goal physics), then 500 hours of 2013 without wind."""),
     ("code", 'd.buoy_table("swan_wind")'),
     ("code", 'd.buoy_table("swan_no_wind_500h")'),
-    ("md", """**Decision: dynamic runs keep wind, and the linear sum needs the wind correction K.**
+    ("md", """**Decision: dynamic runs keep wind; the linear sum has none yet** (`hywaves/WIND.md`).
 Without wind Hs is low everywhere (500 hours: bias −0.30, RMSE 0.50 m); wind adds 22 %
 in calm hours and 4–6 % in storms (median Hs ratio). Stationary runs stay: a
 non-stationary Xaver run gained no Hs, and the lag study found none."""),
@@ -188,8 +188,8 @@ for reference."""),
   (Xaver RMSE 0.66 → 0.79); 0.04 helps calm hours more and ruins storms (Xaver 1.06).
 - **The positive bias is SnapWave's wind input**: without wind SnapWave matches SWAN
   (calm bias −0.18 vs −0.20 for SWAN); with wind it adds ~0.4 m in calm hours where
-  SWAN adds ~0.2. That lives in the source's growth curves, not in a setting; the
-  SnapWave K is trained on SnapWave with/without wind, so it inherits it."""),
+  SWAN adds ~0.2. That lives in the source's growth curves, not in a setting; any wind
+  correction learned from SnapWave with/without wind inherits it."""),
     ("md", """## 3. Goal cases: refraction, iterations, sector
 
 Hs ratio SnapWave / SWAN (`OFF WCAP`) on the 40 metamodel cases."""),

@@ -1,11 +1,12 @@
 """
-SnapWave against SWAN on the same cases (Netherlands, notebooks 05c and 08c).
+SnapWave against SWAN on the same cases (Netherlands, numerical tests 03 and 04).
 
-Case-only code: end users compare the two models here to select one. SnapWave
+Case-only code, imported by the notebooks of this folder (they put the case
+folder on ``sys.path`` for ``utils``). SnapWave
 is read from its postprocessed files; SWAN from the ``output_sites.tab`` of the
 finished cases, so both notebooks work while the SLURM arrays are running.
 SnapWave is the reference only in the sense of the metrics convention (bias =
-SWAN - SnapWave): neither model is truth, the buoys in 08c decide that.
+SWAN - SnapWave): neither model is truth, the buoys in notebook 04 decide that.
 """
 
 from __future__ import annotations

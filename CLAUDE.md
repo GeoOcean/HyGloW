@@ -10,6 +10,11 @@ Guide for maintainers and coding agents. User docs: `README.md`,
 waves without a spectral model every hour. Per offshore *goal*, a few hundred
 stationary SnapWave or SWAN runs train an **MDA -> PCA -> GP** metamodel; the
 nearshore series (bulk or spectra) is the **linear sum of the goal spectra**.
+Any offshore hindcast can be reconstructed (WHACS, ERA5, raw or satellite-
+calibrated), with water level from another hindcast (CODEC). The wrappers also
+run **dynamic** reference cases (stationary, every hour, all goals, optional
+ERA5 wind and water level) to validate the sum. No wind in the reconstruction
+yet (`hywaves/WIND.md`).
 
 | Repo / path | Role |
 | --- | --- |
@@ -39,7 +44,7 @@ python -m hywaves snapshot <Case>/ <tag> --note "…"  # portal/ -> portal_<tag>
 python -m hywaves update   <Case>/ [--dry-run]     # case utils/ <- template
 python -m unittest discover -s hywaves/tests -t .  # all hywaves tests (case_utils/ run inside a started case)
 cd Netherlands && PYTHONPATH=. python -m unittest discover -s ../hywaves/tests/case_utils -t ../hywaves/tests/case_utils
-cd ~/BlueMath_tk && python -m unittest tests.waves.test_hywaves tests.waves.test_hywaves_plots tests.waves.test_hywaves_store tests.waves.test_hywaves_resources tests.core.test_resources tests.core.test_core_metrics
+cd ~/BlueMath_tk && python -m unittest tests.waves.test_hywaves tests.waves.test_hywaves_plots tests.waves.test_hywaves_store tests.waves.test_hywaves_resources tests.waves.test_fetch tests.core.test_resources tests.core.test_core_metrics
 cd GUI && python app.py                            # http://localhost:8050
 ```
 
@@ -71,8 +76,8 @@ cd GUI && python app.py                            # http://localhost:8050
    the case README (one line per notebook + JSON keys), notebook markdown,
    short GUI/deck READMEs, `hywaves/RECONSTRUCTION.md` (how the
    reconstruction uses the machine, buoy timings, open points),
-   `hywaves/WIND.md` (the wind method, its numbers, the options under
-   review: wind facts go there, not here). Method
+   `hywaves/WIND.md` (wind: what was tried, the numbers, the options;
+   wind facts go there, not here). Method
    details go in bluemath_tk docstrings, maintainer facts here. No other
    contract or method-note files.
 8. **Style**: Python 3.12, type hints, `from __future__ import annotations`,
@@ -91,17 +96,26 @@ after publishing, commit `portal/`.
   `resolve()`, `load_goals()`, `open_offshore_waves()`); restart the kernel
   after editing the JSON. No hard-coded paths in notebooks.
 - Pipeline: 01 GEBCO -> 02 mesh -> 03 observations + output sites -> 04 goals
-  -> 05 training cases (05b wind correction) -> 06 fit + holdout -> 07a
+  -> 05 training cases -> 06 fit + holdout -> 07a
   offshore (`07a_Offshore_WHACS` or `_ERA5`; 07b satellite calibration) ->
   08 dynamic runs -> 09 linear sum vs dynamic -> 10 buoys
-  (`10_Validate_Buoys`) -> 11 spectra -> 12 GUI figures. Netherlands case studies in progress (storms, time lag) live untracked in `Netherlands/tmp/storm_validation/`. `Netherlands/model_decisions/` records how the SWAN and SnapWave templates were chosen (tests, scores, notebooks; `runs/` git-ignored). Netherlands only: `05c_Compare_Models_Metamodel` / `08c_Compare_Models_Dynamic` (`utils/model_comparison.py`, case-only) compare SnapWave and SWAN to select a model.
-  Save cells of 06/09/10/12 write the `outputs/` that `publish` bundles.
+  (`10_Validate_Buoys`) -> 11 spectra -> 12 GUI figures. Save cells of
+  06/09/10/12 write the `outputs/` that `publish` bundles.
+- `Netherlands/numerical_tests/` is the reference for the models: how the SWAN
+  and SnapWave templates were chosen (01-02, from `results/*.csv`) and SnapWave
+  vs SWAN on the same cases (03-04, `model_comparison.py`; not a clean
+  comparison yet). Its notebooks put the case folder on `sys.path`; `runs/` is
+  git-ignored. `Netherlands/analysis/` (case-only, like `numerical_tests/`): every estimate
+  on the same sites and hours of 2013 (`results.py` + notebooks 01-05: error
+  budget at the buoys, linear sum vs dynamic, wind effect, calibration, storms).
+  `Netherlands/tmp/` holds only caches (`reconstruct/`) and scripts
+  (`check_dynamic_run.py`, `reconstruct_2013.py`: fills the 2013 cache).
 - Conventions: directions nautical, coming-from, clockwise; goal `angles` =
   `[left, right]` (left may be negative across North); goal ids are string
   ints. **Metrics reference first** (`bluemath_tk.core.metrics`): bias =
   estimate − reference, R² normalised by the reference, reference on the x-axis.
 - Model: `simulations.model` (`snapwave`|`swan`) + `simulations.<model>`
-  (`grid_file`, template and cases folders, `wind_cases`, `slurm`). Each model
+  (`grid_file`, template and cases folders, `slurm`). Each model
   has its own cases folders; `split.json` records the model and the
   artefacts refuse to mix. SWAN: predict `tp` (PCA target), not `"raw"`.
 - **Output sites** (notebook 03, `geometry.output_sites`): isobaths traced on
@@ -127,9 +141,9 @@ after publishing, commit `portal/`.
   index name); `predict_goal(offshore, goal, n, metamodel=, sites=,
   partition=, wl=)`; `goal_contributions` + `sum_contributions` =
   `reconstruct(time, n, metamodel=, spectral=, wl=0|"forcing",
-  wind_correction=, save_spectra=, ...)`: reads `reconstruction_store(...)`
+  save_spectra=, ...)`: reads `reconstruction_store(...)`
   (one zarr per setup in `tmp/reconstruct/{offshore}/{set}_mda{n}_{model}_
-  {bulk|spectral}_wl-{wl}_wind-{on|off}[_spectra].zarr`, chunk = 1 site x
+  {bulk|spectral}_wl-{wl}[_spectra].zarr`, chunk = 1 site x
   1 month, rebuilt when the setup or an input file changes), computes only
   missing site-months (whole months), returns exactly the requested times;
   `reconstruction_cache()` lists stores, `clear_reconstruction_cache(pattern)`
@@ -153,7 +167,7 @@ publish; `paths` strings; `TODO`s are gaps); goals JSON `{"goals": {"1":
 `outputs/goal_*/<set>/validation_metrics.csv` (`goal, metamodel,
 mda_candidate, group, variable, n, bias, rmse, r2`); the `metamodel`,
 `simulations` (bounds, `max_steepness`, model block, `output_sites_config`,
-`min_depth`), `forcing`, `satellite`, `wind_correction` blocks; the sites CSV
+`min_depth`), `forcing`, `satellite` blocks; the sites CSV
 (present, grid matches, every set selector names ok sites); `portal/`
 staleness.
 
@@ -184,8 +198,8 @@ no `tests/`.
 - *SWAN*: ADCIRC `.grd` with counter-clockwise triangles (else it stops);
   ~32 min/case serial (SnapWave ~2 s); test case 01/0000 median Hs ratio to
   SnapWave 1.00.
-- *SWAN physics* (templates; 39 hours of 2013, 27 buoys, `Netherlands/model_decisions/`, README + 01/02 notebooks): dynamic `GEN3 KOMEN` beat Westhuysen and ST6; no-wind cases `OFF QUAD` + `OFF WCAP` (Hs ratio to SnapWave at steep seas 0.75 -> 0.95); friction 0.019 (Xaver Hs bias/RMSE, WHACS_cal −0.40/0.62 -> −0.31/0.56, ERA5_cal −0.24/0.47 -> −0.14/0.43; 29 pairs above 6 m, small overestimate at 1-2 m). Friction 0.019 confirmed on 120 other hours (all-pairs RMSE 0.31 -> 0.30, above 3 m better, 0-1 m +0.02 m). No gain: `BREAKING BKD`, 100 iterations, no triads, water-level field, `AGROW`, 5° directions, wind × 1.1 (Xaver better, calm RMSE 0.17 -> 0.25). Dynamic runs add 2D spectra at the buoys (`output_spectra.spc`).
-- *SnapWave setup* (39 hours of 2013, 27 buoys, `Netherlands/model_decisions/`): the
+- *SWAN physics* (templates; 39 hours of 2013, 27 buoys, `Netherlands/numerical_tests/`, README + 01/02 notebooks): dynamic `GEN3 KOMEN` beat Westhuysen and ST6; no-wind cases `OFF QUAD` + `OFF WCAP` (Hs ratio to SnapWave at steep seas 0.75 -> 0.95); friction 0.019 (Xaver Hs bias/RMSE, WHACS_cal −0.40/0.62 -> −0.31/0.56, ERA5_cal −0.24/0.47 -> −0.14/0.43; 29 pairs above 6 m, small overestimate at 1-2 m). Friction 0.019 confirmed on 120 other hours (all-pairs RMSE 0.31 -> 0.30, above 3 m better, 0-1 m +0.02 m). No gain: `BREAKING BKD`, 100 iterations, no triads, water-level field, `AGROW`, 5° directions, wind × 1.1 (Xaver better, calm RMSE 0.17 -> 0.25). Dynamic runs add 2D spectra at the buoys (`output_spectra.spc`).
+- *SnapWave setup* (39 hours of 2013, 27 buoys, `Netherlands/numerical_tests/`): the
   enclosure holds only the open boundary (`open_boundary_nodes`: outline through the goals,
   out to where the laterals meet the coast; 767 nodes = SWAN's `.grd`); the old AoI rectangle
   forced all 6,329 outline nodes, coast included (up to 0.3 m too high nearshore).
@@ -193,8 +207,10 @@ no `tests/`.
   ratio to SWAN drops from 1.09-1.17 to 1.03. Postprocessing drops non-converged runs
   (last error > `MAX_ERROR` 0.01 in `wrapper_out.log`): metamodel cases are left out,
   dynamic hours are NaN (wind mode: `hywaves/WIND.md`).
-- *Wind*: `hywaves/WIND.md` (K correction of 05b, SnapWave wind mode, the
-  enclosure issue, options under review, the 2013 dynamic pairs).
+- *Wind*: the reconstruction has no wind (the wind-correction code was removed
+  on 2026-11-04); wind stays as dynamic-run forcing (`forcing.wind`, runs
+  `_wind-on`/`_wind-off`). What was tried, the numbers and the options:
+  `hywaves/WIND.md`.
 - *Satellite calibration* (07b, `bluemath_tk.waves.{altimetry,calibration}`):
   IMOS `/lustre/geocean/DATA/IMOS/processed/imos_altimeter_1985_2020.zarr`
   (also over HTTP); passes within `radius_km` of the hindcast node, depth >
@@ -215,18 +231,23 @@ no `tests/`.
   energy. Netherlands 1979-2023: sea 1.156 (PM 1.167), swell 1.132 (above a
   narrow JONSWAP: broad swell partitions). One processed ERA5 zarr, with Tp.
 
-## Where we are (2026-11-04)
+## Where we are (2026-11-05)
 
-hywaves **0.15.0** on `main` (HyGloW) and `develop` (bluemath_tk).
+hywaves **0.16.0** (no wind in the reconstruction; store names without
+`wind-`) on `main` (HyGloW); bluemath_tk on `feature/more-hywaves` (into `develop`).
 
-**Netherlands** (`Netherlands.json`): SnapWave, re-running 05-12 with the
-`model_decisions/` setup (open-boundary enclosure, `upwindref`, `niter` 200,
-Hs up to 10 m; training cases rebuilt 2026-11-03 and checked). Mesh
-`inputs/GRID/Netherlands_mesh.nc` / `.grd`; CODEC water level ends in 2018.
-Buoys: `utils/buoy_archive.py` (stations < 1 km merged, hourly; Belgian ones
-Hs-only 2020-25). `portal_snapwave/` holds the results before this re-run.
-Wind: method under review (`hywaves/WIND.md`); 05b re-run with `directions`
-pending, then the analysis of the 2013 wind-on/off dynamic pairs decides.
+**Netherlands** (`Netherlands.json`): SnapWave, 05-12 re-run with the
+`numerical_tests/` setup (open-boundary enclosure, `upwindref`, `niter` 200,
+Hs up to 10 m). Mesh `inputs/GRID/Netherlands_mesh.nc` / `.grd`; CODEC water
+level ends in 2018. Buoys: `utils/buoy_archive.py` (stations < 1 km merged,
+hourly; Belgian ones Hs-only 2020-25). `portal_snapwave/` holds the results
+before this re-run. 2013 complete: the four dynamic runs (WHACS, WHACS_cal x
+wind on/off) and the reconstruction cache (mda600, `wl="forcing"`, every set,
+both sources, bulk and spectral). First-iteration conclusions:
+`Netherlands/analysis/README.md` (linear sum fine on average, high in the
+biggest seas at 5 m; missing wind the largest error; spectral Tp/Dir/Spr poor;
+calibration helps the storm tail). `validate --publish` passes;
+`outputs/gui_figures/` (notebook 12) is still missing.
 
 **Reconstruction internals** (bluemath_tk `waves/hywaves/store.py`,
 `core/resources.py`, `waves/hywaves/resources.py`; details and open points in
@@ -236,8 +257,10 @@ month under a file lock; the setup `key` + input `fingerprint` in the attrs
 rebuild the store on any change; hours with no energy are NaN. Rates are
 measured on the 48-core node: re-measure there if the sum changes.
 
-**Next (user)**: 05-12 on SnapWave, publish, re-snapshot `portal_snapwave`,
-deck; notebook 11 still has the template `TODO_Buoy`; SWAN pass (05-12 with
-`model: swan`, `tp` as PCA target, then snapshot `swan`); migrate Samoa and
-NewSouthWales (`update` + config + re-run). Cluster: arrays <= 9999 tasks
-and 20000 job records (bigger runs in `OFFSET` blocks).
+**Next (user)**: decide from `analysis/` what to fix or move into 09-12
+(spectral Tp/Dir/Spr, the 5 m storm overshoot, wind: `hywaves/WIND.md`
+options); notebook 12, publish, re-snapshot `portal_snapwave`, deck; notebook
+11 still has the template `TODO_Buoy`; SWAN pass (05-12 with `model: swan`,
+`tp` as PCA target, then snapshot `swan`); migrate Samoa and NewSouthWales
+(`update` + config + re-run). Cluster: arrays <= 9999 tasks and 20000 job
+records (bigger runs in `OFFSET` blocks).

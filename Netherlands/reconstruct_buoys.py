@@ -1,5 +1,5 @@
 """
-Reconstruct the buoys for notebook 10: every offshore source, with and without wind.
+Reconstruct the buoys for notebook 10: every offshore source.
 
 Fills the reconstruction cache (``tmp/reconstruct/``) that notebook 10 reads.
 Run from the case folder on the compute node, one setup after another::
@@ -27,9 +27,7 @@ OFFSHORE = ["WHACS", "WHACS_cal", "ERA5", "ERA5_cal"]
 logger = logging.getLogger("hywaves.reconstruct_buoys")
 
 
-def run_setup(
-    offshore_name: str, wind: bool, workers: int | None, threads: int | None
-) -> None:
+def run_setup(offshore_name: str, workers: int | None, threads: int | None) -> None:
     """Reconstruct one setup over ``PERIOD`` (spectral, CODEC water level, no spectra saved)."""
     kwargs = dict(
         metamodel=METAMODEL,
@@ -37,9 +35,8 @@ def run_setup(
         offshore_name=offshore_name,
         wl="forcing",
         save_spectra=False,
-        wind_correction=wind,
     )
-    print(f"\n=== {offshore_name} · wind {'on' if wind else 'off'}", flush=True)
+    print(f"\n=== {offshore_name}", flush=True)
     res = mm.reconstruction_resources(PERIOD, MDA_N, **kwargs)
     if workers is not None:
         res.workers = workers
@@ -57,9 +54,6 @@ def main() -> None:
     parser.add_argument(
         "--offshore", nargs="+", default=OFFSHORE, help="offshore_waves entries"
     )
-    parser.add_argument(
-        "--wind", nargs="+", choices=["off", "on"], default=["off", "on"]
-    )
     parser.add_argument("--workers", type=int, help="override the proposed sum workers")
     parser.add_argument("--threads", type=int, help="override the proposed threads")
     args = parser.parse_args()
@@ -67,8 +61,7 @@ def main() -> None:
 
     mm.require_models(METAMODEL, MDA_N)
     for offshore_name in args.offshore:
-        for wind in args.wind:
-            run_setup(offshore_name, wind == "on", args.workers, args.threads)
+        run_setup(offshore_name, args.workers, args.threads)
 
 
 if __name__ == "__main__":

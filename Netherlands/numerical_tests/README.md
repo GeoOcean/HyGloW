@@ -1,22 +1,30 @@
-# Model decisions (Netherlands, November 2026)
+# Numerical tests (Netherlands, November 2026)
 
-Why the SWAN and SnapWave templates in `hywaves/template/` look the way they do. HyGloW
-lets a case choose its nearshore model; whichever model a case runs must ship its
+The first reference for the numerical models behind HyGloW: why the SWAN and SnapWave
+templates in `hywaves/template/` look the way they do, and how the two models compare.
+HyGloW lets a case choose its nearshore model; whichever model a case runs must ship its
 best-tested configuration. Every option here was tested on the Netherlands case,
 against buoys where possible, before going into the templates.
 
 - `01_SWAN_Decisions.ipynb`: source terms, whitecapping, forcing, numerics, friction, wind.
 - `02_SnapWave_Decisions.ipynb`: boundary enclosure, refraction scheme, iterations,
   friction, wind, non-converging runs.
+- `03_Compare_Models_Metamodel.ipynb`: SnapWave vs SWAN on the same training cases.
+- `04_Compare_Models_Dynamic.ipynb`: SnapWave vs SWAN on the hourly reference runs and
+  against the buoys.
 
-Both notebooks read only `results/*.csv`, so they keep working after `runs/` is deleted.
+01 and 02 read only `results/*.csv`, so they keep working after `runs/` is deleted. 03 and
+04 read the case runs (they put the case folder on `sys.path` for `utils`, and use
+`model_comparison.py` from here). **03 and 04 are not a clean comparison yet**: they ran
+on the runs available at the time, before both models had the final templates on the
+same hours; rerun them once both models have the full 05 and 08 runs.
 
 ## Decisions
 
 | Model | Setting | Decision | Main evidence (Hs, 27 buoys) |
 | --- | --- | --- | --- |
 | SWAN | Source terms (dynamic, with wind) | `GEN3 KOMEN` | Storm RMSE 0.35 m (Westhuysen 0.41, ST6 0.41); ST6 needs 16 GB and twice the time |
-| SWAN | Whitecapping in no-wind cases (goals, K training) | `OFF WCAP` | Steep goal cases go from 0.75 to 0.95 of SnapWave Hs |
+| SWAN | Whitecapping in no-wind cases (goal cases) | `OFF WCAP` | Steep goal cases go from 0.75 to 0.95 of SnapWave Hs |
 | SWAN | Bottom friction | `FRICTION JONSWAP CONSTANT 0.019` | 120 independent hours: RMSE 0.31 → 0.30; 3–4 m 0.39 → 0.36; below 1 m bias +0.06 → +0.09 |
 | SWAN | Breaking, triads, iterations, directions, water level | Unchanged: `BREAKING CONSTANT 1.0 0.73`, `TRIAD`, `STOPC` defaults with 50 iterations, `CIRCLE 36`, one level per case | `BKD`, no triads, 100 iterations, 5°, water-level field: ≤ 0.02 m, or worse |
 | SWAN | Wind input | ERA5 wind as is, no `AGROW` | `AGROW`: no change; wind × 1.1: Xaver better, calm RMSE 0.17 → 0.25 |
@@ -48,7 +56,7 @@ Both notebooks read only `results/*.csv`, so they keep working after `runs/` is 
 
 ## What was learned, in order
 
-1. **SWAN looked worse than SnapWave in big waves** (notebook 08c). On the 39 hours
+1. **SWAN looked worse than SnapWave in big waves** (notebook 04). On the 39 hours
    Westhuysen, SWAN's default, was low in storms. Komen beat it, and ST6 was worse
    still.
 2. **The goal cases had whitecapping with no wind** (`GEN3` off but `WCAP` on): steep
@@ -62,16 +70,17 @@ Both notebooks read only `results/*.csv`, so they keep working after `runs/` is 
    level, and the stationary mode (a non-stationary Xaver run gained nothing).
 5. **Friction 0.019** (the SWAN manual's value for smooth seafloors) helps above 3 m
    on both the 39 and the 120 hours, at a small cost below 1 m.
-6. **Wind matters, so the linear sum needs K.** Without wind SWAN is −0.30 m on 500
-   hours. Wind adds 22 % in calm hours and 4–6 % in storms.
+6. **Wind matters.** Without wind SWAN is −0.30 m on 500 hours. Wind adds 22 % in calm
+   hours and 4–6 % in storms. How to add it to the linear sum is open
+   (`hywaves/WIND.md`).
 7. **SnapWave forced its coast.** `build_enclosure_polygon` took the minimum rectangle
    around the AoI, which held the whole mesh, so every outline node became a boundary
    node. The new enclosure follows the outline through the goals out to the lateral
    corners; on this mesh it matches SWAN's `.grd` open boundary exactly.
 8. **SnapWave is ~+0.2 m high in calm and moderate seas because of its wind input.**
    Without wind it matches SWAN; with wind it adds about twice what SWAN adds. That
-   lives in the source's growth curves, not in any setting, and the SnapWave K inherits
-   it.
+   lives in the source's growth curves, not in any setting, and any wind correction
+   learned from SnapWave inherits it.
 9. **SnapWave wind mode fails in ~3 % of hours** (swell with Tp > 10 s under winds of
    ~3 m/s). No setting fixes it (`dt`, `niter`, `jadcgdx`, upwind refraction, the
    enclosure), but the final error separates these runs cleanly, so they are dropped.
@@ -108,8 +117,9 @@ Both notebooks read only `results/*.csv`, so they keep working after `runs/` is 
 
 | Path | What | Git |
 | --- | --- | --- |
-| `README.md`, `01_*.ipynb`, `02_*.ipynb` | This summary and the two notebooks | tracked |
-| `decisions.py` | Tables and plots for the notebooks | tracked |
+| `README.md`, `01_*.ipynb` - `04_*.ipynb` | This summary and the four notebooks | tracked |
+| `decisions.py` | Tables and plots for 01 and 02 | tracked |
+| `model_comparison.py` | SnapWave vs SWAN readers, metrics and plots for 03 and 04 | tracked |
 | `results/*.csv` | Tidy scores: `buoy_scores`, `metamodel_ratios`, `snapwave_unstable_hours`, `snapwave_convergence_2013`, `swan_directions` | tracked |
 | `results/raw/` | The printed outputs the CSVs come from | tracked |
 | `results/figures/` | `snapwave_enclosure.png` | tracked |
@@ -119,13 +129,14 @@ Both notebooks read only `results/*.csv`, so they keep working after `runs/` is 
 | `runs/` | Case folders, SLURM logs, the October pilots (`pilot_2026-10/`), ~58 GB | ignored |
 
 ```bash
-cd Netherlands/model_decisions
+cd Netherlands/numerical_tests
 python scripts/collect_results.py   # results/*.csv from results/raw/
 python scripts/build_notebooks.py   # writes and executes the two notebooks
 ```
 
 **Running the scripts:** the scripts in `scripts/swan` and `scripts/snapwave` ran from
-`Netherlands/` when this folder was `SWAN_test/`. Their paths say so, and their
+`Netherlands/` when this folder was `SWAN_test/` (and imported `utils.model_comparison`,
+now `model_comparison.py` here). Their paths say so, and their
 reference runs (the production SnapWave and SWAN runs of 2026-11) have been replaced.
 They are kept to show exactly what was run, not to be run again as they are.
 

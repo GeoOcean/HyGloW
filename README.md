@@ -12,6 +12,9 @@
 HyGloW turns an offshore wave hindcast into nearshore waves for any coast:
 a few hundred runs of a nearshore wave model (SnapWave or SWAN) train a
 metamodel that reconstructs decades of hourly waves, bulk or full spectra.
+Any offshore hindcast works (e.g. WHACS or ERA5, raw or calibrated against
+satellite altimetry), with the water level of another one (e.g. CODEC); hourly
+runs of the same model, with wind and water level, check the result.
 How it works: [`hywaves/README.md`](hywaves/README.md).
 
 ## Install

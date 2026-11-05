@@ -564,45 +564,6 @@ def _check_engine(case_dir: Path, config: dict, report: _Report) -> None:
                 f"metamodel.paths.{key} must contain '{{metamodel}}' (the set name)",
             )
 
-    wind = mm.get("wind_correction")
-    if wind is not None:
-        if not isinstance(wind, dict):
-            report.error("engine.wind_correction", "metamodel.wind_correction must be a dict")
-        else:
-            if wind.get("wind", "inferred") not in ("inferred", "forcing"):
-                report.error(
-                    "engine.wind_correction",
-                    "metamodel.wind_correction.wind must be 'inferred' or 'forcing'",
-                )
-            elif wind.get("wind") == "forcing" and "wind" not in config.get("forcing", {}):
-                report.error(
-                    "engine.wind_correction",
-                    "metamodel.wind_correction.wind = 'forcing' needs forcing.wind",
-                )
-            if wind.get("added_tp", "wind_sea") not in ("wind_sea", "growth"):
-                report.error(
-                    "engine.wind_correction",
-                    "metamodel.wind_correction.added_tp must be 'wind_sea' or 'growth'",
-                )
-            for key in ("speed_ratio", "wind_wave_angle", "u10_range", "steepness_range", "spr_range"):
-                pair = wind.get(key)
-                if pair is not None and not (
-                    isinstance(pair, list) and len(pair) == 2
-                    and all(_is_number(v) for v in pair) and pair[0] < pair[1]
-                ):
-                    report.error(
-                        "engine.wind_correction",
-                        f"metamodel.wind_correction.{key} must be an increasing [low, high] pair",
-                    )
-            sector = wind.get("directions")
-            if sector is not None and not (
-                isinstance(sector, list) and len(sector) == 2 and all(_is_number(v) for v in sector)
-            ):
-                report.error(
-                    "engine.wind_correction",
-                    "metamodel.wind_correction.directions must be null or a clockwise [left, right] sector",
-                )
-
     forcing = config.get("forcing", {})
     if not isinstance(forcing, dict):
         report.error("engine.forcing", "forcing must be a dict")

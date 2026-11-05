@@ -528,7 +528,7 @@ class HyWavesWrapperSetup:
             Wind field at each case time (:func:`utils.config.open_wind`); None
             runs without it.
         output_dir, templates
-            Override the run's cases folder (e.g. the 05b wind training cases) /
+            Override the run's cases folder /
             ``simulations.<model>.dynamic_templates``.
         **kwargs
             Further wrapper arguments. SWAN also writes 2D spectra at the buoys.
@@ -613,12 +613,8 @@ class HyWavesWrapperSetup:
         water_level: xr.DataArray | None = None,
     ) -> Figure:
         """Wind and water level of the dynamic cases (see
-        :func:`bluemath_tk.waves.hywaves.plots.plot_dynamic_forcing`); the
-        wind-wave angle panel shades the wind correction's training range.
-        """
+        :func:`bluemath_tk.waves.hywaves.plots.plot_dynamic_forcing`)."""
         from bluemath_tk.waves.hywaves.plots import plot_dynamic_forcing
-
-        from utils.wind import config as wind_config
 
         return plot_dynamic_forcing(
             self.aoi_gdf,
@@ -626,7 +622,6 @@ class HyWavesWrapperSetup:
             offshore,
             wind=wind,
             water_level=water_level,
-            angle_range=tuple(wind_config()["wind_wave_angle"]),
             wind_name=_forcing_name("wind"),
             water_level_name=_forcing_name("water_level"),
             title=display_title(f"Dynamic met-ocean forcing ({self.model})"),

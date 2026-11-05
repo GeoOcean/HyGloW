@@ -86,12 +86,12 @@ class TestReconstructionStore(unittest.TestCase):
     def test_store_name(self) -> None:
         with mock.patch("utils.metamodel.simulation_model", return_value="snapwave"):
             self.assertEqual(
-                mm._store_name(550, "buoys", False, 0.0, False, None, False),
-                "buoys_mda550_snapwave_bulk_wl-0_wind-off",
+                mm._store_name(550, "buoys", False, 0.0, None, False),
+                "buoys_mda550_snapwave_bulk_wl-0",
             )
             self.assertEqual(
-                mm._store_name(100, "isobaths", True, "forcing", True, ["1", "2"], True),
-                "isobaths_mda100_snapwave_spectral_wl-forcing_wind-on_goals-1-2_spectra",
+                mm._store_name(100, "isobaths", True, "forcing", ["1", "2"], True),
+                "isobaths_mda100_snapwave_spectral_wl-forcing_goals-1-2_spectra",
             )
 
     def test_fingerprint_follows_the_files(self) -> None:

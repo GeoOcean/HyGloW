@@ -2,7 +2,7 @@
 
 The scores were computed by the scripts in ``scripts/swan`` and ``scripts/snapwave``
 against the production runs of 2026-11 (since replaced), so they are kept as
-printed and parsed here. Run from ``Netherlands/model_decisions/``:
+printed and parsed here. Run from ``Netherlands/numerical_tests/``:
 
     python scripts/collect_results.py
 """

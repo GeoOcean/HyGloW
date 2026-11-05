@@ -656,22 +656,6 @@ def _valid_forcing(offshore: xr.Dataset, goal: str, partition: int, wl: float | 
     return df[hw.valid_timesteps(df, sector=tuple(load_goals()[goal]["angles"]))]
 
 
-def _wind_sea(forcing: pd.DataFrame) -> dict[str, tuple[str, np.ndarray]]:
-    """Offshore wind-sea weight and inferred wind of the forcing rows, on ``time``."""
-    from bluemath_tk.waves.hywaves.wind_correction import offshore_wind_sea
-
-    from utils.wind import config as wind_config
-
-    cfg = wind_config()
-    ws = offshore_wind_sea(
-        forcing,
-        steepness_range=tuple(cfg["steepness_range"]),
-        spr_range=tuple(cfg["spr_range"]),
-        speed_factor=float(cfg["speed_factor"]),
-    )
-    return {name: ("time", ws[name].to_numpy()) for name in ws}
-
-
 def _goal_pcs(goal: str, metamodel: str, n: int, forcing: pd.DataFrame, device: str) -> np.ndarray:
     """GP prediction (stacked PCs) of one goal for the forcing rows (one process)."""
     gp = load_model(gp_model_path(goal, metamodel, n))
@@ -690,7 +674,6 @@ def predict_goal(
     wl: WaterLevel = 0.0,
     models: dict[str, Any] | None = None,
     device: str | None = None,
-    wind_sea: bool = False,
 ) -> xr.Dataset | None:
     """
     Nearshore contribution of one goal and offshore partition over a hindcast.
@@ -715,9 +698,6 @@ def predict_goal(
         series at the goal.
     models, device
         As for :func:`predict`.
-    wind_sea
-        Also return the offshore wind-sea weight ``ws_weight`` and inferred
-        wind ``u10`` / ``u10dir`` on ``time`` (for :mod:`utils.wind`).
 
     Returns
     -------
@@ -728,8 +708,7 @@ def predict_goal(
     forcing = _valid_forcing(offshore, goal, partition, _goal_wl(offshore, goal, wl))
     if forcing.empty:
         return None
-    pred = predict(goal, n, forcing, metamodel=metamodel, sites=sites, models=models, device=device)
-    return pred.assign(_wind_sea(forcing)) if wind_sea else pred
+    return predict(goal, n, forcing, metamodel=metamodel, sites=sites, models=models, device=device)
 
 
 # ---------------------------------------------------------------------------
@@ -747,7 +726,6 @@ def goal_contributions(
     resources: ReconstructionResources,
     goals: Iterable[str | int] | None = None,
     wl: WaterLevel = 0.0,
-    wind_sea: bool = False,
 ) -> list[xr.Dataset]:
     """
     Contribution of every goal and offshore partition (as :func:`predict_goal`).
@@ -771,7 +749,7 @@ def goal_contributions(
         (:func:`reconstruction_resources`).
     goals
         Goals to include; default all.
-    wl, wind_sea
+    wl
         As for :func:`predict_goal`.
 
     Returns
@@ -804,8 +782,6 @@ def goal_contributions(
                 loaded, pcas = goal, _load_pcas(goal, metamodel, n)
             fields = hw.fields_from_pcs(goal_pcs, pcas, forcing[MDA_INPUTS], VARS, sites)
             fields = fields.assign_coords(coords)
-            if wind_sea:
-                fields = fields.assign(_wind_sea(forcing))
             chunks.append(fields.expand_dims(goal=[int(goal)], partition=[partition]).load())
     _release_gp_memory()
     return chunks
@@ -818,7 +794,6 @@ def sum_contributions(
     resources: ReconstructionResources,
     variables: Mapping[str, str] | None = None,
     save_spectra: bool = False,
-    wind_correction: bool = False,
 ) -> tuple[xr.Dataset, xr.Dataset | None]:
     """
     Linear spectral sum of goal contributions into bulk parameters.
@@ -840,9 +815,6 @@ def sum_contributions(
         ``metamodel.reconstruction.variables``.
     save_spectra
         Also return the summed spectra.
-    wind_correction
-        Add the local wind sea before the sum (see :mod:`utils.wind`); the
-        chunks must carry the wind-sea variables (``wind_sea=True``).
 
     Returns
     -------
@@ -851,15 +823,10 @@ def sum_contributions(
     """
     sites = list(sites)
     times = np.unique(np.concatenate([c["time"].values for c in chunks]))
-    wind_inputs = None
-    if wind_correction:
-        from utils.wind import reconstruction_inputs
-
-        wind_inputs = reconstruction_inputs(times, sites)
     held = 2 * sum(c.nbytes for c in chunks)
     if save_spectra:
         held += 3 * hwr.spectra_bytes(len(times), len(sites))
-    parts = sum(c.sizes["goal"] * c.sizes["partition"] for c in chunks) + int(wind_correction)
+    parts = sum(c.sizes["goal"] * c.sizes["partition"] for c in chunks)
     workers = sum_workers(len(sites), len(times), parts, resources.workers)
     return hwr.sum_partition_spectra_batched(
         chunks,
@@ -869,22 +836,10 @@ def sum_contributions(
         workers=workers,
         save_spectra=save_spectra,
         log_file=str(resolve("logs/metamodel.log")),
-        wind_correction=wind_inputs,
     )
 
 
-def _wind_correction_on(wind_correction: bool | None) -> bool:
-    """*wind_correction*, or ``metamodel.wind_correction.enabled`` when None."""
-    if wind_correction is not None:
-        return bool(wind_correction)
-    from utils.wind import enabled
-
-    return enabled()
-
-
-def _input_files(
-    metamodel: str, n: int, goals: list[str], offshore_name: str, wl: WaterLevel, wind_correction: bool
-) -> list[Path]:
+def _input_files(metamodel: str, n: int, goals: list[str], offshore_name: str, wl: WaterLevel) -> list[Path]:
     """Files a reconstruction depends on: fitted models, splits, sites, offshore and forcing stores."""
     files = [output_sites_path(), resolve(get_offshore_wave(offshore_name)["data_path"])]
     for goal in goals:
@@ -892,12 +847,6 @@ def _input_files(
         files += [pca_model_path(goal, metamodel, n, name, var) for name, var, _ in PCA_TARGETS]
     if wl == WL_FROM_FORCING:
         files.append(resolve(FORCING["water_level"]["data_path"]))
-    if wind_correction:
-        from utils import wind
-
-        files += [wind.correction_path(), wind.fetch_table_path()]
-        if wind.config()["wind"] == "forcing":
-            files.append(resolve(FORCING["wind"]["data_path"]))
     return files
 
 
@@ -912,13 +861,12 @@ def _fingerprint(files: Iterable[Path]) -> str:
 
 
 def _store_name(
-    n: int, metamodel: str, spectral: bool, wl: WaterLevel, wind: bool,
-    goals: list[str] | None, spectra: bool,
+    n: int, metamodel: str, spectral: bool, wl: WaterLevel, goals: list[str] | None, spectra: bool
 ) -> str:
-    """``{set}_mda{n}_{model}_{bulk|spectral}_wl-{wl}_wind-{on|off}[_goals-..][_spectra]``."""
+    """``{set}_mda{n}_{model}_{bulk|spectral}_wl-{wl}[_goals-..][_spectra]``."""
     return (
         f"{metamodel}_mda{n}_{simulation_model()}_{'spectral' if spectral else 'bulk'}"
-        f"_wl-{wl if isinstance(wl, str) else f'{wl:g}'}_wind-{'on' if wind else 'off'}"
+        f"_wl-{wl if isinstance(wl, str) else f'{wl:g}'}"
         + (f"_goals-{'-'.join(goals)}" if goals else "")
         + ("_spectra" if spectra else "")
     )
@@ -933,24 +881,22 @@ def reconstruction_store(
     goals: Iterable[str | int] | None = None,
     wl: WaterLevel = 0.0,
     variables: Mapping[str, str] | None = None,
-    wind_correction: bool | None = None,
     spectra: bool = False,
 ) -> ReconstructionStore:
     """
     The cache of one reconstruction setup (bulk, or ``spectra=True`` for ``efth``).
 
-    ``tmp/reconstruct/{offshore}/{set}_mda{n}_{model}_{bulk|spectral}_wl-{wl}_wind-{on|off}[_goals-..][_spectra].zarr``,
+    ``tmp/reconstruct/{offshore}/{set}_mda{n}_{model}_{bulk|spectral}_wl-{wl}[_goals-..][_spectra].zarr``,
     holding every site of the set (kept in every goal) on the whole offshore
     time axis, one chunk per site and calendar month (see
     :class:`bluemath_tk.waves.hywaves.store.ReconstructionStore`). It is
     rebuilt when the setup or any input file (fitted models, ``split.json``,
-    sites table, offshore and forcing stores, wind correction) changes. Its
+    sites table, offshore and forcing stores) changes. Its
     attributes record the setup and the PCs per goal.
     """
     goals = _goals(goals)
     variables = dict(variables or RECONSTRUCTION["variables"])
-    wind = _wind_correction_on(wind_correction)
-    name = _store_name(n, metamodel, spectral, wl, wind, goals if goals != _goals() else None, spectra)
+    name = _store_name(n, metamodel, spectral, wl, goals if goals != _goals() else None, spectra)
     key = {
         "version": CACHE_VERSION,
         "model": simulation_model(),
@@ -961,14 +907,13 @@ def reconstruction_store(
         "goals": goals,
         "wl": wl,
         "variables": variables,
-        "wind": None if not wind else {k: v for k, v in METAMODEL.get("wind_correction", {}).items() if k != "enabled"},
         "config": {k: METAMODEL.get(k) for k in ("mda_inputs", "vars_to_predict", "site_filter", "pca_preprocessing")},
     }
     if spectra:
         store_vars = {"efth": ("freq", "dir")}
         coords = {"freq": hwr.SPECTRAL_FREQ, "dir": hwr.SPECTRAL_DIR}
     else:
-        store_vars = {v: () for v in [*variables, *(["wind_k"] if wind else [])]}
+        store_vars = {v: () for v in variables}
         coords = {}
 
     def pcs() -> dict[str, Any]:
@@ -985,7 +930,7 @@ def reconstruction_store(
         store_vars,
         coords=coords,
         key=key,
-        fingerprint=_fingerprint(_input_files(metamodel, n, goals, offshore_name, wl, wind)),
+        fingerprint=_fingerprint(_input_files(metamodel, n, goals, offshore_name, wl)),
         attrs=pcs,
     )
 
@@ -1002,14 +947,13 @@ class _Request:
     site_ids: list[str]
     variables: dict[str, str]
     save_spectra: bool
-    wind: bool
     stores: list[ReconstructionStore]
 
     @property
     def parts(self) -> int:
-        """Contributions summed per site: goals x partitions (+ 1 wind sea)."""
+        """Contributions summed per site: goals x partitions."""
         partitions = len(hwr.SPECTRAL_PARTITIONS) if self.spectral else 1
-        return len(self.goals) * partitions + int(self.wind)
+        return len(self.goals) * partitions
 
     def todo(self, time: str | slice, recompute: bool = False) -> dict[str, list[str]]:
         """Sites to compute per month (every requested one with *recompute*), in store order."""
@@ -1026,7 +970,7 @@ class _Request:
 def _request(
     n: int, *, metamodel: str, spectral: bool, offshore_name: str, goals: Iterable[str | int] | None,
     wl: WaterLevel, sites: str | Iterable[str] | None, variables: Mapping[str, str] | None,
-    save_spectra: bool | None, wind_correction: bool | None,
+    save_spectra: bool | None,
 ) -> _Request:
     if not (isinstance(wl, (int, float)) or (isinstance(wl, str) and wl == WL_FROM_FORCING)):
         raise ValueError(
@@ -1037,14 +981,13 @@ def _request(
     require_models(metamodel, n, goals)
     variables = dict(variables or RECONSTRUCTION["variables"])
     save_spectra = RECONSTRUCTION["save_spectra"] if save_spectra is None else bool(save_spectra)
-    wind = _wind_correction_on(wind_correction)
     setup = dict(metamodel=metamodel, spectral=spectral, offshore_name=offshore_name,
-                 goals=goals, wl=wl, variables=variables, wind_correction=wind)
+                 goals=goals, wl=wl, variables=variables)
     stores = [reconstruction_store(n, **setup)]
     if save_spectra:
         stores.append(reconstruction_store(n, **setup, spectra=True))
     return _Request(n, metamodel, spectral, goals, wl, reconstruction_sites(metamodel, sites, goals),
-                    variables, save_spectra, wind, stores)
+                    variables, save_spectra, stores)
 
 
 def reconstruction_resources(
@@ -1059,7 +1002,6 @@ def reconstruction_resources(
     sites: str | Iterable[str] | None = None,
     variables: Mapping[str, str] | None = None,
     save_spectra: bool | None = None,
-    wind_correction: bool | None = None,
     recompute: bool = False,
 ) -> ReconstructionResources:
     """
@@ -1083,7 +1025,7 @@ def reconstruction_resources(
     Parameters
     ----------
     time, n, metamodel, spectral, offshore_name, goals, wl, sites, variables,
-    save_spectra, wind_correction, recompute
+    save_spectra, recompute
         As for :func:`reconstruct`.
 
     Returns
@@ -1094,7 +1036,7 @@ def reconstruction_resources(
     """
     req = _request(n, metamodel=metamodel, spectral=spectral, offshore_name=offshore_name,
                    goals=goals, wl=wl, sites=sites, variables=variables,
-                   save_spectra=save_spectra, wind_correction=wind_correction)
+                   save_spectra=save_spectra)
     todo = req.todo(time, recompute)
     n_months, n_sites = len(todo), len(set().union(*todo.values())) if todo else 0
     site_months = sum(len(v) for v in todo.values())
@@ -1145,7 +1087,6 @@ def reconstruct(
     sites: str | Iterable[str] | None = None,
     variables: Mapping[str, str] | None = None,
     save_spectra: bool | None = None,
-    wind_correction: bool | None = None,
     use_cache: bool = True,
     recompute: bool = False,
 ) -> xr.Dataset:
@@ -1184,9 +1125,6 @@ def reconstruct(
     save_spectra
         Store the summed spectra too (:func:`load_reconstruction_spectra`);
         default ``metamodel.reconstruction.save_spectra``.
-    wind_correction
-        Add the local wind sea (see :mod:`utils.wind`); the output then has
-        ``wind_k``. Default ``metamodel.wind_correction.enabled``.
     use_cache
         Read and write the cache (``False``: compute the selection in one call).
     recompute
@@ -1207,7 +1145,7 @@ def reconstruct(
     """
     req = _request(n, metamodel=metamodel, spectral=spectral, offshore_name=offshore_name,
                    goals=goals, wl=wl, sites=sites, variables=variables,
-                   save_spectra=save_spectra, wind_correction=wind_correction)
+                   save_spectra=save_spectra)
     offshore = open_offshore_waves(offshore_name)
 
     def check(months: int, n_sites: int) -> None:
@@ -1224,12 +1162,12 @@ def reconstruct(
         t0 = _time.monotonic()
         chunks = goal_contributions(
             off, n, metamodel=metamodel, sites=sites_, spectral=spectral, goals=req.goals,
-            wl=wl, resources=resources, wind_sea=req.wind,
+            wl=wl, resources=resources,
         )
         t1 = _time.monotonic()
         out = sum_contributions(
             chunks, sites_, resources=resources, variables=req.variables,
-            save_spectra=req.save_spectra and use_cache, wind_correction=req.wind,
+            save_spectra=req.save_spectra and use_cache,
         )
         logger.info("%d steps x %d sites: contributions %.0f s, sum %.0f s",
                     off.sizes["time"], len(sites_), t1 - t0, _time.monotonic() - t1)
@@ -1267,66 +1205,13 @@ def reconstruct(
     return req.stores[0].read(time, req.site_ids).assign_coords(site_meta(req.site_ids).coords)
 
 
-def wind_sea_diagnostics(
-    time: str | slice,
-    n: int,
-    *,
-    metamodel: str,
-    resources: ReconstructionResources,
-    offshore_name: str = "WHACS",
-    goals: Iterable[str | int] | None = None,
-    wl: WaterLevel = 0.0,
-    sites: str | Iterable[str] | None = None,
-) -> xr.Dataset:
-    """
-    What the wind correction sees at each site and step: the wind sea, the inputs of ``K``, ``K``.
-
-    Computes the goal contributions as :func:`reconstruct` does with
-    ``wind_correction=True`` (no cache: meant for short periods, e.g. one
-    storm), then :func:`bluemath_tk.waves.hywaves.wind_correction.wind_sea_inputs`.
-
-    Parameters
-    ----------
-    time, n, metamodel, resources, offshore_name, goals, wl, sites
-        As for :func:`reconstruct`.
-
-    Returns
-    -------
-    xarray.Dataset
-        ``e_ws``, ``hs_ws``, ``tp_ws``, ``ws_dir``, ``u10``, ``u10dir``,
-        ``angle``, ``fetch``, ``mean_depth``, ``depth``, ``hs_ws_u2`` and
-        ``k`` on ``(time, sites)``, with the site metadata.
-
-    Raises
-    ------
-    ValueError
-        If nothing in the period is wind sea.
-    """
-    from bluemath_tk.waves.hywaves.wind_correction import wind_sea_inputs
-
-    from utils.wind import reconstruction_inputs
-
-    goals = _goals(goals)
-    require_models(metamodel, n, goals)
-    site_ids = reconstruction_sites(metamodel, sites, goals)
-    offshore = open_offshore_waves(offshore_name).sel(time=time)
-    chunks = goal_contributions(offshore, n, metamodel=metamodel, sites=site_ids, spectral=True,
-                                resources=resources, goals=goals, wl=wl, wind_sea=True)
-    cube = xr.merge(chunks, join="outer", compat="no_conflicts")
-    inputs = reconstruction_inputs(cube["time"].values, site_ids)
-    ws = wind_sea_inputs(cube, inputs["correction"], inputs["fetch"], inputs["wind"])
-    if ws is None:
-        raise ValueError(f"No wind sea in {time!r}")
-    return ws.assign_coords(site_meta(site_ids).coords)
-
-
 def load_reconstruction_spectra(time: str | slice, n: int, *, sites: str | Iterable[str] | None = None,
                                 **setup: Any) -> xr.Dataset:
     """
     Summed spectra stored by :func:`reconstruct` with ``save_spectra=True``.
 
     *setup*: the same ``metamodel``, ``spectral``, ``offshore_name``, ``goals``,
-    ``wl``, ``variables``, ``wind_correction`` as that call.
+    ``wl``, ``variables`` as that call.
 
     Returns
     -------
