@@ -242,7 +242,7 @@ they are recomputed: notebooks, `numerical_tests/`, `analysis/`, the dashboard)
   energy, computed per case (Netherlands: sea close to Pierson-Moskowitz, swell
   above a narrow JONSWAP: broad swell partitions). One processed ERA5 zarr, with Tp.
 
-## Where we are (2026-11-05)
+## Where we are (2026-11-06)
 
 hywaves **0.16.0** (no wind in the reconstruction; store names without
 `wind-`) on `main` (HyGloW); bluemath_tk on `feature/more-hywaves` (into `develop`).
@@ -257,8 +257,11 @@ wind on/off) and the reconstruction cache (mda600, `wl="forcing"`, every set,
 both sources, bulk and spectral). First-iteration conclusions:
 `Netherlands/analysis/README.md` (linear sum fine on average, high in the
 biggest seas at 5 m; missing wind the largest error; spectral Tp/Dir/Spr poor;
-calibration helps the storm tail). `validate --publish` passes;
-`outputs/gui_figures/` (notebook 12) is still missing.
+calibration helps the storm tail). Notebooks 10 and 12 run on 2013 and
+`portal/` is published (SnapWave); `portal_snapwave/` is the older snapshot.
+Notebook 11 waits for buoy spectra (the processed buoys are bulk only).
+`Netherlands.json` is switched to `model: swan` for the SWAN pass (uncommitted
+work in notebook 08).
 
 **Reconstruction internals** (bluemath_tk `waves/hywaves/store.py`,
 `core/resources.py`, `waves/hywaves/resources.py`; details and open points in
@@ -270,8 +273,7 @@ measured on the 48-core node: re-measure there if the sum changes.
 
 **Next (user)**: decide from `analysis/` what to fix or move into 09-12
 (spectral Tp/Dir/Spr, the 5 m storm overshoot, wind: `hywaves/WIND.md`
-options); notebook 12, publish, re-snapshot `portal_snapwave`, deck; notebook
-11 still has the template `TODO_Buoy`; SWAN pass (05-12 with `model: swan`,
+options); deck from the new portal; buoy spectra for notebook 11; SWAN pass (05-12 with `model: swan`,
 `tp` as PCA target, then snapshot `swan`); migrate Samoa and NewSouthWales
 (`update` + config + re-run). Cluster: arrays <= 9999 tasks and 20000 job
 records (bigger runs in `OFFSET` blocks).
