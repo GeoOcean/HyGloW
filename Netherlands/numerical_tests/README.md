@@ -21,26 +21,29 @@ same hours; rerun them once both models have the full 05 and 08 runs.
 
 ## Decisions
 
-| Model | Setting | Decision | Main evidence (Hs, 27 buoys) |
+The numbers behind each decision are in `results/*.csv` (frozen with the tests), notebooks
+01 and 02, and the dashboard's Numerical tests page.
+
+| Model | Setting | Decision | Why (Hs at 27 buoys, or the other model) |
 | --- | --- | --- | --- |
-| SWAN | Source terms (dynamic, with wind) | `GEN3 KOMEN` | Storm RMSE 0.35 m (Westhuysen 0.41, ST6 0.41); ST6 needs 16 GB and twice the time |
-| SWAN | Whitecapping in no-wind cases (goal cases) | `OFF WCAP` | Steep goal cases go from 0.75 to 0.95 of SnapWave Hs |
-| SWAN | Bottom friction | `FRICTION JONSWAP CONSTANT 0.019` | 120 independent hours: RMSE 0.31 → 0.30; 3–4 m 0.39 → 0.36; below 1 m bias +0.06 → +0.09 |
-| SWAN | Breaking, triads, iterations, directions, water level | Unchanged: `BREAKING CONSTANT 1.0 0.73`, `TRIAD`, `STOPC` defaults with 50 iterations, `CIRCLE 36`, one level per case | `BKD`, no triads, 100 iterations, 5°, water-level field: ≤ 0.02 m, or worse |
-| SWAN | Wind input | ERA5 wind as is, no `AGROW` | `AGROW`: no change; wind × 1.1: Xaver better, calm RMSE 0.17 → 0.25 |
+| SWAN | Source terms (dynamic, with wind) | `GEN3 KOMEN` | Best in storms; Westhuysen and ST6 lower, and ST6 needs 16 GB and twice the time |
+| SWAN | Whitecapping in no-wind cases (goal cases) | `OFF WCAP` | Without it steep goal cases lose a quarter of their Hs against SnapWave |
+| SWAN | Bottom friction | `FRICTION JONSWAP CONSTANT 0.019` | Better above 3 m on the 39 and the 120 independent hours, slightly high below 1 m |
+| SWAN | Breaking, triads, iterations, directions, water level | Unchanged: `BREAKING CONSTANT 1.0 0.73`, `TRIAD`, `STOPC` defaults with 50 iterations, `CIRCLE 36`, one level per case | `BKD`, no triads, 100 iterations, 5° and a water-level field change nothing at the buoys, or make it worse |
+| SWAN | Wind input | ERA5 wind as is, no `AGROW` | `AGROW` changes nothing; wind × 1.1 helps Xaver but spoils calm hours |
 | SWAN | Outputs | `TMM10` in the table, 2D spectra at the buoys in dynamic runs | For Tp and notebook 11 |
-| SnapWave | Boundary enclosure | Thin polygon around the open boundary (`open_boundary_nodes`, `open_boundary_enclosure`) | The AoI rectangle also forced the coast (6,329 boundary nodes, now 768); up to 0.3 m less Hs nearshore |
-| SnapWave | Refraction scheme | `upwindref = 1` | Every goal case converges; gentle seas 1.09–1.17 → 1.03 of SWAN |
+| SnapWave | Boundary enclosure | Thin polygon around the open boundary (`open_boundary_nodes`, `open_boundary_enclosure`) | The AoI rectangle also forced the coast (6,329 boundary nodes, now 768) and was too high nearshore |
+| SnapWave | Refraction scheme | `upwindref = 1` | Every goal case converges, and gentle seas agree with SWAN |
 | SnapWave | Iterations | `niter = 200` (sweeps) | Upwind runs need ~13 iterations = 52 sweeps; no cost once converged |
 | SnapWave | Friction, sector | Defaults (`fw` 0.01, sector 180 / 360 with wind) | `fw` 0.02 and 0.04 trade calm hours for storms; sector 360 gains nothing |
-| SnapWave | Non-converging runs | Dropped in postprocessing (final error > 0.01, `MAX_ERROR`) | 241 of 8,760 hours of 2013 (2.8 %) above 0.01; their median Hs max is 3–10 times the offshore Hs |
-| Both | Offshore forcing | WHACS_cal with satellite quantile mapping (07b); dynamic forcing still open | Xaver RMSE 0.72 → 0.62; ERA5_cal 0.47 |
-| Both | Hs bounds of the goal cases | `hs` [0.05, 10] m, 1,500 samples per goal (864 kept) | Mapped WHACS_cal reaches 9.9 m; forcing steepness stays below 0.06 |
+| SnapWave | Non-converging runs | Dropped in postprocessing (final error > 0.01, `MAX_ERROR`) | A few % of the hours of 2013, with Hs maxima far above the offshore Hs |
+| Both | Offshore forcing | WHACS_cal with satellite quantile mapping (07b); dynamic forcing still open | Better Xaver than raw WHACS; ERA5_cal better still |
+| Both | Hs bounds of the goal cases | `hs` [0.05, 10] m, 1,500 samples per goal (864 kept) | The mapped WHACS_cal reaches about 10 m; forcing steepness stays below 0.06 |
 
 ## Test design
 
 - **Buoys:** 27 Netherlands and Belgian buoys with Hs in 2013 (`utils/buoy_archive.py`).
-  Bias = model − buoy, RMSE in m, n = hour-buoy pairs.
+  Bias = model − buoy, n = hour-buoy pairs.
 - **39 test hours** (`inputs/dynamic_hours.csv`): 8 calm, 20 storm (January–February),
   11 Xaver (December 5–6). Each test changes one thing on the same hours.
 - **120 other hours** (`inputs/hours_6.csv`): random hours from a 2013 sample
@@ -60,52 +63,50 @@ same hours; rerun them once both models have the full 05 and 08 runs.
    Westhuysen, SWAN's default, was low in storms. Komen beat it, and ST6 was worse
    still.
 2. **The goal cases had whitecapping with no wind** (`GEN3` off but `WCAP` on): steep
-   cases lost 25 % of their Hs. `OFF WCAP` fixed it.
+   cases lost a quarter of their Hs. `OFF WCAP` fixed it.
 3. **Most of the storm deficit was the forcing.** The old WHACS_cal was too low in the
-   tail (9 deep buoys 1979–2023: p99.99 −1.06 m). A satellite-only quantile mapping
-   (IMOS, all goals pooled, constant beyond p99.9) brought it to −0.14 m. ERA5_cal is
-   better still in Xaver.
-4. **Ruled out as the cause of the deficit:** the boundary (Hs at the goal nodes
-   0.97–1.00 of the forcing), the 50-iteration limit, breaking, friction, the water
-   level, and the stationary mode (a non-stationary Xaver run gained nothing).
+   tail at the deep buoys. A satellite-only quantile mapping (IMOS, all goals pooled,
+   constant beyond p99.9) fixed most of it. ERA5_cal is better still in Xaver.
+4. **Ruled out as the cause of the deficit:** the boundary (Hs at the goal nodes equals
+   the forcing), the 50-iteration limit, breaking, friction, the water level, and the
+   stationary mode (a non-stationary Xaver run gained nothing).
 5. **Friction 0.019** (the SWAN manual's value for smooth seafloors) helps above 3 m
    on both the 39 and the 120 hours, at a small cost below 1 m.
-6. **Wind matters.** Without wind SWAN is −0.30 m on 500 hours. Wind adds 22 % in calm
-   hours and 4–6 % in storms. How to add it to the linear sum is open
-   (`hywaves/WIND.md`).
+6. **Wind matters**, most in calm hours, less in storms. How to add it to the linear sum
+   is open (`hywaves/WIND.md`).
 7. **SnapWave forced its coast.** `build_enclosure_polygon` took the minimum rectangle
    around the AoI, which held the whole mesh, so every outline node became a boundary
    node. The new enclosure follows the outline through the goals out to the lateral
    corners; on this mesh it matches SWAN's `.grd` open boundary exactly.
-8. **SnapWave is ~+0.2 m high in calm and moderate seas because of its wind input.**
-   Without wind it matches SWAN; with wind it adds about twice what SWAN adds. That
-   lives in the source's growth curves, not in any setting, and any wind correction
-   learned from SnapWave inherits it.
-9. **SnapWave wind mode fails in ~3 % of hours** (swell with Tp > 10 s under winds of
-   ~3 m/s). No setting fixes it (`dt`, `niter`, `jadcgdx`, upwind refraction, the
-   enclosure), but the final error separates these runs cleanly, so they are dropped.
+8. **SnapWave is high in calm and moderate seas because of its wind input.** Without
+   wind it matches SWAN; with wind it adds about twice what SWAN adds. That lives in the
+   source's growth curves, not in any setting, and any wind correction learned from
+   SnapWave inherits it.
+9. **SnapWave wind mode fails in a few % of hours** (long swell under light wind). No
+   setting fixes it (`dt`, `niter`, `jadcgdx`, upwind refraction, the enclosure), but the
+   final error separates these runs cleanly, so they are dropped.
 
 ## Open points
 
-- **Dynamic forcing:** ERA5_cal wins above 4 m, but mostly in Xaver. ERA5 partition
-  periods are doubtful (9 % of partition energy has Tp > 15 s).
+- **Dynamic forcing:** ERA5_cal wins in the biggest seas, but mostly in Xaver. ERA5
+  partition periods are doubtful (some partition energy at very long periods).
 - **SnapWave wind input:** the calm-sea overestimate needs a fix in the source, not
   in the template.
 - **SnapWave dynamic runs** centre every goal's spectrum on one domain-mean direction.
   This affects only the dynamic reference, not the hybrid.
-- **ERA5 storm winds:** Xaver stays low in every setup (6–12 m: −0.4 to −1.3 m).
+- **ERA5 storm winds:** Xaver stays low in every setup at the biggest buoy seas.
 - **Water level in dynamic runs:** both models use one level per case. SnapWave
   averages the boundary nodes (`depth = max(mean(zs_boundary) - zb, hmin)` in
-  `snapwave_boundaries.f90`), and the SWAN template sets one `SET LEVEL`. At the Xaver
-  peak (2013-12-05 18:00) the goals ranged from −0.49 to +1.55 m, but both ran at
-  0.81 m everywhere. Goal cases are unaffected (one level at every node), and the
-  hybrid with `wl="forcing"` keeps each goal's own level. A SWAN water-level field
-  changed buoy Hs by ≤ 0.02 m, but the buoys are mostly deeper than 15 m, so the 5 m
-  sites in surge storms are not checked. A field in SnapWave needs a source patch.
+  `snapwave_boundaries.f90`), and the SWAN template sets one `SET LEVEL`. In surge
+  storms the goals' levels differ by metres (Xaver peak) but both run at one mean
+  level. Goal cases are unaffected (one level at every node), and the hybrid with
+  `wl="forcing"` keeps each goal's own level. A SWAN water-level field changed nothing
+  at the buoys, but they are mostly deeper than 15 m, so the 5 m sites in surge storms
+  are not checked. A field in SnapWave needs a source patch.
 - **Breaking is not validated:** the 27 buoys sit outside the surf zone. At the Xaver
-  peak, breaking is a median 87 % of the dissipation at the 5 m isobath, 39 % at 10 m
-  and 0 % at 20 m, but nearly nil at the buoys. So `gamma` (SnapWave 0.7, SWAN 0.73)
-  and `BREAKING BKD` were only weakly tested.
+  peak breaking dominates the dissipation at 5 m, matters at 10 m and is nil at 20 m
+  and at the buoys. So `gamma` (SnapWave 0.7, SWAN 0.73) and `BREAKING BKD` were only
+  weakly tested.
 - **Unused SnapWave outputs:** every history file also holds `point_dw` (breaking
   dissipation, W/m²), `point_df` (bottom-friction dissipation), `point_zs`, `point_zb`
   and, with wind, `point_Sw` / `point_St` (wind input). Postprocessing keeps only Hs,

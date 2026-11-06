@@ -31,8 +31,8 @@
   "updated": "2026-11-04T18:08:36+00:00",
   "bluemath_tk": {
     "version": "1.3.dev49",
-    "commit": "e280155884b4214f7a45ec4da0264196c5962bdb",
+    "commit": "e429cabc8c43a4fba24a967125587bcec138f9da",
     "branch": "feature/more-hywaves",
-    "dirty": true
+    "dirty": false
   }
 }

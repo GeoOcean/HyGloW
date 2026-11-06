@@ -1,0 +1,797 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2020-02-28 to 2025-06-30",
+        "measured_depth": 11.0,
+        "name": "A2",
+        "instrument_id": "A2"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          3.12,
+          51.36
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2011-05-19 to 2025-06-30",
+        "measured_depth": 11.0,
+        "name": "AWG",
+        "instrument_id": "AWG"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          5.95,
+          53.5
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2014-01-24 to 2025-06-30",
+        "measured_depth": 22.0,
+        "name": "Akkaert",
+        "instrument_id": "Akkaert"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          2.82,
+          51.42
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2003-12-10 to 2019-07-11",
+        "measured_depth": 13.0,
+        "name": "Amelander31",
+        "instrument_id": "Amelander31"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          5.6,
+          53.45
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2003-12-04 to 2019-05-09",
+        "measured_depth": 18.0,
+        "name": "Amelander Zeegat, 1.1",
+        "instrument_id": "AmelanderZeegat_1_1"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          5.4814,
+          53.5076
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2014-05-30 to 2025-06-30",
+        "measured_depth": 13.0,
+        "name": "BolVanHeistBuoy",
+        "instrument_id": "BolVanHeistBuoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          3.2,
+          51.39
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "1998-07-20 to 2025-09-30",
+        "measured_depth": 14.0,
+        "name": "Brouwershavensegat",
+        "instrument_id": "Brouwershavensegat"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          3.62,
+          51.77
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "1997-11-24 to 2025-09-30",
+        "measured_depth": 12.0,
+        "name": "CadzandBoei",
+        "instrument_id": "CadzandBoei"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          3.37,
+          51.39
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2011-05-19 to 2025-06-30",
+        "measured_depth": 14.0,
+        "name": "Deurlo",
+        "instrument_id": "Deurlo"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          3.24,
+          51.5
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2014-05-29 to 2025-12-15",
+        "measured_depth": 12.0,
+        "name": "DomburgerRassen",
+        "instrument_id": "DomburgerRassen"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          3.4,
+          51.62
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "1979-09-13 to 2025-12-31",
+        "measured_depth": 27.0,
+        "name": "Eierlandse Gat",
+        "instrument_id": "EierlandseGat"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          4.66035,
+          53.2762
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2002-10-30 to 2025-12-31",
+        "measured_depth": 37.0,
+        "name": "EurogeulDWE",
+        "instrument_id": "EurogeulDWE"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          3.0,
+          51.95
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2002-10-30 to 2025-12-31",
+        "measured_depth": 25.0,
+        "name": "Eurogeul, E13",
+        "instrument_id": "EurogeulE13"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          3.7418,
+          52.00918
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2002-10-30 to 2016-01-07",
+        "measured_depth": 30.0,
+        "name": "EurogeulE5",
+        "instrument_id": "EurogeulE5"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          3.43,
+          51.98
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "1982-11-19 to 2025-12-31",
+        "measured_depth": 31.0,
+        "name": "Europlatform",
+        "instrument_id": "Europlatform"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          3.28,
+          52.0
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "1976-02-02 to 2025-12-31",
+        "measured_depth": 23.0,
+        "name": "GoereeLichteiland",
+        "instrument_id": "GoereeLichteiland"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          3.67,
+          51.93
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2017-01-01 to 2025-12-31",
+        "measured_depth": 15.0,
+        "name": "HonteSloehaven",
+        "instrument_id": "HonteSloehaven"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          3.69,
+          51.44
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "1998-08-21 to 2016-02-01",
+        "measured_depth": 3.0,
+        "name": "Hoofdplaat",
+        "instrument_id": "Hoofdplaat"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          3.67,
+          51.38
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "1985-01-02 to 2025-12-31",
+        "measured_depth": 22.0,
+        "name": "IJgeul",
+        "instrument_id": "IJgeul"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          4.27,
+          52.49
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2011-05-19 to 2018-12-13",
+        "measured_depth": 19.0,
+        "name": "IJgeulStroommeetpaal",
+        "instrument_id": "IJgeulStroommeetpaal"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          4.52,
+          52.46
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "1976-01-20 to 2025-12-31",
+        "measured_depth": 26.0,
+        "name": "IJmuiden, munitiestort, 1",
+        "instrument_id": "IJmuidenMunitiestort_1"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          4.05702,
+          52.54922
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2014-04-07 to 2025-06-30",
+        "measured_depth": 21.0,
+        "name": "KwintebankBuoy",
+        "instrument_id": "KwintebankBuoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          2.71,
+          51.35
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2011-05-19 to 2025-12-31",
+        "measured_depth": 24.0,
+        "name": "L91",
+        "instrument_id": "L91"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          4.96,
+          53.61
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2011-05-19 to 2025-06-01",
+        "measured_depth": 16.0,
+        "name": "MeetboeiRZGN1",
+        "instrument_id": "MeetboeiRZGN1"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          6.63,
+          53.57
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2011-05-19 to 2025-06-30",
+        "measured_depth": 12.0,
+        "name": "MeetboeiWEO1",
+        "instrument_id": "MeetboeiWEO1"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          6.52,
+          53.62
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2020-02-28 to 2025-06-30",
+        "measured_depth": 8.0,
+        "name": "NieuwpoortBuoy",
+        "instrument_id": "NieuwpoortBuoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          2.69,
+          51.16
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2020-02-28 to 2025-06-30",
+        "measured_depth": 17.0,
+        "name": "OostendNorth",
+        "instrument_id": "OostendNorth"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          2.88,
+          51.35
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2014-09-08 to 2025-12-29",
+        "measured_depth": 9.0,
+        "name": "Oosterschelde11",
+        "instrument_id": "Oosterschelde11"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          3.48,
+          51.64
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2020-02-28 to 2025-06-30",
+        "measured_depth": 7.0,
+        "name": "OstendEasternPalisadeBuoy",
+        "instrument_id": "OstendEasternPalisadeBuoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          2.93,
+          51.25
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2020-02-28 to 2025-06-30",
+        "measured_depth": 12.0,
+        "name": "OstendPoortjesBuoy",
+        "instrument_id": "OstendPoortjesBuoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          2.86,
+          51.29
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2017-01-01 to 2025-06-30",
+        "measured_depth": 7.0,
+        "name": "PasVanTerneuzenBoei",
+        "instrument_id": "PasVanTerneuzenBoei"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          3.75,
+          51.36
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2000-12-31 to 2013-05-15",
+        "measured_depth": null,
+        "name": "Petten, meetraai 01",
+        "instrument_id": "PettenMeetraai01"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          4.55678,
+          52.80685
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2009-02-01 to 2022-11-29",
+        "measured_depth": 28.0,
+        "name": "Q1",
+        "instrument_id": "Q1"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          4.15,
+          52.93
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2022-01-01 to 2025-06-30",
+        "measured_depth": 11.0,
+        "name": "Raversijde2",
+        "instrument_id": "Raversijde2"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          2.81,
+          51.24
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2011-05-24 to 2025-06-30",
+        "measured_depth": 13.0,
+        "name": "ScheurWest",
+        "instrument_id": "ScheurWest"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          3.05,
+          51.39
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "1979-11-24 to 2025-12-31",
+        "measured_depth": 21.0,
+        "name": "SchiermonnikoogNoord",
+        "instrument_id": "SchiermonnikoogNoord"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          6.17,
+          53.59
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2005-01-25 to 2025-12-31",
+        "measured_depth": 7.0,
+        "name": "SchiermonnikoogWestgat",
+        "instrument_id": "SchiermonnikoogWestgat"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          6.16,
+          53.53
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "1978-12-11 to 2025-12-31",
+        "measured_depth": 27.0,
+        "name": "Schouwenbank",
+        "instrument_id": "Schouwenbank"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          3.31,
+          51.75
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2008-11-10 to 2025-12-31",
+        "measured_depth": 14.0,
+        "name": "StortemelkOost",
+        "instrument_id": "StortemelkOost"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          5.1,
+          53.32
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2007-10-24 to 2025-12-09",
+        "measured_depth": 10.0,
+        "name": "Stortemelk, west",
+        "instrument_id": "StortemelkWest"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          4.996,
+          53.32072
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2020-02-28 to 2025-06-30",
+        "measured_depth": 32.0,
+        "name": "ThorntonbankSouthBuoy",
+        "instrument_id": "ThorntonbankSouthBuoy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          2.99,
+          51.56
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2007-05-31 to 2025-12-31",
+        "measured_depth": 15.0,
+        "name": "Westereems, west",
+        "instrument_id": "WestereemsWest"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          6.36667,
+          53.61806
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "1998-07-23 to 2025-12-31",
+        "measured_depth": 8.0,
+        "name": "WielingenNoord",
+        "instrument_id": "WielingenNoord"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          3.42,
+          51.43
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "waves",
+        "institution": "Rijkswaterstaat / CMEMS",
+        "recording": "2003-07-11 to 2014-04-14",
+        "measured_depth": 21.0,
+        "name": "zdv8-2d-MMND",
+        "instrument_id": "zdv8-2d-MMND"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          4.01,
+          51.99
+        ]
+      }
+    }
+  ]
+}

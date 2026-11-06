@@ -1,0 +1,304 @@
+{
+    "goals": {
+        "1": {
+            "target": {
+                "longitude": 2.5,
+                "latitude": 51.5
+            },
+            "angles": [
+                -245.0,
+                67.0
+            ],
+            "hindcast": {
+                "codec": {
+                    "fid": 230,
+                    "longitude": 2.498,
+                    "latitude": 51.489000000000004,
+                    "distance_m": 1234.3
+                },
+                "era5": {
+                    "fid": 7,
+                    "longitude": 2.5,
+                    "latitude": 51.5,
+                    "distance_m": 0.0
+                },
+                "whacs": {
+                    "fid": 1000,
+                    "longitude": 2.5,
+                    "latitude": 51.5,
+                    "distance_m": 0.0
+                }
+            }
+        },
+        "2": {
+            "target": {
+                "longitude": 3.03125,
+                "latitude": 52.03125
+            },
+            "angles": [
+                -177.2,
+                67.1
+            ],
+            "hindcast": {
+                "codec": {
+                    "fid": 2,
+                    "longitude": 3.003,
+                    "latitude": 51.987,
+                    "distance_m": 5300.7
+                },
+                "era5": {
+                    "fid": 14,
+                    "longitude": 3.0,
+                    "latitude": 52.0,
+                    "distance_m": 4092.6
+                },
+                "whacs": {
+                    "fid": 1229,
+                    "longitude": 3.03125,
+                    "latitude": 52.03125,
+                    "distance_m": 0.0
+                }
+            }
+        },
+        "3": {
+            "target": {
+                "longitude": 3.5,
+                "latitude": 52.5
+            },
+            "angles": [
+                -177.2,
+                67.1
+            ],
+            "hindcast": {
+                "codec": {
+                    "fid": 61,
+                    "longitude": 3.501,
+                    "latitude": 52.515,
+                    "distance_m": 1672.7
+                },
+                "era5": {
+                    "fid": 25,
+                    "longitude": 3.5,
+                    "latitude": 52.5,
+                    "distance_m": 0.0
+                },
+                "whacs": {
+                    "fid": 1393,
+                    "longitude": 3.5,
+                    "latitude": 52.5,
+                    "distance_m": 0.0
+                }
+            }
+        },
+        "4": {
+            "target": {
+                "longitude": 4.0,
+                "latitude": 53.0
+            },
+            "angles": [
+                -177.2,
+                67.1
+            ],
+            "hindcast": {
+                "codec": {
+                    "fid": 70,
+                    "longitude": 3.999,
+                    "latitude": 53.013,
+                    "distance_m": 1449.7
+                },
+                "era5": {
+                    "fid": 41,
+                    "longitude": 4.0,
+                    "latitude": 53.0,
+                    "distance_m": 0.0
+                },
+                "whacs": {
+                    "fid": 1753,
+                    "longitude": 4.0,
+                    "latitude": 53.0,
+                    "distance_m": 0.0
+                }
+            }
+        },
+        "5": {
+            "target": {
+                "longitude": 4.5,
+                "latitude": 53.5
+            },
+            "angles": [
+                -177.2,
+                67.1
+            ],
+            "hindcast": {
+                "codec": {
+                    "fid": 104,
+                    "longitude": 4.497,
+                    "latitude": 53.511,
+                    "distance_m": 1241.2
+                },
+                "era5": {
+                    "fid": 44,
+                    "longitude": 4.5,
+                    "latitude": 53.5,
+                    "distance_m": 0.0
+                },
+                "whacs": {
+                    "fid": 277,
+                    "longitude": 4.5,
+                    "latitude": 53.5,
+                    "distance_m": 0.0
+                }
+            }
+        },
+        "6": {
+            "target": {
+                "longitude": 5.0,
+                "latitude": 54.0
+            },
+            "angles": [
+                -175.0,
+                130.0
+            ],
+            "hindcast": {
+                "codec": {
+                    "fid": 124,
+                    "longitude": 4.995,
+                    "latitude": 54.009,
+                    "distance_m": 1054.5
+                },
+                "era5": {
+                    "fid": 46,
+                    "longitude": 5.0,
+                    "latitude": 54.0,
+                    "distance_m": 0.0
+                },
+                "whacs": {
+                    "fid": 835,
+                    "longitude": 5.0,
+                    "latitude": 54.0,
+                    "distance_m": 0.0
+                }
+            }
+        },
+        "7": {
+            "target": {
+                "longitude": 5.5,
+                "latitude": 54.0
+            },
+            "angles": [
+                -124.7,
+                130.1
+            ],
+            "hindcast": {
+                "codec": {
+                    "fid": 131,
+                    "longitude": 5.493,
+                    "latitude": 54.009,
+                    "distance_m": 1102.2
+                },
+                "era5": {
+                    "fid": 67,
+                    "longitude": 5.5,
+                    "latitude": 54.0,
+                    "distance_m": 0.0
+                },
+                "whacs": {
+                    "fid": 839,
+                    "longitude": 5.5,
+                    "latitude": 54.0,
+                    "distance_m": 0.0
+                }
+            }
+        },
+        "8": {
+            "target": {
+                "longitude": 6.0,
+                "latitude": 54.0
+            },
+            "angles": [
+                -124.7,
+                130.1
+            ],
+            "hindcast": {
+                "codec": {
+                    "fid": 137,
+                    "longitude": 5.9910000000000005,
+                    "latitude": 54.009,
+                    "distance_m": 1162.7
+                },
+                "era5": {
+                    "fid": 68,
+                    "longitude": 6.0,
+                    "latitude": 54.0,
+                    "distance_m": 0.0
+                },
+                "whacs": {
+                    "fid": 857,
+                    "longitude": 6.0,
+                    "latitude": 54.0,
+                    "distance_m": 0.0
+                }
+            }
+        },
+        "9": {
+            "target": {
+                "longitude": 6.5,
+                "latitude": 54.0
+            },
+            "angles": [
+                -124.7,
+                130.1
+            ],
+            "hindcast": {
+                "codec": {
+                    "fid": 249,
+                    "longitude": 6.489,
+                    "latitude": 54.009,
+                    "distance_m": 1234.3
+                },
+                "era5": {
+                    "fid": 69,
+                    "longitude": 6.5,
+                    "latitude": 54.0,
+                    "distance_m": 0.0
+                },
+                "whacs": {
+                    "fid": 863,
+                    "longitude": 6.5,
+                    "latitude": 54.0,
+                    "distance_m": 0.0
+                }
+            }
+        },
+        "10": {
+            "target": {
+                "longitude": 7.0,
+                "latitude": 54.0
+            },
+            "angles": [
+                -125.0,
+                203.0
+            ],
+            "hindcast": {
+                "codec": {
+                    "fid": 257,
+                    "longitude": 6.987,
+                    "latitude": 54.009,
+                    "distance_m": 1315.1
+                },
+                "era5": {
+                    "fid": 70,
+                    "longitude": 7.0,
+                    "latitude": 54.0,
+                    "distance_m": 0.0
+                },
+                "whacs": {
+                    "fid": 871,
+                    "longitude": 7.0,
+                    "latitude": 54.0,
+                    "distance_m": 0.0
+                }
+            }
+        }
+    }
+}

@@ -14,6 +14,7 @@ up as well (`simulations.swan`).
   SnapWave vs SWAN on the same cases (its own README).
 - `analysis/`: every estimate of 2013 on the same sites and hours: error budget,
   linear sum vs dynamic, wind, calibration, storms (its own README).
+- `dashboard/`: a web app with every 2013 result (`build_store.py`, then `app.py`; its own README).
 - Forcing of the reference runs: ERA5 wind and CODEC water level (CODEC ends
   in 2018). Optional: satellite-calibrated WHACS (`WHACS_cal`).
 - Results: the HyGloW results portal (`portal/`).
@@ -33,6 +34,9 @@ order, `python -m hywaves validate Netherlands/` to see what is missing.
 | 07b | `07b_Satellite_Calibration` | WHACS / ERA5 vs IMOS altimetry, `WHACS_cal`, `ERA5_cal` |
 | 08 | `08_Dynamic_Cases_Generation` | Hourly reference runs with water level, one folder per forcing (`<dynamic_cases>_<offshore>_wind-<on|off>`) |
 | 09–12 | validation and figures | Reconstruction vs reference runs, buoys, spectra, portal figures |
+
+Notebook 11 is not run yet: it compares spectra against buoy spectra, and the processed
+buoys (`utils/buoy_archive.py`) hold bulk parameters only.
 
 ## Case-specific code
 

@@ -191,6 +191,7 @@ cython_debug/
 *outputs/
 *outputs*/
 Netherlands/numerical_tests/runs/
+Netherlands/dashboard/store/
 Netherlands/outputs_OLDESITO/
 
 # MacOS
