@@ -2,7 +2,7 @@
 Build the dashboard store: every result of the Netherlands case for 2013, laid out for fast reading.
 
 Run from this folder (``python build_store.py [--only part ...]``); it reads the
-case through ``utils`` and ``analysis/results.py`` and writes ``store/`` (git-ignored):
+case through ``utils`` (:mod:`sources`) and writes ``store/`` (git-ignored):
 
 - ``cube.zarr``: ``{estimate}/{variable}`` on ``(time, site)`` (8760 x 5156), the
   estimates of :data:`data.ESTIMATES`, plus ``wind/u10``, ``wind/u10dir`` (ERA5 at each site);
@@ -33,9 +33,9 @@ import zarr
 
 HERE = Path(__file__).resolve().parent
 CASE = HERE.parent
-sys.path[:0] = [str(CASE), str(CASE / "analysis")]
+sys.path.insert(0, str(CASE))
 
-import results as rs  # noqa: E402
+import sources as src  # noqa: E402
 from utils import config as cfg  # noqa: E402
 from utils import metamodel as mm  # noqa: E402
 
@@ -43,12 +43,6 @@ from data import COAST_REGIONS, ESTIMATES, OFFSHORE, STORE, VARIABLES  # noqa: E
 
 logger = logging.getLogger("hywaves.dashboard")
 CHUNK_TIME = 744
-
-
-def _sites() -> xr.Dataset:
-    """Every site of the dynamic runs (isobaths, buoys, DeenHaag mesh nodes), with their metadata."""
-    with xr.open_dataset(rs.sim.cases_dir("dynamic", offshore="WHACS", wind=False) / "Dynamic_Cases_2013.nc") as ds:
-        return ds.drop_vars(list(ds.data_vars)).load()
 
 
 def _write_array(group: zarr.Group, name: str, values: np.ndarray) -> None:
@@ -85,10 +79,10 @@ def build_offshore() -> xr.Dataset:
     """``offshore.zarr``: each source's hindcast at the goals in 2013, and the CODEC water level."""
     out = {}
     for name in OFFSHORE:
-        ds = cfg.open_offshore_waves(name).sel(time=rs.PERIOD)[list(VARIABLES)].drop_vars("seapoint", errors="ignore")
+        ds = cfg.open_offshore_waves(name).sel(time=src.PERIOD)[list(VARIABLES)].drop_vars("seapoint", errors="ignore")
         for var in VARIABLES:
             out[f"{name}_{var}"] = ds[var].astype("float32")
-    wl = cfg.open_water_level().sel(time=rs.PERIOD)
+    wl = cfg.open_water_level().sel(time=src.PERIOD)
     out["wl"] = wl.drop_vars([c for c in wl.coords if c not in ("time", "goal")]).astype("float32")
     offshore = xr.Dataset(out).transpose("time", "goal").load()
     offshore["goal"] = offshore["goal"].astype(int)
@@ -110,7 +104,7 @@ def build_cube(sites: xr.Dataset, offshore: xr.Dataset) -> None:
             _write_array(group, var, ds[var].values)
         logger.info("cube: %s", key)
 
-    buoy = rs.buoys()
+    buoy = src.buoys()
     put("buoy", buoy)
     site_goal = pd.read_parquet(STORE / "sites.parquet").set_index("site").loc[ids, "goal"].to_numpy()
     for off in OFFSHORE:
@@ -118,11 +112,11 @@ def build_cube(sites: xr.Dataset, offshore: xr.Dataset) -> None:
                            .assign_coords(sites=ids) for v in VARIABLES})
         put(f"offshore_{off}", near)
         for spectral, key in ((False, "mm_bulk"), (True, "mm_spec")):
-            parts = [rs.metamodel(off, s, spectral) for s in ("isobaths", "buoys", "deenhaag")]
+            parts = [src.metamodel(off, s, spectral) for s in ("isobaths", "buoys", "deenhaag")]
             put(f"{key}_{off}", xr.concat([p[list(VARIABLES)] for p in parts], "sites"))
         for wind, key in ((False, "dyn_off"), (True, "dyn_on")):
-            put(f"{key}_{off}", rs.dynamic(off, wind, ids))
-    era5 = rs.wind_at_sites(sites)
+            put(f"{key}_{off}", src.dynamic(off, wind, ids))
+    era5 = src.wind_at_sites(sites)
     group = root.require_group("wind")
     for var in ("u10", "u10dir"):
         _write_array(group, var, era5[var].transpose("time", "sites").values)
@@ -131,7 +125,7 @@ def build_cube(sites: xr.Dataset, offshore: xr.Dataset) -> None:
 
 def build_wind_grid() -> None:
     """``wind_grid.zarr``: the ERA5 10 m wind on its own grid (the shaded layer of the maps)."""
-    wind = cfg.open_wind(rs.PERIOD)[["u10", "v10"]].astype("float32").load()
+    wind = cfg.open_wind(src.PERIOD)[["u10", "v10"]].astype("float32").load()
     wind.to_zarr(STORE / "wind_grid.zarr", mode="w")
 
 
@@ -245,12 +239,12 @@ def build_calibration() -> None:
     out.mkdir(exist_ok=True)
     rows = []
     for raw, cal_name in (("WHACS", "WHACS_cal"), ("ERA5", "ERA5_cal")):
-        src = cfg.resolve(f"outputs/calibration/{raw}")
-        if not src.exists():
+        folder = cfg.resolve(f"outputs/calibration/{raw}")
+        if not folder.exists():
             continue
         for name in ("coefficients", "metrics", "quantile_mapping"):
-            if (src / f"{name}.csv").exists():
-                shutil.copy(src / f"{name}.csv", out / f"{raw}_{name}.csv")
+            if (folder / f"{name}.csv").exists():
+                shutil.copy(folder / f"{name}.csv", out / f"{raw}_{name}.csv")
         _calibration_passes(raw).to_csv(out / f"{raw}_passes.csv", index=False)
         for name in (raw, cal_name):
             hs = cfg.open_offshore_waves(name)["hs"].load()
@@ -297,12 +291,12 @@ def _buoy_check(raw: str, cal_name: str) -> dict[str, pd.DataFrame]:
 
 def build_numerical_tests() -> None:
     """Copy the result tables, figures and README of ``numerical_tests/``."""
-    src = CASE / "numerical_tests"
+    folder = CASE / "numerical_tests"
     out = STORE / "numerical_tests"
     if out.exists():
         shutil.rmtree(out)
-    shutil.copytree(src / "results", out, ignore=shutil.ignore_patterns("raw"))
-    shutil.copy(src / "README.md", out / "README.md")
+    shutil.copytree(folder / "results", out, ignore=shutil.ignore_patterns("raw"))
+    shutil.copy(folder / "README.md", out / "README.md")
 
 
 PARTS = {"sites": None, "offshore": None, "cube": None, "conditions": None, "wind_grid": build_wind_grid,
@@ -318,7 +312,7 @@ def main() -> None:
     STORE.mkdir(exist_ok=True)
     manifest_path = STORE / "manifest.json"
     manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
-    sites = _sites() if {"sites", "cube"} & set(parts) else None
+    sites = src.dynamic_sites() if {"sites", "cube"} & set(parts) else None
     offshore = None
     for part in parts:
         t0 = time.time()

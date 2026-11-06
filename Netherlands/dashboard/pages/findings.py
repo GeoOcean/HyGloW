@@ -1,4 +1,4 @@
-"""Findings: the conclusions so far (analysis/README.md, hywaves/WIND.md) and a guided tour into the other pages."""
+"""Findings: the conclusions so far (this folder's README, hywaves/WIND.md) and a guided tour into the other pages."""
 
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ def _section(path, heading: str) -> str:
 
 
 def layout(**_):
-    readme = data.CASE / "analysis" / "README.md"
+    readme = data.HERE / "README.md"
     wind = data.CASE.parent / "hywaves" / "WIND.md"
     tour = dbc.Row([dbc.Col(dbc.Card(dbc.CardBody([html.H6(title, className="fw-bold"), html.P(text, className="note mb-2"),
                                                      dcc.Link("open →", href=href)]), className="h-100"), md=3, className="mb-2")
@@ -50,10 +50,10 @@ def layout(**_):
     built = data.manifest()
     return html.Div([
         ui.header("Findings", "What the first iteration (SnapWave, 2013, MDA 600, CODEC) shows, with a link into the "
-                  "data for each point. The text is read live from Netherlands/analysis/README.md and hywaves/WIND.md."),
+                  "data for each point. The text is read live from Netherlands/dashboard/README.md and hywaves/WIND.md."),
         ui.card("Guided tour", tour),
         dbc.Row([
-            dbc.Col(ui.card("What the analysis shows (analysis/README.md)",
+            dbc.Col(ui.card("What it shows (dashboard/README.md)",
                             dcc.Markdown(_section(readme, "What it shows"), className="markdown findings")), lg=6),
             dbc.Col(ui.card("Wind: the 2013 dynamic pairs (hywaves/WIND.md)",
                             dcc.Markdown(_section(wind, "The 2013 dynamic pairs"), className="markdown findings")), lg=6),

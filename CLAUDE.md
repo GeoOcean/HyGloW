@@ -81,7 +81,7 @@ cd GUI && python app.py                            # http://localhost:8050
    details go in bluemath_tk docstrings, maintainer facts here. No other
    contract or method-note files. **No metrics in docs** (they go stale when a
    run changes): give the conclusion in words and where to see it (notebook,
-   `analysis/`, the dashboard); timings and settings are fine. `WIND.md` is the
+   the dashboard); timings and settings are fine. `WIND.md` is the
    exception.
 8. **Style**: Python 3.12, type hints, `from __future__ import annotations`,
    NumPy docstrings, `pathlib`, loggers `hywaves.*`; sparse comments.
@@ -108,12 +108,12 @@ after publishing, commit `portal/`.
   and SnapWave templates were chosen (01-02, from `results/*.csv`) and SnapWave
   vs SWAN on the same cases (03-04, `model_comparison.py`; not a clean
   comparison yet). Its notebooks put the case folder on `sys.path`; `runs/` is
-  git-ignored. `Netherlands/analysis/` (case-only, like `numerical_tests/`): every estimate
-  on the same sites and hours of 2013 (`results.py` + notebooks 01-05: error
-  budget at the buoys, linear sum vs dynamic, wind effect, calibration, storms).
-  `Netherlands/dashboard/` (case-only Dash app, not `GUI/`): `build_store.py` packs every 2013
-  result into `store/` (git-ignored, 4.2 GB; reuses `analysis/results.py`), `app.py` reads only it;
-  rebuild the store after re-running 06-08 or the 2013 reconstruction.
+  git-ignored. `Netherlands/dashboard/` (case-only Dash app, not `GUI/`): every estimate on
+  the same sites and hours of 2013 (error budget, linear sum vs dynamic, wind, storms,
+  metamodel, calibration, numerical tests); `build_store.py` packs the results (read by
+  `sources.py`) into `store/` (git-ignored, 4.2 GB), `app.py` reads only it; rebuild the
+  store after re-running 06-08 or the 2013 reconstruction. Its README holds the
+  first-iteration conclusions (the Findings page shows them).
   `Netherlands/tmp/` holds only caches (`reconstruct/`) and scripts
   (`check_dynamic_run.py`, `reconstruct_2013.py`: fills the 2013 cache).
 - Conventions: directions nautical, coming-from, clockwise; goal `angles` =
@@ -194,7 +194,7 @@ re-published. Case manifest `.hywaves/manifest.json`: `hywaves_version`,
 no `tests/`.
 
 **Method facts** (decisions and settings; the numbers behind them live where
-they are recomputed: notebooks, `numerical_tests/`, `analysis/`, the dashboard)
+they are recomputed: notebooks, `numerical_tests/`, the dashboard)
 - *Boundary forcing*: the sum equals an all-goals run only if each case puts
   a fraction w of its goal's energy along the boundary and the fractions add
   to 1. SnapWave: two nearest goals, inverse distance (bimodal between
@@ -254,13 +254,13 @@ level ends in 2018. Buoys: `utils/buoy_archive.py` (stations < 1 km merged,
 hourly; Belgian ones Hs-only 2020-25). 2013 complete: the four dynamic runs (WHACS, WHACS_cal x
 wind on/off) and the reconstruction cache (mda600, `wl="forcing"`, every set,
 both sources, bulk and spectral). First-iteration conclusions:
-`Netherlands/analysis/README.md` (linear sum fine on average, high in the
+`Netherlands/dashboard/README.md` (linear sum fine on average, high in the
 biggest seas at 5 m; missing wind the largest error; spectral Tp/Dir/Spr poor;
 calibration helps the storm tail). Notebooks 10 and 12 run on 2013 and
 `portal/` is published (SnapWave).
 Notebook 11 waits for buoy spectra (the processed buoys are bulk only).
-`Netherlands.json` is switched to `model: swan` for the SWAN pass (uncommitted
-work in notebook 08).
+`Netherlands.json` is on `model: swan` for the SWAN pass (notebook 08); switch it
+back to `snapwave` to re-run 09-12 or publish the SnapWave results.
 
 **Reconstruction internals** (bluemath_tk `waves/hywaves/store.py`,
 `core/resources.py`, `waves/hywaves/resources.py`; details and open points in
@@ -270,9 +270,9 @@ month under a file lock; the setup `key` + input `fingerprint` in the attrs
 rebuild the store on any change; hours with no energy are NaN. Rates are
 measured on the 48-core node: re-measure there if the sum changes.
 
-**Next (user)**: decide from `analysis/` what to fix or move into 09-12
+**Next (user)**: decide from the dashboard what to fix or move into 09-12
 (spectral Tp/Dir/Spr, the 5 m storm overshoot, wind: `hywaves/WIND.md`
-options); deck from the new portal; buoy spectra for notebook 11; SWAN pass (05-12 with `model: swan`,
+options); buoy spectra for notebook 11; SWAN pass (05-12 with `model: swan`,
 `tp` as PCA target, then snapshot `swan`); migrate Samoa and NewSouthWales
 (`update` + config + re-run). Cluster: arrays <= 9999 tasks and 20000 job
 records (bigger runs in `OFFSET` blocks).

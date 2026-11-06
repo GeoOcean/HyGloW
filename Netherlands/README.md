@@ -12,9 +12,9 @@ up as well (`simulations.swan`).
   and the buoys. Metamodel sets: `buoys`, `isobaths`, `deenhaag`.
 - `numerical_tests/`: how the SnapWave and SWAN templates were chosen, and
   SnapWave vs SWAN on the same cases (its own README).
-- `analysis/`: every estimate of 2013 on the same sites and hours: error budget,
-  linear sum vs dynamic, wind, calibration, storms (its own README).
-- `dashboard/`: a web app with every 2013 result (`build_store.py`, then `app.py`; its own README).
+- `dashboard/`: a web app with every 2013 result on the same sites and hours: error
+  budget, linear sum vs dynamic, wind, storms, metamodel, calibration, numerical tests
+  (`build_store.py`, then `app.py`; its own README, with the first-iteration conclusions).
 - Forcing of the reference runs: ERA5 wind and CODEC water level (CODEC ends
   in 2018). Optional: satellite-calibrated WHACS (`WHACS_cal`).
 - Results: the HyGloW results portal (`portal/`).

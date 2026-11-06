@@ -118,7 +118,7 @@ in m; no correction −0.84 / 1.20):
 Netherlands 2013, SnapWave every hour with and without the ERA5 wind field, for WHACS and
 WHACS_cal (`Netherlands/SnapWave_CASES_Dynamic_<offshore>_wind-<on|off>/Dynamic_Cases_2013.nc`;
 open-boundary enclosure, `niter` 200, `upwindref` 1, sector 360 with wind; ~136 s per hour
-with wind, 5.6 s without). Analysis: `Netherlands/analysis/` (01 and 03).
+with wind, 5.6 s without). See them on the dashboard (`Netherlands/dashboard/`: Error budget, Wind).
 
 **What the reconstruction misses** (27 buoys, MDA 600, CODEC; pairs valid in every
 estimate). Mean Hs error of the spectral metamodel at the buoys, split into parts:
