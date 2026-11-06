@@ -251,14 +251,13 @@ hywaves **0.16.0** (no wind in the reconstruction; store names without
 `numerical_tests/` setup (open-boundary enclosure, `upwindref`, `niter` 200,
 Hs up to 10 m). Mesh `inputs/GRID/Netherlands_mesh.nc` / `.grd`; CODEC water
 level ends in 2018. Buoys: `utils/buoy_archive.py` (stations < 1 km merged,
-hourly; Belgian ones Hs-only 2020-25). `portal_snapwave/` holds the results
-before this re-run. 2013 complete: the four dynamic runs (WHACS, WHACS_cal x
+hourly; Belgian ones Hs-only 2020-25). 2013 complete: the four dynamic runs (WHACS, WHACS_cal x
 wind on/off) and the reconstruction cache (mda600, `wl="forcing"`, every set,
 both sources, bulk and spectral). First-iteration conclusions:
 `Netherlands/analysis/README.md` (linear sum fine on average, high in the
 biggest seas at 5 m; missing wind the largest error; spectral Tp/Dir/Spr poor;
 calibration helps the storm tail). Notebooks 10 and 12 run on 2013 and
-`portal/` is published (SnapWave); `portal_snapwave/` is the older snapshot.
+`portal/` is published (SnapWave).
 Notebook 11 waits for buoy spectra (the processed buoys are bulk only).
 `Netherlands.json` is switched to `model: swan` for the SWAN pass (uncommitted
 work in notebook 08).

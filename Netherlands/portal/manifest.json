@@ -8,7 +8,7 @@
  },
  "case": "Netherlands",
  "model": "snapwave",
- "published_at": "2026-11-06T12:00:28+00:00",
+ "published_at": "2026-11-06T12:15:34+00:00",
  "max_image_px": 2400,
  "book": true,
  "book_url": "/case-book/netherlands",
@@ -151,8 +151,8 @@
    "sha256": "1eab21ccbec3ffe699a0ce59e13ac89b13dc5226fb7628aba857b784a8026888"
   },
   "gui_figures/fig04_spectra_reconstruction.png": {
-   "size": 664906,
-   "sha256": "9b68337d1654dfeebf1b4c36e4ebe8eaf117401d9cf93db6b29e3e88eec2bb38"
+   "size": 966292,
+   "sha256": "de5e3269a640aaaa9a9f1c914a231a61afa3cc24f71b84cb7c469c4332d00afe"
   },
   "isobaths.json": {
    "size": 30034,
@@ -178,7 +178,7 @@
  "sources": {
   "Netherlands.json": {
    "size": 6567,
-   "mtime_ns": 1793965608000000000,
+   "mtime_ns": 1793967150000000000,
    "sha256": "cc277ae006a91b395874d65d8d606a3ceaa1dedfd4ba066265552928953646e0"
   },
   "inputs/Goals/Netherlands_Goals.json": {
@@ -523,23 +523,23 @@
   },
   "outputs/gui_figures/fig01_domain.png": {
    "size": 1664447,
-   "mtime_ns": 1793965716000000000,
+   "mtime_ns": 1793967172000000000,
    "sha256": "181f4fe17bbf2514a561954ac7e25c671058f4215713fdf45e88d1e31400e1cc"
   },
   "outputs/gui_figures/fig02_map_comparison.png": {
    "size": 5765068,
-   "mtime_ns": 1793966135000000000,
+   "mtime_ns": 1793967210000000000,
    "sha256": "ab989654527f2f1103c8f47fd18f54eae0aa84124510e6e93376751de1b1a214"
   },
   "outputs/gui_figures/fig03_metamodel.png": {
    "size": 777250,
-   "mtime_ns": 1793966143000000000,
+   "mtime_ns": 1793967216000000000,
    "sha256": "bfe1e74e50b4f2d44c85e245775283eaf805d3cd5d41252ae1049d52926a61f8"
   },
   "outputs/gui_figures/fig04_spectra_reconstruction.png": {
-   "size": 706066,
-   "mtime_ns": 1793966207000000000,
-   "sha256": "657e42334ab734413a1f796c942ea37c407b94426e4a37bbb7b1e6b71c6f3c94"
+   "size": 733478,
+   "mtime_ns": 1793967226000000000,
+   "sha256": "48b447c287ed3631cf65619fcd1299f4eb01f05d648e60b96293c0f0d8a25028"
   }
  },
  "source_patterns": [

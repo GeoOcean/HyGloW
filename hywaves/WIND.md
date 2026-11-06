@@ -50,7 +50,7 @@ storms. It does not converge in some hours (swell, light wind; 241 of 8760 in th
 postprocessing drops them (last error > `MAX_ERROR` 0.01). One period per node:
 wind energy over swell takes the swell period.
 
-**K, old setup** (`portal_snapwave/SnapWave_CASES_Wind`: old AoI rectangle forcing
+**K, old setup** (old AoI rectangle forcing
 the coast nodes, no-wind twins with `niter` 40; 250 cases, `speed_ratio`
 [0.8, 2.0], u10 up to 35 m/s). Held out (reference = run with wind), `waves`
 sites Hs bias / RMSE −0.70 / 1.00 -> −0.06 / 0.39 m. But 131 of the 250 no-wind
