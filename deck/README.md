@@ -34,8 +34,10 @@ and committing `portal/`, the online deck updates itself.
   slide names the data and models.
 - `config.json` holds per-audience text (title, subtitle, presenter, venue,
   default mode), `mainCase` (the case the deck walks through: figures, headline
-  numbers, GUI screenshots) and `featuredBuoy` (the "one site, up close" buoy,
-  a buoy name from the main case's buoy summary).
+  numbers, GUI screenshots), `featuredBuoy` (the "one site, up close" buoy,
+  a buoy name from the main case's buoy summary) and `offshore` (per case, the
+  offshore source shown when the buoy summary holds several, e.g. `WHACS_cal`;
+  default the first).
 
 ## Hand-maintained
 
