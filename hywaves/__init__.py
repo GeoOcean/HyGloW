@@ -7,4 +7,4 @@ config, case manifest with the bluemath_tk revision). ``template/`` is the
 case every ``start`` copies.
 """
 
-__version__ = "0.15.0"
+__version__ = "0.16.0"

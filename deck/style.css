@@ -2389,28 +2389,6 @@ body.mode-short .slide[data-depth="deep"] {
   font: 700 14px var(--font);
 }
 
-/* ---- Optional wind contribution ---- */
-.wind-sketch {
-  max-width: 980px;
-  margin: 0 auto;
-  width: 100%;
-}
-
-.sum-sketch .area.strong {
-  opacity: 0.5;
-}
-
-.sum-sketch .curve.dashed {
-  stroke-width: 1.8;
-  stroke-dasharray: 4 4;
-}
-
-.wind-note {
-  margin: 0.7rem 0 0;
-  font-size: 0.82rem;
-  color: var(--text-muted);
-}
-
 /* ---- Title slide: BlueMath ecosystem badge ---- */
 .ecosystem-badge {
   display: inline-flex;

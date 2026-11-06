@@ -97,18 +97,36 @@ def convergence(portal: Path) -> dict:
     return out
 
 
-def buoy_summary(portal: Path, case_dir: str, featured: str | None) -> dict | None:
+def summary_models(rows: list[dict], offshore: str | None) -> tuple[str, str, str]:
+    """``(offshore source, its closest-goal hindcast model, its HyWaves model)`` in a buoy summary.
+
+    Notebook 10 writes one pair per offshore source, ``"X (closest goal)"`` and
+    ``"Metamodel X"``; *offshore* picks X (default the first). Portals published
+    before (Samoa, NewSouthWales until migrated) have one source in ``offshore_name``
+    and ``"Spectral metamodel"``.
+    """
+    if "offshore_name" in rows[0]:
+        name = rows[0]["offshore_name"]
+        return name, f"{name} (closest goal)", HYGLOW_MODEL
+    names = [m.removesuffix(" (closest goal)") for m in dict.fromkeys(r["model"] for r in rows)
+             if m.endswith(" (closest goal)")]
+    name = offshore if offshore in names else names[0]
+    return name, f"{name} (closest goal)", f"Metamodel {name}"
+
+
+def buoy_summary(portal: Path, case_dir: str, featured: str | None, offshore: str | None) -> dict | None:
     """Median RMSE across buoys: the offshore hindcast that forced the metamodel vs HyWaves.
 
-    Prefers nearshore buoys. Only the ``featured`` buoy's figure is copied.
+    Prefers nearshore buoys. Only the ``featured`` buoy's figure is copied;
+    *offshore* is the source shown when the summary holds several.
     """
     folder = portal / "buoy_validation"
     files = sorted(folder.glob("onshore_summary_*.csv")) or sorted(folder.glob("offshore_summary_*.csv"))
     if not files:
         return None
     rows = read_csv(files[0])
-    hindcast_model = f"{rows[0]['offshore_name']} (closest goal)"
-    models = (hindcast_model, HYGLOW_MODEL)
+    hindcast_name, hindcast_model, hyglow_model = summary_models(rows, offshore)
+    models = (hindcast_model, hyglow_model)
 
     per_buoy: dict[str, dict] = {}
     for r in rows:
@@ -125,26 +143,26 @@ def buoy_summary(portal: Path, case_dir: str, featured: str | None) -> dict | No
         buoys.append({
             "buoy": name,
             "hindcast": rnd(v.get(("hs", hindcast_model))),
-            "hyglow": rnd(v.get(("hs", HYGLOW_MODEL))),
+            "hyglow": rnd(v.get(("hs", hyglow_model))),
             "dir_hindcast": rnd(v.get(("dir", hindcast_model))),
-            "dir_hyglow": rnd(v.get(("dir", HYGLOW_MODEL))),
+            "dir_hyglow": rnd(v.get(("dir", hyglow_model))),
             "figure": image(fig, f"cases/{case_dir}/buoy_{name}") if name == featured and fig.exists() else None,
         })
 
     def stat(var: str, model: str) -> float | None:
         return median([fnum(r["rmse"]) for r in rows if r["model"] == model and r["variable"] == var])
 
-    spectral = [r for r in rows if r["model"] == HYGLOW_MODEL]
+    spectral = [r for r in rows if r["model"] == hyglow_model]
     return {
         "kind": "nearshore" if files[0].name.startswith("onshore") else "offshore",
         "period": pretty_period(rows[0]["period"]),
-        "hindcast_name": rows[0]["offshore_name"],
+        "hindcast_name": hindcast_name,
         "mda": int(rows[0]["mda_candidate"]),
         # buoys with an Hs comparison on both sides -- what the medians cover
         "n_buoys": sum(b["hindcast"] is not None and b["hyglow"] is not None for b in buoys),
         "reconstruct_seconds": rnd(fnum(spectral[0].get("reconstruct_seconds"))) if spectral else None,
-        "hs": {"hindcast": stat("hs", hindcast_model), "hyglow": stat("hs", HYGLOW_MODEL)},
-        "dir": {"hindcast": stat("dir", hindcast_model), "hyglow": stat("dir", HYGLOW_MODEL)},
+        "hs": {"hindcast": stat("hs", hindcast_model), "hyglow": stat("hs", hyglow_model)},
+        "dir": {"hindcast": stat("dir", hindcast_model), "hyglow": stat("dir", hyglow_model)},
         "per_buoy": buoys,
     }
 
@@ -155,7 +173,7 @@ def case_entry(case_dir: str, continent: str, config: dict) -> dict:
     obs = json.loads((portal / "observations.json").read_text())
     sites = json.loads((portal / "output_sites.json").read_text())
     featured = config["featuredBuoy"] if case_dir == config["mainCase"] else None
-    buoys = buoy_summary(portal, case_dir, featured)
+    buoys = buoy_summary(portal, case_dir, featured, config.get("offshore", {}).get(case_dir))
     mda = buoys["mda"] if buoys else None
     gui = HERE / "assets" / "gui" / case_dir if case_dir == config["mainCase"] else None
     return {

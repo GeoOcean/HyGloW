@@ -47,7 +47,6 @@
             "dynamic_templates": "templates-snapwave-dynamic",
             "metamodel_cases": "SnapWave_CASES_Metamodel",
             "dynamic_cases": "SnapWave_CASES_Dynamic",
-            "wind_cases": "SnapWave_CASES_Wind",
             "slurm": {
                 "cpus_per_task": 2,
                 "mem": "4gb",
@@ -60,7 +59,6 @@
             "dynamic_templates": "templates-swan-dynamic",
             "metamodel_cases": "SWAN_CASES_Metamodel",
             "dynamic_cases": "SWAN_CASES_Dynamic",
-            "wind_cases": "SWAN_CASES_Wind",
             "slurm": {"mem": "4gb", "extra_sbatch": ["--time=02:00:00"]}
         },
         "num_samples_per_goal": 1000,
@@ -137,20 +135,6 @@
                 "spr": "dspr"
             },
             "save_spectra": true
-        },
-        "wind_correction": {
-            "enabled": false,
-            "wind": "inferred",
-            "num_cases": 100,
-            "speed_ratio": [0.7, 1.7],
-            "wind_wave_angle": [-60.0, 60.0],
-            "directions": null,
-            "u10_range": [3.0, 25.0],
-            "steepness_range": [0.02, 0.03],
-            "spr_range": [20.0, 25.0],
-            "speed_factor": 1.0,
-            "added_spr": 30.0,
-            "added_tp": "wind_sea"
         },
         "paths": {
             "pca_dir": "outputs/{goal}/{metamodel}/pca_{mda_candidate}",

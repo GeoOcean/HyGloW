@@ -755,8 +755,6 @@ MODEL_COLORS: dict[str, str] = {
     "Buoy": "#111111",
     "Bulk metamodel": "#22d3ee",
     "Spectral metamodel": "#a78bfa",
-    "Spectral metamodel (wind-corrected)": "#7c3aed",
-    "Bulk metamodel (wind-corrected)": "#0891b2",
     DYNAMIC_REFERENCE_LABEL: "#16a34a",
 }
 

@@ -98,6 +98,7 @@ def plot_base_map(
     ax: Axes | None = None,
     title: str | None = None,
     show_topobathy: bool | None = None,
+    topobathy_colorbar: bool | None = None,
     show_isobaths: bool = True,
     show_satellite: bool = False,
     satellite_source: str = SATELLITE_SOURCE,
@@ -117,6 +118,8 @@ def plot_base_map(
     show_topobathy
         Depth raster; default ``not show_satellite``. With a satellite image
         too, only the ocean is coloured.
+    topobathy_colorbar
+        Colour bar of the depth raster; default ``not show_satellite``.
     show_isobaths
         Labelled depth contours (:data:`ISOBATH_CONTOUR_LEVELS`).
     show_satellite, satellite_source, satellite_area
@@ -132,6 +135,8 @@ def plot_base_map(
     """
     if show_topobathy is None:
         show_topobathy = not show_satellite
+    if topobathy_colorbar is None:
+        topobathy_colorbar = not show_satellite
     if ax is None:
         fig, ax = plt.subplots(
             figsize=FIGSIZE, subplot_kw={"projection": ccrs.PlateCarree()} if show_satellite else {}
@@ -146,7 +151,7 @@ def plot_base_map(
     if show_topobathy:
         _STATIC.plot_bathymetry(
             ax, _topobathy(), area=None, value_range=(TOPOBATHY_VMIN, TOPOBATHY_LAND_VMAX),
-            ocean_only=show_satellite, method="imshow", alpha=0.85, add_colorbar=not show_satellite,
+            ocean_only=show_satellite, method="imshow", alpha=0.85, add_colorbar=topobathy_colorbar,
         )
     if show_isobaths:
         _STATIC.plot_isodepths(

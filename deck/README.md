@@ -25,7 +25,7 @@ and committing `portal/`, the online deck updates itself.
 - Slides with `data-steps="N"` (the whole-flow slide) reveal N steps with the
   arrow keys before moving on; click a flow box for its one-line explanation.
 - The short deck (default) is the talk, ~15 min: title, problem, idea, flow,
-  linear sum, wind correction, holdout, cases, portal, thanks. `s` (or the "Full/Short deck"
+  linear sum, holdout, cases, portal, thanks. `s` (or the "Full/Short deck"
   button) adds the slides marked `data-depth="deep"`: the featured buoy and
   the limits in place, then the appendix (team, BlueMath, toolkit, wrappers,
   training design, spectra, simplifications).
@@ -34,8 +34,10 @@ and committing `portal/`, the online deck updates itself.
   slide names the data and models.
 - `config.json` holds per-audience text (title, subtitle, presenter, venue,
   default mode), `mainCase` (the case the deck walks through: figures, headline
-  numbers, GUI screenshots) and `featuredBuoy` (the "one site, up close" buoy,
-  a buoy name from the main case's buoy summary).
+  numbers, GUI screenshots), `featuredBuoy` (the "one site, up close" buoy,
+  a buoy name from the main case's buoy summary) and `offshore` (per case, the
+  offshore source shown when the buoy summary holds several, e.g. `WHACS_cal`;
+  default the first).
 
 ## Hand-maintained
 

@@ -41,9 +41,10 @@ jobs.
 | One buoy and year read back from the cache | 1 s | 1 GiB |
 
 The 45-year run is extrapolated from its first 11 years (2026-10-26); the
-rest was measured on 2026-10-16 (one-year bulk and spectral with the wind
-correction on). Every call takes about the same time, so a long period costs
-the number of years times one year.
+rest was measured on 2026-10-16 (one-year bulk and spectral, with the wind
+correction of the time: one more contribution per site). Every call takes
+about the same time, so a long period costs the number of years times one
+year.
 
 ## Open
 
@@ -52,7 +53,6 @@ the number of years times one year.
   min, the sum alone took ~37). In those calls the sum blocks hold one site
   over ~2,600 hours and run ~1.7x slower per site-hour than the 3 sites x
   720 hours of a one-month call; capping the hours per block may fix both.
-- **Wind correction.** Open points in [`WIND.md`](WIND.md).
 - **One site, spectral.** ~12 s of sum per year on one core; a worker pool
   kept between calls would roughly halve it.
 - **GPU.** Untested (the GP jobs then run in the main process).

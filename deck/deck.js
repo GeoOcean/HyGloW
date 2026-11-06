@@ -338,7 +338,7 @@
 
   /* ---------------------------------------------------------------------
    * Small spectra added up (illustrative JONSWAP shapes, not case data):
-   * each goal alone, then add; and the optional wind contribution.
+   * each goal alone, then add.
    * ------------------------------------------------------------------- */
   const SPEC = { W: 200, H: 110, f0: 0.03, f1: 0.3 };
   SPEC.fs = Array.from({ length: 120 }, (_, i) => SPEC.f0 + ((SPEC.f1 - SPEC.f0) * i) / 119);
@@ -350,7 +350,7 @@
     });
   const addSpectra = (a, b) => a.map((v, i) => v + b[i]);
 
-  // items: [[series, caption], "op", ...]; series: [[energy, color, style?], ...], style "dashed" | "area"
+  // items: [[series, caption], "op", ...]; series: [[energy, color], ...]
   function spectraSketch(root, items) {
     const { W, H, fs, f0, f1 } = SPEC;
     const top = 1.08 * Math.max(...items.flatMap((it) => (typeof it === "string" ? [] : it[0].flatMap(([e]) => e))));
@@ -362,10 +362,10 @@
         const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H + 4}`, role: "img" });
         svg.setAttribute("aria-label", caption);
         svg.appendChild(svgEl("line", { class: "axis-line", x1: 0, x2: W, y1: H, y2: H }));
-        series.forEach(([e, color, style]) => {
+        series.forEach(([e, color]) => {
           const p = pts(e);
-          if (style !== "dashed") svg.appendChild(svgEl("polygon", { class: style === "area" ? "area strong" : "area", points: `0,${H} ${p.join(" ")} ${W},${H}`, style: `fill:${color}` }));
-          if (style !== "area") svg.appendChild(svgEl("polyline", { class: style === "dashed" ? "curve dashed" : "curve", points: p.join(" "), style: `stroke:${color}` }));
+          svg.appendChild(svgEl("polygon", { class: "area", points: `0,${H} ${p.join(" ")} ${W},${H}`, style: `fill:${color}` }));
+          svg.appendChild(svgEl("polyline", { class: "curve", points: p.join(" "), style: `stroke:${color}` }));
         });
         const fig = document.createElement("figure");
         fig.appendChild(svg);
@@ -386,21 +386,6 @@
       [[[sea, "var(--series-2)"]], "Goal B: wind sea"],
       "=",
       [[[addSpectra(swell, sea), "var(--violet)"]], "At the coast: both"],
-    ]);
-  })();
-
-  (function renderWind() {
-    const root = document.querySelector("#wind-sketch");
-    if (!root) return;
-    const sum = addSpectra(jonswap(0.075, 1.6), jonswap(0.17, 0.5));
-    const windSea = jonswap(0.17, 0.5);
-    const extra = jonswap(0.155, 0.55);
-    spectraSketch(root, [
-      [[[sum, "var(--violet)"], [windSea, "var(--series-2)", "area"]], "Goal sum and its <strong>wind sea</strong>"],
-      "+",
-      [[[extra, "var(--teal)"]], "(K&sup2; &minus; 1) &times; wind sea"],
-      "=",
-      [[[addSpectra(sum, extra), "var(--violet)"], [sum, "var(--text-muted)", "dashed"]], "At the coast, with wind"],
     ]);
   })();
 

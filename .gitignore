@@ -190,7 +190,8 @@ cython_debug/
 *CASES*/
 *outputs/
 *outputs*/
-Netherlands/model_decisions/runs/
+Netherlands/numerical_tests/runs/
+Netherlands/dashboard/store/
 Netherlands/outputs_OLDESITO/
 
 # MacOS
