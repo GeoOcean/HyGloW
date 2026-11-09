@@ -24,7 +24,7 @@ app = Dash(__name__, use_pages=True, external_stylesheets=[dbc.themes.FLATLY], s
 server = app.server
 
 NAV = [("Overview", "/"), ("Explorer", "/explorer"), ("Compare", "/compare"), ("Error budget", "/budget"),
-       ("Wind", "/wind"), ("Storms", "/storms"), ("Metamodel", "/metamodel"), ("Calibration", "/calibration"),
+       ("Wind", "/wind"), ("Maps", "/maps"), ("Storms", "/storms"), ("Metamodel", "/metamodel"), ("Calibration", "/calibration"),
        ("Numerical tests", "/numerical-tests"), ("Findings", "/findings")]
 
 app.layout = html.Div([

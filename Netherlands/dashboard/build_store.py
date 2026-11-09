@@ -8,7 +8,9 @@ case through ``utils`` (:mod:`sources`) and writes ``store/`` (git-ignored):
   estimates of :data:`data.ESTIMATES`, plus ``wind/u10``, ``wind/u10dir`` (ERA5 at each site);
 - ``wind_grid.zarr``: ERA5 ``u10``, ``v10`` on their grid (the shaded wind layer);
 - ``sites.parquet``, ``goals.parquet``, ``offshore.zarr`` (hindcasts and water level at the goals);
-- ``conditions.parquet`` (one row per hour and source), ``storms.csv``;
+- ``conditions.parquet`` (one row per hour and source; SWAN's final accuracy), ``storms.csv``;
+- ``maps.zarr``: grid maps of the dynamic runs (SnapWave, SWAN) at the hours where two or more
+  have one, on the mesh nodes, with the image raster;
 - ``metamodel/``: training cases per goal (inputs, train/test, Hs and Dir fields), holdout
   metrics, linear-sum metrics;
 - ``calibration/``: satellite pairs, coefficients, metrics, quantile mapping, 1979-2023 quantiles;
@@ -39,7 +41,7 @@ import sources as src  # noqa: E402
 from utils import config as cfg  # noqa: E402
 from utils import metamodel as mm  # noqa: E402
 
-from data import COAST_REGIONS, ESTIMATES, OFFSHORE, STORE, VARIABLES  # noqa: E402
+from data import COAST_REGIONS, DYNAMIC, DYNAMIC_KINDS, ESTIMATES, OFFSHORE, STORE, VARIABLES  # noqa: E402
 
 logger = logging.getLogger("hywaves.dashboard")
 CHUNK_TIME = 744
@@ -114,8 +116,9 @@ def build_cube(sites: xr.Dataset, offshore: xr.Dataset) -> None:
         for spectral, key in ((False, "mm_bulk"), (True, "mm_spec")):
             parts = [src.metamodel(off, s, spectral) for s in ("isobaths", "buoys", "deenhaag")]
             put(f"{key}_{off}", xr.concat([p[list(VARIABLES)] for p in parts], "sites"))
-        for wind, key in ((False, "dyn_off"), (True, "dyn_on")):
-            put(f"{key}_{off}", src.dynamic(off, wind, ids))
+    for key in DYNAMIC:
+        model, wind = DYNAMIC_KINDS[ESTIMATES[key]["kind"]]
+        put(key, src.dynamic(ESTIMATES[key]["offshore"], wind, model, ids))
     era5 = src.wind_at_sites(sites)
     group = root.require_group("wind")
     for var in ("u10", "u10dir"):
@@ -160,10 +163,97 @@ def build_conditions(offshore: xr.Dataset) -> None:
             "wl": np.nanmean(offshore["wl"].values, 1),
             "wind_converged": np.isfinite(h1).any(1),
         })
+        for key in (k for k in DYNAMIC if ESTIMATES[k]["offshore"] == off and DYNAMIC_KINDS[ESTIMATES[k]["kind"]][0] == "swan"):
+            wind = DYNAMIC_KINDS[ESTIMATES[key]["kind"]][1]
+            df[f"{ESTIMATES[key]['kind']}_accuracy"] = src.swan_accuracy(off, wind, time_index).to_numpy()
         frames.append(df)
     conditions = pd.concat(frames, ignore_index=True)
     conditions.to_parquet(STORE / "conditions.parquet")
     _storms(conditions[conditions["offshore"] == "WHACS_cal"].set_index("time")).to_csv(STORE / "storms.csv", index=False)
+
+
+#: Pixel size of the map images (deg lon, deg lat; ~400 m).
+MAP_PIXEL = (0.006, 0.004)
+#: Maps read in parallel before they are written (bounds the memory).
+MAP_BATCH = 128
+
+
+def build_maps(sites: xr.Dataset) -> None:
+    """
+    ``maps.zarr``: the grid maps of every dynamic run at the hours where at least two runs have one
+    (float16 on the mesh nodes, one chunk per hour), the mesh, the image raster and each site's nearest node.
+
+    Hours where a run is NaN in the cube (not converged) are left out of that run.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    from scipy.spatial import cKDTree
+
+    cube = zarr.open_group(STORE / "cube.zarr", mode="r")
+    time_index = pd.DatetimeIndex(cube.attrs["time"])
+    hours = {}
+    for key in DYNAMIC:
+        model, wind = DYNAMIC_KINDS[ESTIMATES[key]["kind"]]
+        valid = time_index[np.isfinite(cube[f"{key}/hs"][:]).any(1)]
+        hours[key] = src.map_hours(ESTIMATES[key]["offshore"], wind, model, valid)
+        logger.info("maps: %s has %d maps", key, len(hours[key]))
+    counts = pd.Series(np.concatenate([h.to_numpy() for h in hours.values()])).value_counts()
+    shared = pd.DatetimeIndex(counts.index[counts >= 2])
+
+    mesh = src.mesh()
+    root = zarr.open_group(STORE / "maps.zarr", mode="w")
+    for var in ("lon", "lat", "depth"):
+        root.create_array(f"mesh/{var}", data=mesh[var].values.astype("float32"))
+    _write_raster(root, mesh)
+    lat0 = float(np.deg2rad(mesh["lat"].mean()))
+    tree = cKDTree(np.c_[mesh["lon"].values * np.cos(lat0), mesh["lat"].values])
+    _, node = tree.query(np.c_[sites["site_longitude"].values * np.cos(lat0), sites["site_latitude"].values])
+    root.create_array("site_node", data=node.astype("int32"))
+
+    n_node = mesh.sizes["node"]
+    for key in DYNAMIC:
+        model, wind = DYNAMIC_KINDS[ESTIMATES[key]["kind"]]
+        off = ESTIMATES[key]["offshore"]
+        times = hours[key].intersection(shared).sort_values()
+        group = root.require_group(f"runs/{key}")
+        group.attrs["time"] = [str(t) for t in times]
+        arrays = {v: group.create_array(v, shape=(len(times), n_node), chunks=(1, n_node), dtype="float16")
+                  for v in VARIABLES}
+        read = lambda t: src.read_map(off, wind, model, t)
+        # Threads read, this thread writes: parallel chunk creation on Lustre failed (EACCES) once
+        with ThreadPoolExecutor(src.THREADS) as ex:
+            for start in range(0, len(times), MAP_BATCH):
+                for i, ds in enumerate(ex.map(read, times[start:start + MAP_BATCH]), start):
+                    for v in VARIABLES:
+                        arrays[v][i] = ds[v].values.astype("float16")
+                logger.info("maps: %s, %d / %d hours", key, min(start + MAP_BATCH, len(times)), len(times))
+
+
+def _write_raster(root: zarr.Group, mesh: xr.Dataset) -> None:
+    """Pixels of the map image (north up) inside the mesh, with their triangle's nodes and barycentric weights."""
+    from matplotlib.tri import Triangulation
+
+    lon, lat, tri = mesh["lon"].values, mesh["lat"].values, mesh["triangles"].values
+    x = np.arange(lon.min(), lon.max() + MAP_PIXEL[0], MAP_PIXEL[0])
+    y = np.arange(lat.max(), lat.min() - MAP_PIXEL[1], -MAP_PIXEL[1])
+    X, Y = np.meshgrid(x, y)
+    found = Triangulation(lon, lat, tri).get_trifinder()(X.ravel(), Y.ravel())
+    pixel = np.flatnonzero(found >= 0)
+    nodes = tri[found[pixel]]
+    px, py = X.ravel()[pixel], Y.ravel()[pixel]
+    (x1, x2, x3), (y1, y2, y3) = lon[nodes].T, lat[nodes].T
+    det = (y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3)
+    w1 = ((y2 - y3) * (px - x3) + (x3 - x2) * (py - y3)) / det
+    w2 = ((y3 - y1) * (px - x3) + (x1 - x3) * (py - y3)) / det
+    weights = np.c_[w1, w2, 1 - w1 - w2]
+    group = root.require_group("raster")
+    group.create_array("pixel", data=pixel.astype("int32"))
+    group.create_array("nodes", data=nodes.astype("int32"))
+    group.create_array("weights", data=weights.astype("float32"))
+    half = np.array(MAP_PIXEL) / 2
+    group.attrs.update({"shape": [len(y), len(x)],
+                        "extent": [float(x[0] - half[0]), float(x[-1] + half[0]),
+                                   float(y[-1] - half[1]), float(y[0] + half[1])]})
 
 
 NAMED_STORMS = {"2013-12-05": "Xaver", "2013-10-28": "St Jude (Christian)"}
@@ -299,7 +389,7 @@ def build_numerical_tests() -> None:
     shutil.copy(folder / "README.md", out / "README.md")
 
 
-PARTS = {"sites": None, "offshore": None, "cube": None, "conditions": None, "wind_grid": build_wind_grid,
+PARTS = {"sites": None, "offshore": None, "cube": None, "conditions": None, "maps": None, "wind_grid": build_wind_grid,
          "metamodel": build_metamodel, "calibration": build_calibration, "numerical_tests": build_numerical_tests}
 
 
@@ -312,12 +402,14 @@ def main() -> None:
     STORE.mkdir(exist_ok=True)
     manifest_path = STORE / "manifest.json"
     manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
-    sites = src.dynamic_sites() if {"sites", "cube"} & set(parts) else None
+    sites = src.dynamic_sites() if {"sites", "cube", "maps"} & set(parts) else None
     offshore = None
     for part in parts:
         t0 = time.time()
         if part == "sites":
             build_sites(sites)
+        elif part == "maps":
+            build_maps(sites)
         elif part == "offshore":
             offshore = build_offshore()
         elif part in ("cube", "conditions"):

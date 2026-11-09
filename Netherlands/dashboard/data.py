@@ -34,18 +34,29 @@ _KINDS = {
     "offshore": ("offshore (closest goal)", "#8c8c8c", "dot"),
     "mm_bulk": ("metamodel bulk", "#1f77b4", "dash"),
     "mm_spec": ("metamodel spectral", "#2ca02c", "solid"),
-    "dyn_off": ("dynamic no wind", "#ff7f0e", "dash"),
-    "dyn_on": ("dynamic wind", "#d62728", "solid"),
+    "dyn_off": ("SnapWave no wind", "#ff7f0e", "dash"),
+    "dyn_on": ("SnapWave wind", "#d62728", "solid"),
+    "swan_off": ("SWAN no wind", "#c497d6", "dash"),
+    "swan_on": ("SWAN wind", "#7b3294", "solid"),
 }
+#: Dynamic runs of notebook 08 (every hour, all goals): estimate kind -> (model, wind).
+DYNAMIC_KINDS = {"dyn_off": ("snapwave", False), "dyn_on": ("snapwave", True),
+                 "swan_off": ("swan", False), "swan_on": ("swan", True)}
+#: Offshore sources with SWAN dynamic runs (SnapWave has every source).
+SWAN_OFFSHORE = ("WHACS_cal",)
 #: Every estimate of the cube: key -> label, colour, line dash, kind, offshore source.
 ESTIMATES: dict[str, dict[str, str]] = {"buoy": {"label": "Buoy", "color": "#111111", "dash": "solid",
                                                  "kind": "buoy", "offshore": ""}}
 for _off in OFFSHORE:
     for _kind, (_label, _color, _dash) in _KINDS.items():
+        if _kind.startswith("swan") and _off not in SWAN_OFFSHORE:
+            continue
         ESTIMATES[f"{_kind}_{_off}"] = {"label": f"{_off} · {_label}", "color": _color, "dash": _dash,
                                        "kind": _kind, "offshore": _off}
 #: The model estimates (everything but the buoys).
 MODELS = [k for k in ESTIMATES if k != "buoy"]
+#: The dynamic runs (the estimates with grid maps).
+DYNAMIC = [k for k in ESTIMATES if ESTIMATES[k]["kind"] in DYNAMIC_KINDS]
 #: Error-budget parts at the buoys: (name, minuend, subtrahend) as estimate kinds.
 BUDGET = (
     ("partitions (spectral − bulk)", "mm_spec", "mm_bulk"),
@@ -108,7 +119,7 @@ def buoy_sites() -> np.ndarray:
 _lock = threading.Lock()
 
 
-@lru_cache(maxsize=48)
+@lru_cache(maxsize=64)
 def _load(key: str) -> np.ndarray:
     return _cube()[key][:]
 
@@ -175,6 +186,54 @@ def time_index(value: str | pd.Timestamp | None) -> int:
         return 0
     t = pd.Timestamp(value)
     return int(np.clip(times().get_indexer([t], method="nearest")[0], 0, len(times()) - 1))
+
+
+# ---------------------------------------------------------------------------
+# Grid maps of the dynamic runs (maps.zarr)
+# ---------------------------------------------------------------------------
+
+
+def maps_available() -> bool:
+    return (STORE / "maps.zarr").exists()
+
+
+@lru_cache(maxsize=1)
+def _maps() -> zarr.Group:
+    return zarr.open_group(STORE / "maps.zarr", mode="r")
+
+
+@lru_cache(maxsize=1)
+def map_times() -> dict[str, pd.DatetimeIndex]:
+    """Hours with a map of each dynamic run (the hours where at least two runs have one)."""
+    runs = _maps()["runs"]
+    return {key: pd.DatetimeIndex(runs[key].attrs["time"]) for key in DYNAMIC if key in runs}
+
+
+@lru_cache(maxsize=256)
+def _map_row(key: str, variable: str, row: int) -> np.ndarray:
+    return _maps()[f"runs/{key}/{variable}"][row].astype("float32")
+
+
+def map_field(key: str, variable: str, time: pd.Timestamp) -> np.ndarray:
+    """Values on the mesh nodes of one run at one hour (the hour must have a map)."""
+    return _map_row(key, variable, int(map_times()[key].get_loc(time)))
+
+
+@lru_cache(maxsize=1)
+def raster() -> dict:
+    """
+    Pixels of the map image inside the mesh: flat ``pixel`` index, the 3 ``nodes`` of its triangle and their
+    barycentric ``weights``; ``shape`` (rows, cols, north up) and ``extent`` (lon0, lon1, lat0, lat1).
+    """
+    group = _maps()["raster"]
+    return {"pixel": group["pixel"][:], "nodes": group["nodes"][:], "weights": group["weights"][:],
+            "shape": tuple(group.attrs["shape"]), "extent": tuple(group.attrs["extent"])}
+
+
+@lru_cache(maxsize=1)
+def site_nodes() -> np.ndarray:
+    """Nearest mesh node of every cube site (column order)."""
+    return _maps()["site_node"][:]
 
 
 # ---------------------------------------------------------------------------

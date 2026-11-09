@@ -271,6 +271,66 @@ def density_scatter(r: np.ndarray, e: np.ndarray, variable: str, ref_label: str,
     return base_layout(fig, height)
 
 
+@lru_cache(maxsize=8)
+def _lut(colorscale: str) -> np.ndarray:
+    """256 RGB colours of a Plotly colour scale (the image and its colour bar then match exactly)."""
+    colors = sample_colorscale(colorscale, list(np.linspace(0, 1, 256)), colortype="rgb")
+    return np.array([[float(c) for c in s[s.index("(") + 1:-1].split(",")] for s in colors]).round().astype(np.uint8)
+
+
+def mesh_png(values: np.ndarray, colorscale: str, zmin: float, zmax: float, nearest: bool = False,
+             opacity: float = 0.92) -> str:
+    """
+    A field on the mesh nodes as a PNG (data URL) on the store raster, north up; outside the mesh and NaN are clear.
+
+    Linear inside each triangle (NaN corners left out), or the *nearest* corner (directions).
+    """
+    from PIL import Image
+
+    r = data.raster()
+    v = values[r["nodes"]]
+    finite = np.isfinite(v)
+    if nearest:
+        px = v[np.arange(len(v)), r["weights"].argmax(1)]
+    else:
+        w = np.where(finite, r["weights"], 0.0)
+        s = w.sum(1)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            px = np.where(s > 0, (np.where(finite, v, 0.0) * w).sum(1) / s, np.nan)
+    rows, cols = r["shape"]
+    img = np.zeros((rows * cols, 4), np.uint8)
+    ok = np.isfinite(px)
+    idx = np.clip(np.round((px[ok] - zmin) / ((zmax - zmin) or 1.0) * 255), 0, 255).astype(int)
+    img[r["pixel"][ok], :3] = _lut(colorscale)[idx]
+    img[r["pixel"][ok], 3] = int(255 * opacity)
+    buf = io.BytesIO()
+    Image.fromarray(img.reshape(rows, cols, 4), "RGBA").save(buf, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
+def mesh_map(values: np.ndarray, *, title: str = "", colorscale: str = "Viridis", zmin: float = 0.0,
+             zmax: float = 1.0, colorbar: str = "", nearest: bool = False, height: int = 480,
+             extra: list[go.BaseTraceType] | None = None, uirevision: str = "mesh") -> go.Figure:
+    """
+    A field on the mesh nodes as an image layer, with the sites on top (invisible; hover shows the value at the
+    site's nearest node) carrying the colour bar. *extra* traces go above (goals).
+    """
+    lon0, lon1, lat0, lat1 = data.raster()["extent"]
+    layer = dict(sourcetype="image", source=mesh_png(values, colorscale, zmin, zmax, nearest),
+                 coordinates=[[lon0, lat1], [lon1, lat1], [lon1, lat0], [lon0, lat0]], below="traces")
+    table = data.sites()
+    at_sites = np.asarray(values, float)[data.site_nodes()]
+    text = (table["site"] + " · " + table["group"] + " · " + table["depth"].round(1).astype(str) + " m").to_numpy()
+    hover = go.Scattermap(lat=table["lat"], lon=table["lon"], mode="markers", text=text, customdata=at_sites,
+                          marker=dict(size=7, opacity=0, color=at_sites, colorscale=colorscale, cmin=zmin, cmax=zmax,
+                                      showscale=True, colorbar=dict(title=colorbar, thickness=12, len=0.8)),
+                          hovertemplate="%{text}<br>value %{customdata:.3f}<extra></extra>", showlegend=False)
+    fig = go.Figure([hover] + (extra or []))
+    fig.update_layout(map=dict(style="carto-positron", center=MAP_CENTER, zoom=MAP_ZOOM + 0.6, layers=[layer]),
+                      uirevision=uirevision)
+    return base_layout(fig, height, title)
+
+
 def heatmap(table: pd.DataFrame, title: str, zmid: float | None = 0.0, colorscale: str = DIVERGING,
             fmt: str = "{:+.2f}", height: int = 260, zmax: float | None = None) -> go.Figure:
     """Annotated heatmap of a small table (rows x columns)."""

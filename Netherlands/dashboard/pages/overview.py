@@ -87,7 +87,8 @@ def layout(**_):
                   f"10 offshore goals, {n_iso:,} isobath sites (5, 10, 20 m), 141 DeenHaag mesh nodes and "
                   f"{len(data.buoy_sites())} buoys with data. Estimates: the offshore hindcast (WHACS, and WHACS_cal "
                   "calibrated against satellites), the HyWaves linear sum (MDA 600, CODEC water level; bulk and "
-                  "spectral) and the hourly SnapWave runs with and without ERA5 wind. Metrics are estimate first: "
+                  "spectral) and the hourly SnapWave runs with and without ERA5 wind (SWAN too, for WHACS_cal). "
+                  "Metrics are estimate first: "
                   "bias = estimate − reference."),
         kpis,
         dbc.Row([

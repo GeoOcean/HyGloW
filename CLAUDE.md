@@ -110,8 +110,9 @@ after publishing, commit `portal/`.
   comparison yet). Its notebooks put the case folder on `sys.path`; `runs/` is
   git-ignored. `Netherlands/dashboard/` (case-only Dash app, not `GUI/`): every estimate on
   the same sites and hours of 2013 (error budget, linear sum vs dynamic, wind, storms,
-  metamodel, calibration, numerical tests); `build_store.py` packs the results (read by
-  `sources.py`) into `store/` (git-ignored, 4.2 GB), `app.py` reads only it; rebuild the
+  metamodel, calibration, numerical tests; SnapWave and SWAN dynamic runs, their grid maps
+  compared on analog hours); `build_store.py` packs the results (read by
+  `sources.py`, every dynamic read names its model) into `store/` (git-ignored), `app.py` reads only it; rebuild the
   store after re-running 06-08 or the 2013 reconstruction. Its README holds the
   first-iteration conclusions (the Findings page shows them).
   `Netherlands/tmp/` holds only caches (`reconstruct/`) and scripts
