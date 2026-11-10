@@ -115,6 +115,8 @@ after publishing, commit `portal/`.
   `sources.py`, every dynamic read names its model) into `store/` (git-ignored), `app.py` reads only it; rebuild the
   store after re-running 06-08 or the 2013 reconstruction. Its README holds the
   first-iteration conclusions (the Findings page shows them).
+  `dashboard/wind_only_storms.py` runs SnapWave wind-only on the storm hours
+  (`build_store.py --only wind_only`; Wind and Storms pages).
   `Netherlands/tmp/` holds only caches (`reconstruct/`) and scripts
   (`check_dynamic_run.py`, `reconstruct_2013.py`: fills the 2013 cache).
 - Conventions: directions nautical, coming-from, clockwise; goal `angles` =
@@ -222,8 +224,11 @@ they are recomputed: notebooks, `numerical_tests/`, the dashboard)
   hours are NaN (wind mode: `hywaves/WIND.md`).
 - *Wind*: the reconstruction has no wind (the wind-correction code was removed
   on 2026-11-04); wind stays as dynamic-run forcing (`forcing.wind`, runs
-  `_wind-on`/`_wind-off`). What was tried, the numbers and the options:
-  `hywaves/WIND.md` (the one doc that keeps numbers).
+  `_wind-on`/`_wind-off`, and `_wind-only`: no boundary waves,
+  `simulation.wind_only_parameters` / `wind_only_cases_dir`). Wind tests are
+  closed (2026-11-10); the way chosen if it is added: a wind-only term damped by
+  the share of the sea already there. What was tried, the numbers and the
+  options: `hywaves/WIND.md` (the one doc that keeps numbers).
 - *Satellite calibration* (07b, `bluemath_tk.waves.{altimetry,calibration}`):
   IMOS `/lustre/geocean/DATA/IMOS/processed/imos_altimeter_1985_2020.zarr`
   (also over HTTP); passes within `radius_km` of the hindcast node, depth >
@@ -272,8 +277,8 @@ rebuild the store on any change; hours with no energy are NaN. Rates are
 measured on the 48-core node: re-measure there if the sum changes.
 
 **Next (user)**: decide from the dashboard what to fix or move into 09-12
-(spectral Tp/Dir/Spr, the 5 m storm overshoot, wind: `hywaves/WIND.md`
-options); buoy spectra for notebook 11; SWAN pass (05-12 with `model: swan`,
+(spectral Tp/Dir/Spr, the 5 m storm overshoot; wind tests closed, the damped
+wind-only term in `hywaves/WIND.md` if it is built); buoy spectra for notebook 11; SWAN pass (05-12 with `model: swan`,
 `tp` as PCA target, then snapshot `swan`); migrate Samoa and NewSouthWales
 (`update` + config + re-run). Cluster: arrays <= 9999 tasks and 20000 job
 records (bigger runs in `OFFSET` blocks).

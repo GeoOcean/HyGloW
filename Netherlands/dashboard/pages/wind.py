@@ -67,8 +67,123 @@ def layout(**_):
             dbc.Row([dbc.Col(ui.graph(id=f"wd-a-{k}", config={"scrollZoom": True}), lg=3) for k in ("off", "on", "add", "buoy")],
                     className="g-1"),
             html.Div(id="wd-a-hours", className="note")]),
+        _wind_only_card(),
         ui.card("Hours where the run with wind did not converge (NaN in the files)", ui.graph(id="wd-nonconv")),
     ])
+
+
+#: Site groups of the wind-only section (cube ``group`` values).
+WO_GROUPS = {"5 m": "5m", "10 m": "10m", "20 m": "20m", "buoys": "buoy"}
+WO_COLORS = {"5 m": "#fdae61", "10 m": "#74add1", "20 m": "#2c7bb6", "buoys": "#111111"}
+WO_MAPS = {"wo": "wind-only Hs (m)", "added": "added Hs, with − without wind (m)",
+           "over": "plain sum − with wind: √(E_off + E_wo) − Hs_on (m)", "ratio": "damping: added energy / wind-only energy"}
+
+
+def _wind_only_card():
+    if not data.wind_only_available():
+        return ui.card("Wind only", html.P("No wind-only run in the store: run wind_only_storms.py and "
+                                           "`build_store.py --only wind_only`.", className="note"))
+    events = [{"label": "every storm", "value": -1}] + [{"label": r.event, "value": i}
+                                                      for i, r in enumerate(data.storms().itertuples())]
+    return ui.card("Wind only: SnapWave with no boundary waves, only the ERA5 wind, on the storm hours (Storms page)", [
+        html.P("Could the wind be one more term of the sum (e.g. from analogs of the wind field)? If it were additive, "
+               "the energy the wind adds to the run without wind would equal the wind-only energy (ratio 1). The wind "
+               "grows an existing sea less than calm water, so the ratio falls as the share of the sea already there "
+               "grows: the damping a wind term would need. The damped row uses that curve fitted on the other storms "
+               "(leave one storm out), per site group.", className="note"),
+        dbc.Row([
+            dbc.Col(ui.dropdown("wd-wo-event", events, -1, "Storm"), md=4),
+            dbc.Col(ui.dropdown("wd-wo-map", [{"label": v, "value": k} for k, v in WO_MAPS.items()], "over", "Map"), md=5),
+        ], className="controls g-2"),
+        dbc.Row([
+            dbc.Col(ui.graph(id="wd-wo-curve"), lg=5),
+            dbc.Col(ui.graph(id="wd-wo-map-fig", config={"scrollZoom": True}), lg=7),
+        ], className="g-2"),
+        ui.loading(html.Div(id="wd-wo-table")),
+    ])
+
+
+def _wo_columns(group: str) -> np.ndarray:
+    cols = np.flatnonzero(data.site_mask(group))
+    return np.intersect1d(cols, data.buoy_sites()) if group == "buoy" else cols
+
+
+def _wo_select(pairs: dict[str, np.ndarray], event: int) -> np.ndarray:
+    return np.ones(len(pairs["hours"]), bool) if event == -1 else pairs["event"] == event
+
+
+@callback(Output("wd-wo-curve", "figure"), Output("wd-wo-table", "children"),
+          Input("wd-source", "value"), Input("wd-wo-event", "value"))
+def wind_only_curve(source, event):
+    if not data.wind_only_available():
+        return fg.empty("no wind-only run"), None
+    fig = go.Figure()
+    centres = (data.SHARE_BINS[:-1] + data.SHARE_BINS[1:]) / 2
+    rows = []
+    for name, group in WO_GROUPS.items():
+        cols = _wo_columns(group)
+        pairs = data.wind_only_pairs(source, cols)
+        sel = _wo_select(pairs, event)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            ratio = np.where(pairs["e_wo"] > 1e-4, (pairs["e_on"] - pairs["e_off"]) / pairs["e_wo"], np.nan)
+        curve = data.damping_curve(pairs["share"][sel].ravel(), ratio[sel].ravel())
+        fig.add_trace(go.Scatter(x=centres, y=curve, name=name, mode="lines+markers", line=dict(color=WO_COLORS[name])))
+        on = np.sqrt(pairs["e_on"])[sel]
+        rows_cols = np.ix_(pairs["hours"], cols)
+        estimates = {f"{base} {text}": data.field(f"{kind}_{source}{suffix}", "hs")[rows_cols]
+                     for kind, base in (("dyn_off", "SnapWave no wind"), ("mm_spec", "metamodel spectral"))
+                     for suffix, text in (("", ""), ("+wind_only", "⊕ wind only"), ("+damped", "⊕ damped wind only"))}
+        obs = data.field("buoy", "hs")[pairs["hours"]][:, cols][sel] if group == "buoy" else None
+        for label, est in estimates.items():
+            m = data.pooled_metrics(on, est[sel], "hs")
+            row = {"group": name, "estimate": label.strip(), "vs wind bias": m["bias"], "vs wind RMSE": m["rmse"]}
+            if obs is not None:
+                b = data.pooled_metrics(obs, est[sel], "hs")
+                row.update({"vs buoy bias": b["bias"], "vs buoy RMSE": b["rmse"]})
+            rows.append(row)
+        if obs is not None:
+            b = data.pooled_metrics(obs, on, "hs")
+            rows.append({"group": name, "estimate": "SnapWave with wind", "vs buoy bias": b["bias"],
+                         "vs buoy RMSE": b["rmse"]})
+    fig.add_hline(y=1, line=dict(color="black", dash="dash", width=1))
+    fig.add_hline(y=0, line=dict(color="#999", width=1))
+    fig.update_layout(xaxis_title="share of the sea already there, E_off / (E_off + E_wind-only)",
+                      yaxis_title="added energy / wind-only energy (median)",
+                      legend=dict(orientation="h", x=0.99, xanchor="right", y=0.99, yanchor="top",
+                                  bgcolor="rgba(255,255,255,0.7)"))
+    table = pd.DataFrame(rows)
+    fmt = {c: "{:+.2f}" if c.endswith("bias") else "{:.2f}" for c in table.columns if c.startswith("vs")}
+    caption = html.P("Hs (m) over the storm hours, reference SnapWave with wind or the buoys. Damped: "
+                     "√(E + f(E / (E + E_wo)) E_wo), E the energy without wind of that estimate (the metamodel's for "
+                     "the metamodel, as a reconstruction would), f the SnapWave curve of the other storms.",
+                     className="small text-muted mb-1")
+    return fg.base_layout(fig, 430, "Is the wind additive? (1 = yes)"), [caption, ui.table(table, fmt, index=False)]
+
+
+@callback(Output("wd-wo-map-fig", "figure"), Input("wd-source", "value"), Input("wd-wo-event", "value"),
+          Input("wd-wo-map", "value"))
+def wind_only_map(source, event, kind):
+    if not data.wind_only_available():
+        return fg.empty("no wind-only run")
+    cols = np.flatnonzero(data.sites()["source"].isin(["isobath", "mesh"]).to_numpy())
+    pairs = data.wind_only_pairs(source, cols)
+    sel = _wo_select(pairs, event)
+    e_off, e_on, e_wo = (pairs[k][sel] for k in ("e_off", "e_on", "e_wo"))
+    with np.errstate(invalid="ignore", divide="ignore"):
+        values = {"wo": lambda: np.sqrt(e_wo), "added": lambda: np.sqrt(e_on) - np.sqrt(e_off),
+                  "over": lambda: np.sqrt(e_off + e_wo) - np.sqrt(e_on),
+                  "ratio": lambda: np.where(e_wo > 1e-4, (e_on - e_off) / e_wo, np.nan)}[kind]()
+        mean = np.nanmedian(values, 0) if kind == "ratio" else np.nanmean(values, 0)
+    hours = int(np.isfinite(e_wo).any(1).sum())
+    stat = "median" if kind == "ratio" else "mean"
+    title = f"{stat} {WO_MAPS[kind]} · {hours} hours"
+    if kind == "wo":
+        return fg.site_map(mean, cols, title=title, colorscale="Magma_r", zmin=0,
+                           zmax=float(np.nanquantile(mean, 0.99)), colorbar="m", height=430, uirevision="wd-wo")
+    if kind == "ratio":
+        return fg.site_map(mean, cols, title=title, colorscale="RdBu_r", zmin=0, zmax=2, colorbar="ratio",
+                           height=430, uirevision="wd-wo")
+    return fg.site_map(mean, cols, title=title, diverging=True, colorbar="m", height=430, uirevision="wd-wo")
 
 
 def _added(source: str, quantity: str) -> np.ndarray:

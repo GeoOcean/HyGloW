@@ -46,8 +46,10 @@ so the sum of single-goal runs equals a run with every goal forced.
 - *Local wind.* The training runs have no wind (with wind, every goal's run
   would grow its own copy of the local sea), so the sum leaves out the sea the
   local wind grows over the domain. The dynamic runs can be forced with wind
-  (ERA5) to show how much that is; how to add it to the reconstruction is
-  open: what was tried and the options are in [`WIND.md`](WIND.md).
+  (ERA5) to show how much that is, or with no boundary waves to give the sea the
+  wind alone grows. Not in the reconstruction yet; the way found (a wind-only
+  term damped by the share of the sea already there), what was tried and the
+  numbers are in [`WIND.md`](WIND.md).
 - *Water level.* A metamodel input: constant, or a tide and surge series per
   goal.
 - *Offshore bias.* The hindcast can be calibrated against satellite

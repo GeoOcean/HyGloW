@@ -233,6 +233,24 @@ def cases_dir(
     return folder.with_name(f"{folder.name}_{dynamic_run(offshore, wind)}")
 
 
+def wind_only_cases_dir(model: str | None = None) -> Path:
+    """
+    Cases folder of the wind-only dynamic run: ``dynamic_cases`` + ``_wind-only``.
+
+    Parameters
+    ----------
+    model
+        Model name; default ``simulations.model``.
+
+    Returns
+    -------
+    Path
+        Cases folder (e.g. ``SnapWave_CASES_Dynamic_wind-only``).
+    """
+    folder = resolve(model_config(model)["dynamic_cases"])
+    return folder.with_name(f"{folder.name}_wind-only")
+
+
 def grid_file(model: str | None = None) -> Path:
     """
     Computational grid of the model (``simulations.<model>.grid_file``).
@@ -321,6 +339,34 @@ def dynamic_parameters(
         ))
         variables = (*BOUNDARY_VARS, "wl")
     return boundary_time_series(forcing, node_dim="goal", variables=variables)
+
+
+def wind_only_parameters(
+    offshore: xr.Dataset, *, water_level: bool = True
+) -> dict[str, list]:
+    """
+    :func:`dynamic_parameters` with no waves at the boundary (Hs 0 at every goal).
+
+    With the wind field of :meth:`HyWavesWrapperSetup.dynamic_wrapper`, each case
+    is the sea the local wind alone grows over the domain (and the water level);
+    Tp, Dir and Spr of *offshore* only fill the boundary files. Run into
+    :func:`wind_only_cases_dir`.
+
+    Parameters
+    ----------
+    offshore
+        Offshore hindcast at the goals on ``(time, goal)``, selected on the hours to run.
+    water_level
+        As :func:`dynamic_parameters`.
+
+    Returns
+    -------
+    dict[str, list]
+        ``tref`` and ``{var}_nodes`` lists, ``hs_nodes`` all 0.
+    """
+    return dynamic_parameters(
+        offshore.assign(hs=xr.zeros_like(offshore["hs"])), water_level=water_level
+    )
 
 
 @dataclass

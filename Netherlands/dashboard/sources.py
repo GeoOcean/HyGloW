@@ -60,6 +60,19 @@ def dynamic(offshore: str, wind: bool, model: str, sites: Iterable[str] | None =
     return _valid(ds)
 
 
+def wind_only(sites: Iterable[str]) -> xr.Dataset | None:
+    """
+    SnapWave wind-only run on the storm hours (``wind_only_storms.py``: no boundary waves,
+    ERA5 wind, CODEC water level), or None if not postprocessed. Hs 0 is valid; above 15 m NaN.
+    """
+    path = sim.wind_only_cases_dir("snapwave") / "Dynamic_Cases_storms.nc"
+    if not path.exists():
+        return None
+    with xr.open_dataset(path) as ds:
+        ds = ds[list(VARIABLES)].sel(sites=list(sites)).load()
+    return ds.where((ds["hs"] >= 0) & (ds["hs"] < 15))
+
+
 def map_hours(offshore: str, wind: bool, model: str, times: pd.DatetimeIndex) -> pd.DatetimeIndex:
     """The *times* whose case folder holds a grid map (``save_map`` cases of notebook 08)."""
     name = MAP_FILES[model]

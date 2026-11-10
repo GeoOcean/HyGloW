@@ -66,9 +66,37 @@ BUDGET = (
 )
 BUDGET_COLORS = ("#2ca02c", "#1f77b4", "#ff7f0e", "#9467bd")
 
+#: Storm-hours test (Storms page only): SnapWave with no boundary waves, ERA5 wind (``wind_only``), and
+#: estimates without wind plus it, summed in energy (Hs = sqrt(Hs² + Hs_wind-only²)) or damped by the share
+#: of the sea already there (:func:`damped_wind_only`); Hs only.
+WIND_ONLY: dict[str, dict[str, str]] = {"wind_only": {"label": "SnapWave wind only (no waves)", "color": "#e377c2",
+                                                      "dash": "dot", "kind": "wind_only", "offshore": "", "base": ""}}
+_PLUS_WIND_ONLY = {"mm_bulk": ("#17becf", "#08519c"), "mm_spec": ("#8c564b", "#006d2c"),
+                   "dyn_off": ("#bcbd22", "#a63603")}
+#: Suffix of the estimates plus wind only -> (label, dash).
+_WIND_ONLY_SUFFIX = {"+wind_only": ("⊕ wind only", "dashdot"), "+damped": ("⊕ damped wind only", "solid")}
+for _off in OFFSHORE:
+    for _kind, _colors in _PLUS_WIND_ONLY.items():
+        for (_suffix, (_text, _dash)), _color in zip(_WIND_ONLY_SUFFIX.items(), _colors):
+            WIND_ONLY[f"{_kind}_{_off}{_suffix}"] = {"label": f"{_off} · {_KINDS[_kind][0]} {_text}", "color": _color,
+                                                     "dash": _dash, "kind": f"{_kind}{_suffix}", "offshore": _off,
+                                                     "base": f"{_kind}_{_off}"}
+
+
+def wind_only_keys(offshore: str) -> list[str]:
+    """Estimates of the wind-only test for one source: without wind, plus wind only (plain, damped), with wind, wind only."""
+    return [*(f"{k}_{offshore}" for k in _PLUS_WIND_ONLY),
+            *(f"{k}_{offshore}{x}" for x in _WIND_ONLY_SUFFIX for k in _PLUS_WIND_ONLY),
+            f"dyn_on_{offshore}", "wind_only"]
+
+
+def meta(key: str) -> dict[str, str]:
+    """Label, colour, dash, kind and source of an estimate of :data:`ESTIMATES` or :data:`WIND_ONLY`."""
+    return ESTIMATES[key] if key in ESTIMATES else WIND_ONLY[key]
+
 
 def label(key: str) -> str:
-    return ESTIMATES[key]["label"]
+    return meta(key)["label"]
 
 
 def estimate_options(include_buoy: bool = True) -> list[dict[str, str]]:
@@ -124,8 +152,102 @@ def _load(key: str) -> np.ndarray:
     return _cube()[key][:]
 
 
+def wind_only_available() -> bool:
+    return "wind_only" in _cube()
+
+
+#: Bins of the share of the sea already there, E_off / (E_off + E_wind-only), for the damping curve.
+SHARE_BINS = np.linspace(0, 1, 21)
+
+
+@lru_cache(maxsize=1)
+def storm_events() -> np.ndarray:
+    """Event number (0..) of every hour of 2013, -1 outside the storms."""
+    event = np.full(len(times()), -1)
+    for i, s in enumerate(storms().itertuples()):
+        event[time_index(s.start):time_index(s.end) + 1] = i
+    return event
+
+
+def wind_only_pairs(offshore: str, columns: np.ndarray) -> dict[str, np.ndarray]:
+    """
+    Storm hours with a wind-only run, at *columns*: energies without wind (``e_off``), with wind
+    (``e_on``), wind only (``e_wo``), the share of the sea already there and the event of each hour.
+    """
+    hours = np.flatnonzero(storm_events() >= 0)
+    e_off = field(f"dyn_off_{offshore}", "hs")[hours][:, columns].astype(float) ** 2
+    e_on = field(f"dyn_on_{offshore}", "hs")[hours][:, columns].astype(float) ** 2
+    e_wo = field("wind_only", "hs")[hours][:, columns].astype(float) ** 2
+    with np.errstate(invalid="ignore", divide="ignore"):
+        share = e_off / (e_off + e_wo)
+    return {"hours": hours, "event": storm_events()[hours], "e_off": e_off, "e_on": e_on, "e_wo": e_wo, "share": share}
+
+
+def damping_curve(share: np.ndarray, ratio: np.ndarray, min_pairs: int = 50) -> np.ndarray:
+    """Median of *ratio* (added energy / wind-only energy) in each :data:`SHARE_BINS` bin (NaN below *min_pairs*)."""
+    ok = np.isfinite(share) & np.isfinite(ratio)
+    b = np.clip(np.digitize(share[ok], SHARE_BINS) - 1, 0, len(SHARE_BINS) - 2)
+    r = ratio[ok]
+    return np.array([np.median(r[b == i]) if (b == i).sum() >= min_pairs else np.nan
+                     for i in range(len(SHARE_BINS) - 1)])
+
+
+def damped_wind_only(pairs: dict[str, np.ndarray], e_base: np.ndarray | None = None) -> np.ndarray:
+    """
+    Hs without wind plus the wind-only energy times the damping of its share, the curve fitted on the
+    SnapWave pairs of the other events (leave one event out): ``sqrt(E + f(E / (E + E_wo)) E_wo)``.
+
+    *e_base* is the energy without wind E (e.g. the metamodel's, as in a reconstruction); default the
+    SnapWave run without wind of *pairs*.
+    """
+    e_base = pairs["e_off"] if e_base is None else e_base
+    with np.errstate(invalid="ignore", divide="ignore"):
+        share_base = e_base / (e_base + pairs["e_wo"])
+    with np.errstate(invalid="ignore", divide="ignore"):
+        ratio = (pairs["e_on"] - pairs["e_off"]) / pairs["e_wo"]
+    ratio = np.where(pairs["e_wo"] > 1e-4, ratio, np.nan)
+    centres = (SHARE_BINS[:-1] + SHARE_BINS[1:]) / 2
+    out = np.full(pairs["e_off"].shape, np.nan)
+    for ev in np.unique(pairs["event"]):
+        test = pairs["event"] == ev
+        curve = damping_curve(pairs["share"][~test].ravel(), ratio[~test].ravel())
+        ok = np.isfinite(curve)
+        if not ok.any():
+            continue
+        s = share_base[test]
+        f = np.interp(np.where(np.isfinite(s), s, 0), centres[ok], curve[ok])
+        with np.errstate(invalid="ignore"):
+            out[test] = np.sqrt(np.clip(e_base[test] + f * pairs["e_wo"][test], 0, None))
+    return out
+
+
+@lru_cache(maxsize=8)
+def _damped(base: str) -> np.ndarray:
+    """``(time, site)`` Hs of *base* plus the damped wind only (storm hours; curve per site group)."""
+    hs = field(base, "hs")
+    out = np.full(hs.shape, np.nan, dtype="float32")
+    groups = sites()["group"].to_numpy()
+    for group in np.unique(groups):
+        cols = np.flatnonzero(groups == group)
+        pairs = wind_only_pairs(ESTIMATES[base]["offshore"], cols)
+        e_base = hs[pairs["hours"]][:, cols].astype(float) ** 2
+        out[np.ix_(pairs["hours"], cols)] = damped_wind_only(pairs, e_base)
+    return out
+
+
+@lru_cache(maxsize=8)
+def _plus_wind_only(base: str) -> np.ndarray:
+    with np.errstate(invalid="ignore"):
+        return np.sqrt(field(base, "hs") ** 2 + field("wind_only", "hs") ** 2)
+
+
 def field(estimate: str, variable: str) -> np.ndarray:
-    """``(time, site)`` array of one estimate (``wind`` for ``u10`` / ``u10dir``)."""
+    """``(time, site)`` array of one estimate (``wind`` for ``u10`` / ``u10dir``; ``...+wind_only|+damped``: Hs only)."""
+    if estimate.endswith(tuple(_WIND_ONLY_SUFFIX)):
+        if variable != "hs":
+            raise ValueError("estimates plus wind only have Hs only")
+        base = WIND_ONLY[estimate]["base"]
+        return _plus_wind_only(base) if estimate.endswith("+wind_only") else _damped(base)
     with _lock:
         return _load(f"{estimate}/{variable}")
 

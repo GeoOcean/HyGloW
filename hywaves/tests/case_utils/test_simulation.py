@@ -109,6 +109,27 @@ class TestModelConfig(unittest.TestCase):
                 self.assertEqual(sws.slurm_kwargs(max_parallel=5), {"cpus_per_task": 4, "max_parallel": 5})
                 self.assertEqual(sws.slurm_kwargs("swan"), {})
 
+    def test_dynamic_folders(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.dict(sws.SIMULATIONS, _models_config(tmp)):
+                self.assertEqual(sws.cases_dir("dynamic", offshore="W", wind=True).name, "snapwave_dyn_W_wind-on")
+                self.assertEqual(sws.wind_only_cases_dir().name, "snapwave_dyn_wind-only")
+                self.assertEqual(sws.wind_only_cases_dir("swan").name, "swan_dyn_wind-only")
+
+    def test_wind_only_parameters(self) -> None:
+        """Every goal at Hs 0 (NaN too); the other boundary variables as the offshore data."""
+        time = pd.date_range("2013-12-05 18:00", periods=2, freq="h")
+        offshore = xr.Dataset(
+            {v: (("time", "goal"), np.array([[1.0, np.nan], [2.0, 3.0]]) * k)
+             for v, k in (("hs", 1), ("tp", 5), ("dir", 100), ("spr", 10))},
+            coords={"time": time, "goal": [1, 2]},
+        )
+        params = sws.wind_only_parameters(offshore, water_level=False)
+        self.assertEqual(params["hs_nodes"], [[0.0, 0.0], [0.0, 0.0]])
+        self.assertEqual(params["tp_nodes"][1], [10.0, 15.0])
+        self.assertEqual(params["tref"], ["20131205 180000", "20131205 190000"])
+        self.assertEqual(offshore["hs"].values[0, 0], 1.0)
+
     def test_bad_kind_and_model(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             with mock.patch.dict(sws.SIMULATIONS, _models_config(tmp)):

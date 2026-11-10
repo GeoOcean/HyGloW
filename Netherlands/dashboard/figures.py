@@ -225,7 +225,7 @@ def series(column: int, variable: str, keys: list[str], index: int | None = None
         y = data.field(key, variable)[sl, column]
         if not np.isfinite(y).any():
             continue
-        meta = data.ESTIMATES[key]
+        meta = data.meta(key)
         if key == "buoy":
             fig.add_trace(go.Scattergl(x=t[sl], y=y, name=meta["label"], mode="markers",
                                        marker=dict(size=3.5, color=meta["color"])))

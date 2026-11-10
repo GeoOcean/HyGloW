@@ -1,11 +1,22 @@
 # Wind: what was tried, what we know, what to do next
 
-State on 2026-11-04 (Netherlands, SnapWave; K tested on hywaves 0.15.0, removed in 0.16.0). The reconstruction
-has **no wind**: the metamodel cases run without it and the linear sum adds the
+Final state on 2026-11-10 (Netherlands, SnapWave; the last wind test of this iteration). The
+reconstruction has **no wind**: the metamodel cases run without it and the linear sum adds the
 goals only. Wind stays as forcing of the dynamic runs (`forcing.wind`, folders
-`<dynamic_cases>_<offshore>_wind-on|off`, both wrappers). How to add the local
-wind to the reconstruction is open and decided after the first iteration of
-results.
+`<dynamic_cases>_<offshore>_wind-on|off`, both wrappers) and of the wind-only run
+(`<dynamic_cases>_wind-only`, `utils.simulation.wind_only_parameters` / `wind_only_cases_dir`).
+
+**Conclusion.** The missing wind is the largest error of the reconstruction at the buoys and
+grows with the sea. The growth factor K (removed) failed with the open-boundary enclosure. The
+way to add it, if it is added: **a wind-only term with a damping**,
+`Hs = sqrt(E + f(share) E_wo)`, E the energy of the linear sum, E_wo the sea the local wind alone
+grows (no boundary waves), f a curve of the share of the sea already there, E / (E + E_wo).
+Tested on the six 2013 storms (last section): learned on the other storms, it reproduces SnapWave
+with wind from SnapWave without wind, and matches it on the metamodel at 20 m; nearer the coast
+it adds to the linear sum's storm overshoot, which has to be fixed first. To build it: E_wo from
+analogs of the ERA5 wind field or its own MDA -> PCA -> GP on `u10, u10dir, wl` (option 2), f
+learned from wind-on / wind-off / wind-only runs over more than storms (calm and offshore winds
+untested). It can only reproduce SnapWave's wind, which is high with S-SW wind.
 
 ## Why the wind is separate
 
@@ -100,8 +111,9 @@ in m; no correction −0.84 / 1.20):
    uniform training winds.
 2. **Wind as one more goal**: cases with no boundary waves and a uniform wind
    (`u10`, `u10dir`, `wl`), MDA -> PCA -> GP like a goal, added to the sum. Misses
-   the interaction (wind grows an existing sea less than calm water); measurable
-   with the training cases rerun with zero boundary waves.
+   the interaction (wind grows an existing sea less than calm water). Tested on the
+   2013 storms with the real wind field (last section): the plain sum overshoots, a
+   damping on the share of the sea already there fixes it. The chosen option.
 3. **Correction learned from the dynamic runs**: the 2013 wind-on / wind-off pairs
    are the same hours with and without the real ERA5 field. Per site and hour,
    target ΔE = Hs_on² − Hs_off²; inputs the ERA5 wind at the site, fetch and mean
@@ -157,4 +169,68 @@ runs (option 3) would inherit the S-SW overestimate.
 The K training pairs of both setups were deleted on 2026-11-04; the K numbers above are all
 that is left of them.
 
-Next: how options 1-3 reproduce the added Hs on held-out months of 2013, then the buoys.
+
+## Wind-only storm test (2026-11-09/10)
+
+Option 2 checked on real fields before building it: SnapWave on every hour of the six 2013
+storms of the dashboard (520 hours) with **no boundary waves**, the ERA5 wind field and the
+CODEC water level, otherwise the wind-on dynamic setup (Tp, Dir, Spr of WHACS_cal only fill the
+boundary files). Run: `cd Netherlands/dashboard && python wind_only_storms.py build | slurm |
+postprocess`, then `python build_store.py --only wind_only` (cases
+`Netherlands/SnapWave_CASES_Dynamic_wind-only/`, ~3-5 min per hour, about 30 min on the cluster).
+The Wind page (wind-only section: damping curve, maps, scores) and the Storms page ("wind-only
+test" estimates) show it.
+
+506 of 520 hours converged. Hs bias / RMSE (m) over all storm hours, WHACS_cal, against SnapWave
+with wind (isobaths, buoy sites) and against the buoy records (9544 pairs):
+
+| estimate | 5 m | 10 m | 20 m | buoy sites | vs buoys |
+| --- | --- | --- | --- | --- | --- |
+| SnapWave no wind | −0.20 / 0.31 | −0.35 / 0.45 | −0.47 / 0.59 | −0.39 / 0.50 | −0.27 / 0.50 |
+| SnapWave no wind ⊕ wind only | +0.24 / 0.38 | +0.11 / 0.21 | +0.12 / 0.17 | +0.10 / 0.17 | +0.28 / 0.49 |
+| metamodel spectral | +0.03 / 0.49 | −0.24 / 0.46 | −0.42 / 0.58 | −0.32 / 0.50 | −0.19 / 0.46 |
+| metamodel spectral ⊕ wind only | +0.43 / 0.67 | +0.20 / 0.39 | +0.16 / 0.23 | +0.16 / 0.28 | +0.34 / 0.51 |
+| SnapWave with wind | | | | | +0.17 / 0.43 |
+
+The energy sum overshoots the run with wind (the wind grows an existing sea less than calm
+water), most at 5 m where it also adds to the depth-limited overshoot of the linear sum. At 10-20 m
+and the buoy sites it turns a −0.35 to −0.47 m bias into +0.10 to +0.16 m with a third to half the
+RMSE against the run with wind; against the buoys the RMSE does not improve (the bias changes
+sign). A wind-only term is worth keeping only with a damping that depends on the sea already
+there (e.g. a factor on the wind-only energy learned from these pairs, option 3) and a depth
+limit at 5 m.
+
+**Damping** (Wind page, wind-only section; `dashboard/data.py` `damped_wind_only`). Ratio added energy / wind-only energy,
+(Hs_on² − Hs_off²) / Hs_wo², against the share of the sea already there, E_off / (E_off + E_wo):
+about 1-1.4 when the wind-only sea dominates, falling smoothly to ~0.3-0.6 at shares of 0.6-0.8,
+the same shape at 10 m, 20 m and the buoy sites; at 5 m it falls faster (depth limit). A damped
+term sqrt(E + f(E / (E + E_wo)) E_wo), f the median curve per site group fitted on the SnapWave
+pairs with each storm left out (20 bins of the share, median ratio per bin with >= 50 pairs,
+linear between bins, flat beyond; pairs with E_wo < 1e-4 m² left out), E the energy without wind of
+the estimate (for the metamodel its own, as a reconstruction would) (WHACS_cal, all storm
+hours, bias / RMSE vs SnapWave with wind; last column vs the buoy records):
+
+| group | estimate | no wind | ⊕ wind only | ⊕ damped wind only | damped vs buoys |
+| --- | --- | --- | --- | --- | --- |
+| 5 m | SnapWave | −0.20 / 0.31 | +0.24 / 0.38 | +0.03 / 0.20 | |
+| 5 m | metamodel spectral | +0.03 / 0.48 | +0.43 / 0.67 | +0.21 / 0.48 | |
+| 10 m | SnapWave | −0.34 / 0.44 | +0.11 / 0.21 | +0.02 / 0.16 | |
+| 10 m | metamodel spectral | −0.23 / 0.45 | +0.20 / 0.39 | +0.10 / 0.30 | |
+| 20 m | SnapWave | −0.46 / 0.59 | +0.12 / 0.17 | −0.02 / 0.14 | |
+| 20 m | metamodel spectral | −0.41 / 0.57 | +0.16 / 0.23 | +0.02 / 0.15 | |
+| buoys | SnapWave | −0.42 / 0.54 | +0.12 / 0.19 | +0.02 / 0.15 | +0.19 / 0.44 |
+| buoys | metamodel spectral | −0.35 / 0.54 | +0.18 / 0.31 | +0.08 / 0.25 | +0.25 / 0.44 |
+
+SnapWave with wind vs the buoys: +0.16 / 0.43. The damped term on SnapWave without wind
+reproduces the run with wind; on the metamodel it works at 20 m, is +0.10 m at 10 m and +0.21 m
+at 5 m, where it adds to the linear sum's storm overshoot (the metamodel's own error, not the
+wind term's). Against the buoys the damped metamodel has the RMSE of SnapWave with wind and a
+slightly larger bias. So a wind term = a wind-only field (from analogs or its own MDA -> PCA -> GP
+on u10, u10dir, wl) times a damping on the share of the sea already there looks feasible; the
+5 m overshoot has to be fixed in the sum first.
+
+Open: six storms of one year only (onshore winds); the wind-only field came from a run every
+hour, not from analogs or a metamodel; calm and offshore-wind hours untested; the ratio above 1
+when the wind-only sea dominates (the wind adds more to a small sea than to calm water) is not
+explained (growth from a seed, or SnapWave's one period per node).
+

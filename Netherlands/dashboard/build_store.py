@@ -5,7 +5,8 @@ Run from this folder (``python build_store.py [--only part ...]``); it reads the
 case through ``utils`` (:mod:`sources`) and writes ``store/`` (git-ignored):
 
 - ``cube.zarr``: ``{estimate}/{variable}`` on ``(time, site)`` (8760 x 5156), the
-  estimates of :data:`data.ESTIMATES`, plus ``wind/u10``, ``wind/u10dir`` (ERA5 at each site);
+  estimates of :data:`data.ESTIMATES`, plus ``wind/u10``, ``wind/u10dir`` (ERA5 at each site) and
+  ``wind_only/`` (SnapWave without boundary waves, storm hours only: part ``wind_only``);
 - ``wind_grid.zarr``: ERA5 ``u10``, ``v10`` on their grid (the shaded wind layer);
 - ``sites.parquet``, ``goals.parquet``, ``offshore.zarr`` (hindcasts and water level at the goals);
 - ``conditions.parquet`` (one row per hour and source; SWAN's final accuracy), ``storms.csv``;
@@ -124,6 +125,20 @@ def build_cube(sites: xr.Dataset, offshore: xr.Dataset) -> None:
     for var in ("u10", "u10dir"):
         _write_array(group, var, era5[var].transpose("time", "sites").values)
     logger.info("cube: wind")
+
+
+def build_wind_only(sites: xr.Dataset) -> None:
+    """``cube.zarr`` ``wind_only/``: the SnapWave wind-only run on the storm hours (NaN elsewhere)."""
+    ids = sites["sites"].values
+    ds = src.wind_only(ids)
+    if ds is None:
+        logger.warning("wind_only: no Dynamic_Cases_storms.nc (run wind_only_storms.py)")
+        return
+    ds = ds.reindex(time=pd.DatetimeIndex(sites["time"].values), sites=ids).transpose("time", "sites")
+    group = zarr.open_group(STORE / "cube.zarr", mode="a").require_group("wind_only")
+    for var in VARIABLES:
+        _write_array(group, var, ds[var].values)
+    logger.info("cube: wind_only (%d hours)", int(ds["hs"].notnull().any("sites").sum()))
 
 
 def build_wind_grid() -> None:
@@ -389,7 +404,8 @@ def build_numerical_tests() -> None:
     shutil.copy(folder / "README.md", out / "README.md")
 
 
-PARTS = {"sites": None, "offshore": None, "cube": None, "conditions": None, "maps": None, "wind_grid": build_wind_grid,
+PARTS = {"sites": None, "offshore": None, "cube": None, "wind_only": None, "conditions": None, "maps": None,
+         "wind_grid": build_wind_grid,
          "metamodel": build_metamodel, "calibration": build_calibration, "numerical_tests": build_numerical_tests}
 
 
@@ -402,7 +418,7 @@ def main() -> None:
     STORE.mkdir(exist_ok=True)
     manifest_path = STORE / "manifest.json"
     manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
-    sites = src.dynamic_sites() if {"sites", "cube", "maps"} & set(parts) else None
+    sites = src.dynamic_sites() if {"sites", "cube", "wind_only", "maps"} & set(parts) else None
     offshore = None
     for part in parts:
         t0 = time.time()
@@ -410,6 +426,8 @@ def main() -> None:
             build_sites(sites)
         elif part == "maps":
             build_maps(sites)
+        elif part == "wind_only":
+            build_wind_only(sites)
         elif part == "offshore":
             offshore = build_offshore()
         elif part in ("cube", "conditions"):
