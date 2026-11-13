@@ -32,6 +32,10 @@ goal contributions with threads and sums the spectra in worker processes
   :func:`sum_contributions` (spectral sum), :func:`reconstruct` (both, cached
   per site and calendar month in :func:`reconstruction_store`),
   :func:`load_reconstruction_spectra`.
+- Depth cap (``metamodel.reconstruction.depth_cap``): :func:`depth_ceiling`
+  (highest Hs / h of the training cases per site), :func:`apply_depth_cap`;
+  :func:`reconstruct` and :func:`load_reconstruction_spectra` return the
+  capped sum, the cache keeps the plain one.
 
 Site selection and metadata: :mod:`utils.geometry`.
 """
@@ -45,6 +49,7 @@ import logging
 import shutil
 import time as _time
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
@@ -55,6 +60,7 @@ import xarray as xr
 from bluemath_tk.core.io import load_model
 from bluemath_tk.core.logging import get_file_logger
 from bluemath_tk.core.resources import GIB, USAGE, limit_threads, machine, run_processes
+from bluemath_tk.waves.hywaves import depth_cap as hwc
 from bluemath_tk.waves.hywaves import metamodel as hw
 from bluemath_tk.waves.hywaves import reconstruction as hwr
 from bluemath_tk.waves.hywaves.resources import (
@@ -839,6 +845,104 @@ def sum_contributions(
     )
 
 
+# ---------------------------------------------------------------------------
+# Depth cap
+# ---------------------------------------------------------------------------
+
+
+def depth_ceiling() -> pd.Series:
+    """
+    Per ``ok`` output site, the highest Hs / h of any training case of any goal.
+
+    h = mesh depth + the case water level; cases with h <= 0.5 m do not
+    count (:func:`bluemath_tk.waves.hywaves.depth_cap.depth_ceiling`). It is
+    the depth-limited ceiling of one goal alone, from every model case (not
+    only the MDA ones), read again when a case file changes.
+
+    Returns
+    -------
+    pandas.Series
+        Ceiling indexed by site id; NaN where no case counts.
+
+    Raises
+    ------
+    ValueError
+        If ``wl`` is not an MDA input (the cases carry no water level).
+    """
+    if "wl" not in MDA_INPUTS:
+        raise ValueError("The depth cap needs the water level of the cases: add 'wl' to metamodel.mda_inputs")
+    goals = tuple(_goals())
+    return _depth_ceiling(goals, _fingerprint([cases_path(g) for g in goals])).copy()
+
+
+@lru_cache(maxsize=2)
+def _depth_ceiling(goals: tuple[str, ...], fingerprint: str) -> pd.Series:
+    sites = site_meta()
+    ceiling = pd.Series(np.nan, index=sites["sites"].values.astype(str), name="ceiling")
+    for goal in goals:
+        cases = load_cases_goal(goal, apply_site_filter=False)
+        ids = cases["sites"].values.astype(str)
+        mesh = sites["site_mesh_depth"].sel(sites=ids).values
+        depth = mesh[None, :] + cases[forcing_columns()["wl"]].values[:, None]
+        hs = cases["hs"].transpose("case_num", "sites").values
+        ceiling = np.fmax(ceiling, pd.Series(hwc.depth_ceiling(hs, depth), index=ids).reindex(ceiling.index))
+    return ceiling
+
+
+def water_depth(times: pd.DatetimeIndex, site_ids: list[str], wl: WaterLevel) -> xr.DataArray:
+    """
+    ``(time, sites)`` water depth of a reconstruction: mesh depth + *wl*.
+
+    With ``wl="forcing"`` the level is the mean ``forcing.water_level`` of
+    every goal at each hour, the one level a dynamic run uses.
+    """
+    if isinstance(wl, str):
+        level = np.mean([goal_water_level(g, times).to_numpy() for g in _goals()], axis=0)
+    else:
+        level = np.full(len(times), float(wl))
+    mesh = site_meta(site_ids)["site_mesh_depth"].values
+    return xr.DataArray(mesh[None, :] + level[:, None], dims=("time", "sites"),
+                        coords={"time": times, "sites": site_ids})
+
+
+def apply_depth_cap(
+    bulk: xr.Dataset,
+    *,
+    wl: WaterLevel,
+    variables: Mapping[str, str] | None = None,
+    spectra: xr.Dataset | None = None,
+) -> tuple[xr.Dataset, xr.Dataset | None]:
+    """
+    Cap a reconstruction at :func:`depth_ceiling` x :func:`water_depth`.
+
+    Hs becomes ``min(Hs, cap)``; the other heights of *variables* scale with
+    it, periods and directions are kept, and *spectra* are scaled by the
+    energy factor (:func:`bluemath_tk.waves.hywaves.depth_cap.apply_depth_cap`).
+
+    Parameters
+    ----------
+    bulk
+        Reconstruction on ``(time, sites)`` (the plain linear sum).
+    wl
+        Its water level (as for :func:`reconstruct`).
+    variables
+        Output name -> wavespectra stat; default
+        ``metamodel.reconstruction.variables``.
+    spectra
+        Its summed ``efth``, if any.
+
+    Returns
+    -------
+    bulk, spectra
+        Capped.
+    """
+    site_ids = [str(s) for s in bulk["sites"].values]
+    ceiling = xr.DataArray(depth_ceiling().reindex(site_ids).to_numpy(), dims="sites",
+                           coords={"sites": site_ids})
+    cap = ceiling * water_depth(bulk.get_index("time"), site_ids, wl).clip(min=0.0)
+    return hwc.apply_depth_cap(bulk, cap, dict(variables or RECONSTRUCTION["variables"]), spectra)
+
+
 def _input_files(metamodel: str, n: int, goals: list[str], offshore_name: str, wl: WaterLevel) -> list[Path]:
     """Files a reconstruction depends on: fitted models, splits, sites, offshore and forcing stores."""
     files = [output_sites_path(), resolve(get_offshore_wave(offshore_name)["data_path"])]
@@ -1003,6 +1107,7 @@ def reconstruction_resources(
     variables: Mapping[str, str] | None = None,
     save_spectra: bool | None = None,
     recompute: bool = False,
+    depth_cap: bool | None = None,
 ) -> ReconstructionResources:
     """
     Propose resources for :func:`reconstruct` with the same arguments, and print why.
@@ -1025,8 +1130,8 @@ def reconstruction_resources(
     Parameters
     ----------
     time, n, metamodel, spectral, offshore_name, goals, wl, sites, variables,
-    save_spectra, recompute
-        As for :func:`reconstruct`.
+    save_spectra, recompute, depth_cap
+        As for :func:`reconstruct` (the cap costs nothing here).
 
     Returns
     -------
@@ -1089,6 +1194,7 @@ def reconstruct(
     save_spectra: bool | None = None,
     use_cache: bool = True,
     recompute: bool = False,
+    depth_cap: bool | None = None,
 ) -> xr.Dataset:
     """
     Nearshore waves from the offshore hindcast: goal contributions, summed.
@@ -1096,7 +1202,8 @@ def reconstruct(
     Results are cached per site and calendar month (:func:`reconstruction_store`):
     a request reads what is stored and computes only the missing site-months,
     whole months at a time, ``resources.months`` months x ``resources.sites``
-    sites per call.
+    sites per call. The cache holds the plain linear sum; the depth cap
+    (:func:`apply_depth_cap`) is applied to what is returned.
 
     Parameters
     ----------
@@ -1129,6 +1236,10 @@ def reconstruct(
         Read and write the cache (``False``: compute the selection in one call).
     recompute
         Recompute the requested site-months even if stored.
+    depth_cap
+        Cap Hs at the training ceiling x the water depth
+        (:func:`apply_depth_cap`); default
+        ``metamodel.reconstruction.depth_cap``.
 
     Returns
     -------
@@ -1147,6 +1258,11 @@ def reconstruct(
                    goals=goals, wl=wl, sites=sites, variables=variables,
                    save_spectra=save_spectra)
     offshore = open_offshore_waves(offshore_name)
+    capped = RECONSTRUCTION["depth_cap"] if depth_cap is None else bool(depth_cap)
+
+    def finish(bulk: xr.Dataset) -> xr.Dataset:
+        bulk = bulk.assign_coords(site_meta(req.site_ids).coords)
+        return apply_depth_cap(bulk, wl=wl, variables=req.variables)[0] if capped else bulk
 
     def check(months: int, n_sites: int) -> None:
         need = call_memory(months, n_sites, req.parts, workers=resources.workers,
@@ -1176,7 +1292,7 @@ def reconstruct(
     if not use_cache:
         check(len(req.stores[0].months_of(time)), len(req.site_ids))
         bulk, _ = compute(offshore.sel(time=time), req.site_ids)
-        return bulk.assign_coords(site_meta(req.site_ids).coords)
+        return finish(bulk)
 
     if recompute:
         for store in req.stores:
@@ -1202,16 +1318,19 @@ def reconstruct(
             if req.save_spectra:
                 req.stores[1].write(spectra, batch)
             del bulk, spectra
-    return req.stores[0].read(time, req.site_ids).assign_coords(site_meta(req.site_ids).coords)
+    return finish(req.stores[0].read(time, req.site_ids))
 
 
 def load_reconstruction_spectra(time: str | slice, n: int, *, sites: str | Iterable[str] | None = None,
-                                **setup: Any) -> xr.Dataset:
+                                depth_cap: bool | None = None, **setup: Any) -> xr.Dataset:
     """
     Summed spectra stored by :func:`reconstruct` with ``save_spectra=True``.
 
     *setup*: the same ``metamodel``, ``spectral``, ``offshore_name``, ``goals``,
-    ``wl``, ``variables`` as that call.
+    ``wl``, ``variables`` as that call. *depth_cap* (default
+    ``metamodel.reconstruction.depth_cap``) scales them by the energy factor
+    of the capped Hs (:func:`apply_depth_cap`), as :func:`reconstruct` caps
+    the bulk parameters.
 
     Returns
     -------
@@ -1224,7 +1343,11 @@ def load_reconstruction_spectra(time: str | slice, n: int, *, sites: str | Itera
         If some requested site-months have no stored spectra.
     """
     site_ids = reconstruction_sites(setup["metamodel"], sites, setup.get("goals"))
-    return reconstruction_store(n, **setup, spectra=True).read(time, site_ids)
+    spectra = reconstruction_store(n, **setup, spectra=True).read(time, site_ids)
+    if not (RECONSTRUCTION["depth_cap"] if depth_cap is None else depth_cap):
+        return spectra
+    bulk = reconstruction_store(n, **setup).read(time, site_ids)
+    return apply_depth_cap(bulk, wl=setup.get("wl", 0.0), variables=setup.get("variables"), spectra=spectra)[1]
 
 
 def reconstruction_cache() -> pd.DataFrame:

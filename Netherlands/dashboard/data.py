@@ -353,6 +353,12 @@ def raster() -> dict:
 
 
 @lru_cache(maxsize=1)
+def mesh_depth() -> np.ndarray:
+    """Depth of every mesh node (m, positive down; negative on land)."""
+    return _maps()["mesh/depth"][:]
+
+
+@lru_cache(maxsize=1)
 def site_nodes() -> np.ndarray:
     """Nearest mesh node of every cube site (column order)."""
     return _maps()["site_node"][:]
@@ -472,6 +478,85 @@ def hours_mask(offshore: str, *, months: list[int] | None = None, u10: tuple[flo
     if wind_converged:
         m &= c["wind_converged"].to_numpy()
     return m
+
+
+# ---------------------------------------------------------------------------
+# Breaking (SnapWave's dissipation, the goals alone, the saturation of the training cases)
+# ---------------------------------------------------------------------------
+
+
+def breaking_available() -> bool:
+    """The ``breaking`` part: parameters, SnapWave's ``dw``/``zs`` in the cube and the training cases."""
+    return (STORE / "breaking" / "params.json").exists() and "dw" in _cube()[f"dyn_off_{OFFSHORE[0]}"]
+
+
+def goal_breaking_available() -> bool:
+    """The ``goal_breaking`` part: each goal alone through SnapWave's breaking (``goals_{source}/dw, qb``)."""
+    return all(f"goals_{off}" in _cube() for off in OFFSHORE)
+
+
+@lru_cache(maxsize=1)
+def breaking_params() -> dict[str, float]:
+    """``gamma``, ``alpha``, ``gammax``, ``fw``, ``hmin`` of the SnapWave templates."""
+    return json.loads((STORE / "breaking" / "params.json").read_text())
+
+
+@lru_cache(maxsize=4)
+def run_depth(run: str) -> np.ndarray:
+    """``(time, site)`` water depth of a SnapWave run: mesh depth + its ``zs`` (NaN where the run is)."""
+    import breaking as brk
+    return brk.depth(sites()["depth"].to_numpy()[None, :], field(run, "zs"), breaking_params()["hmin"]).astype("float32")
+
+
+@lru_cache(maxsize=2)
+def forcing_depth(offshore: str) -> np.ndarray:
+    """``(time, site)`` water depth from the forcing: mesh depth + the mean CODEC level at the goals (as a reconstruction)."""
+    import breaking as brk
+    wl = conditions_of(offshore)["wl"].to_numpy()[:, None]
+    return brk.depth(sites()["depth"].to_numpy()[None, :], wl, breaking_params()["hmin"]).astype("float32")
+
+
+@lru_cache(maxsize=1)
+def saturation() -> np.ndarray:
+    """
+    Per cube column, the highest Hs / h SnapWave reached in any training case of any goal (h = mesh depth + the
+    case's water level, h > 0.5 m): the depth-limited ceiling of one goal alone. NaN where no case reaches the site.
+    """
+    table = sites()
+    position = pd.Series(np.arange(len(table)), index=table["site"])
+    depth = table.set_index("site")["depth"]
+    out = np.full(len(table), np.nan)
+    cases_ = zarr.open_group(STORE / "breaking" / "cases.zarr", mode="r")
+    for goal in cases_.group_keys():
+        hs, ids, _ = case_fields(int(goal), "hs")
+        zs = cases_[goal]["zs"][:]
+        h = depth.loc[ids].to_numpy()[None, :] + zs[:, None]
+        with np.errstate(invalid="ignore", divide="ignore"):
+            ratio = np.where(h > 0.5, hs / h, np.nan)
+        cols = position.loc[ids].to_numpy()
+        out[cols] = np.fmax(out[cols], np.nanmax(ratio, 0))
+    return out
+
+
+def case_dissipation(goal: int) -> tuple[np.ndarray, np.ndarray, list[str]]:
+    """``dw`` ``(case, site)`` and ``zs`` ``(case)`` of one goal's training cases, and their sites."""
+    group = zarr.open_group(STORE / "breaking" / "cases.zarr", mode="r")[str(goal)]
+    return group["dw"][:], group["zs"][:], list(group.attrs["sites"])
+
+
+def smooth_cap(hs: np.ndarray, cap: np.ndarray, p: float | None) -> np.ndarray:
+    """``min(hs, cap)`` (p None) or the smooth minimum ``(hs^-p + cap^-p)^(-1/p)``."""
+    if p is None:
+        return np.fmin(hs, cap)
+    with np.errstate(invalid="ignore", divide="ignore", over="ignore"):
+        return (np.asarray(hs, float) ** -p + np.asarray(cap, float) ** -p) ** (-1 / p)
+
+
+@lru_cache(maxsize=8)
+def capped(estimate: str, p: float | None) -> np.ndarray:
+    """``(time, site)`` Hs of *estimate* capped at the training saturation times the forcing depth (:func:`smooth_cap`)."""
+    cap = saturation()[None, :] * forcing_depth(ESTIMATES[estimate]["offshore"])
+    return smooth_cap(field(estimate, "hs"), cap, p).astype("float32")
 
 
 # ---------------------------------------------------------------------------

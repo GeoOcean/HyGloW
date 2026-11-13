@@ -263,6 +263,20 @@ class TestValidateCase(unittest.TestCase):
         self.assertTrue(any("'tp_below' must end with" in m for m in messages))
         self.assertFalse(any("hs_ratio_max" in m for m in messages))
 
+    def test_engine_checks_depth_cap(self) -> None:
+        def messages(recon: dict, inputs: list[str]) -> list[str]:
+            metamodel = {"mda_inputs": inputs, "reconstruction": {"variables": {"hs": "hs"}, "save_spectra": False,
+                                                                  **recon}}
+            self._write_config(_minimal_config(metamodel=metamodel))
+            return [f.message for f in _errors(validate_case(self.case_dir))
+                    if f.code == "engine.reconstruction" and "depth_cap" in f.message]
+
+        self.assertTrue(any("is required" in m for m in messages({}, ["hs", "wl"])))
+        self.assertTrue(any("must be a bool" in m for m in messages({"depth_cap": "yes"}, ["hs", "wl"])))
+        self.assertTrue(any("needs 'wl'" in m for m in messages({"depth_cap": True}, ["hs", "tp"])))
+        self.assertEqual(messages({"depth_cap": True}, ["hs", "wl"]), [])
+        self.assertEqual(messages({"depth_cap": False}, ["hs", "tp"]), [])
+
     def test_engine_checks_model_block(self) -> None:
         metamodel = {
             "mda_candidates": [50],

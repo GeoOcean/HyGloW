@@ -12,7 +12,7 @@ import components as ui
 import data
 import figures as fg
 
-dash.register_page(__name__, path="/maps", name="Maps", order=5)
+dash.register_page(__name__, path="/maps", name="Maps", order=3)
 
 #: Analog distance: one unit is this far in each quantity (offshore Hs m, wave and wind direction deg, U10 m/s).
 SCALES = {"hs_off": 0.5, "dir_off": 22.5, "u10": 2.0, "u10dir": 22.5}

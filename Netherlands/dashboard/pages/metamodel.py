@@ -13,7 +13,7 @@ import components as ui
 import data
 import figures as fg
 
-dash.register_page(__name__, path="/metamodel", name="Metamodel", order=6)
+dash.register_page(__name__, path="/metamodel", name="Metamodel", order=8)
 
 ROLE_COLORS = {"train": "#1f77b4", "test": "#ff7f0e", "unused": "#d0d4da"}
 #: Trace order of the input plots (a click gives the trace and the point index, not the customdata).

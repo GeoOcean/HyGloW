@@ -82,6 +82,40 @@ class TestReconstructionHelpers(unittest.TestCase):
         self.assertEqual(set(spec.dims), {"time", "sites", "freq", "dir"})
 
 
+class TestDepthCap(unittest.TestCase):
+    def setUp(self) -> None:
+        meta = META.assign_coords(site_mesh_depth=("sites", [4.0, 10.0, 20.0]))
+        for patcher in (
+            mock.patch("utils.metamodel.site_meta", side_effect=lambda ids=None: meta.sel(sites=list(ids))),
+            mock.patch("utils.metamodel.depth_ceiling",
+                       return_value=pd.Series([0.5, 0.4, np.nan], index=["5m_0", "5m_1", "buoy_X"])),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        times = pd.date_range("2020-01-01", periods=2, freq="h")
+        self.bulk = xr.Dataset(
+            {"hs": (("time", "sites"), [[3.0, 3.0, 9.0], [1.0, np.nan, 1.0]]),
+             "tp": (("time", "sites"), np.full((2, 3), 10.0))},
+            coords={"time": times, "sites": ["5m_0", "5m_1", "buoy_X"]},
+        )
+
+    def test_cap_is_ceiling_times_depth(self) -> None:
+        spectra = xr.Dataset({"efth": (("time", "sites", "freq"), np.ones((2, 3, 2)))})
+        bulk, spec = mm.apply_depth_cap(self.bulk, wl=1.0, variables={"hs": "hs", "tp": "tp"}, spectra=spectra)
+        # caps: 0.5 x 5 m = 2.5 m, 0.4 x 11 m = 4.4 m, none at the buoy (no ceiling)
+        np.testing.assert_allclose(bulk["hs"], [[2.5, 3.0, 9.0], [1.0, np.nan, 1.0]])
+        np.testing.assert_allclose(bulk["tp"], 10.0)
+        np.testing.assert_allclose(spec["efth"].isel(time=0, freq=0), [(2.5 / 3.0) ** 2, 1.0, 1.0])
+
+    def test_water_depth_from_forcing_is_the_goal_mean(self) -> None:
+        levels = {"1": [0.0, 1.0], "2": [2.0, 3.0]}
+        with mock.patch("utils.metamodel._goals", return_value=["1", "2"]), mock.patch(
+            "utils.metamodel.goal_water_level", side_effect=lambda g, t: pd.Series(levels[g], index=t)
+        ):
+            h = mm.water_depth(self.bulk.get_index("time"), ["5m_0"], "forcing")
+        np.testing.assert_allclose(h.values[:, 0], [5.0, 6.0])
+
+
 class TestReconstructionStore(unittest.TestCase):
     def test_store_name(self) -> None:
         with mock.patch("utils.metamodel.simulation_model", return_value="snapwave"):

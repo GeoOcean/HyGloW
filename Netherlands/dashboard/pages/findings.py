@@ -11,7 +11,7 @@ from dash import dcc, html
 import components as ui
 import data
 
-dash.register_page(__name__, path="/findings", name="Findings", order=9)
+dash.register_page(__name__, path="/findings", name="Findings", order=11)
 
 TOUR = [
     ("The linear sum works on average",
@@ -20,6 +20,9 @@ TOUR = [
     ("… but not in the biggest seas at 5 m",
      "Same comparison; pick the p99.9 bias on the map and the 5 m sites, or the storm preset.",
      "/compare?ref=dyn_off_WHACS_cal&est=mm_bulk_WHACS_cal&v=hs"),
+    ("… because breaking does not add",
+     "SnapWave's breaking formula, where the dynamic run breaks and the goals alone do not, and a depth-cap preview.",
+     "/breaking"),
     ("Missing wind is the largest error",
      "The budget at the buoys, split by part; filter by wind direction to see where it matters.", "/budget"),
     ("SnapWave grows too much sea with SW wind",

@@ -1,6 +1,6 @@
 {
-  "hywaves_version": "0.16.0",
-  "source": "hywaves-template@0.16.0",
+  "hywaves_version": "0.17.0",
+  "source": "hywaves-template@0.17.0",
   "created": "2026-09-22T07:06:18+00:00",
   "notebooks": [
     "01_Generate_tiff_from_GEBCO.ipynb",
@@ -22,17 +22,17 @@
     "utils/calibration.py": "7edccab91bb10090bbad6e03df050c3199f7d964a737d08489b2983e130c7c4c",
     "utils/config.py": "3b9ae68ca1540ecab1b3ec3535720df177d8ec09faabdb6617633e5716413dee",
     "utils/geometry.py": "af1883c8cc8ec50621f8659b45fddb833794fb58f1a1a718b043ba690b8f11a5",
-    "utils/metamodel.py": "a2f3fd655c65412289eea0ab12459358405d35d8b369e57bc109f620282203b8",
+    "utils/metamodel.py": "4ce4e66c6d4f044dd8edbf3223023ee25d4afffa55c9369874ca78467811eba4",
     "utils/onshore_sites.py": "8d4afa06663bcbde06c85a7b68877c5ed2530232bea644565fe85152771554ca",
     "utils/simulation.py": "85415299e1c8e455a24cdee458a7e6db71ecd411de3c7af54bd4ec91e717abf8",
     "utils/validation.py": "34570620208db66599492af921a9b1384d43b0b226fd1fd54ef99a65ce3652a0",
     "utils/viz.py": "8807e44e2023d02c5f0884a97b297ff14eba0c066a5e3a898f1ce9ff8682140c"
   },
-  "updated": "2026-11-10T12:52:28+00:00",
+  "updated": "2026-11-11T20:00:07+00:00",
   "bluemath_tk": {
     "version": "1.3.dev49",
-    "commit": "2823bab7a84a48fabe1a77126723ea9f05a598d2",
-    "branch": "develop",
+    "commit": "df296bf16a56658a14a87ed210080e3c6da06735",
+    "branch": "feature/hywaves-depth-cap",
     "dirty": true
   }
 }

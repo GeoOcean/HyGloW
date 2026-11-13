@@ -5,8 +5,11 @@ Run from this folder (``python build_store.py [--only part ...]``); it reads the
 case through ``utils`` (:mod:`sources`) and writes ``store/`` (git-ignored):
 
 - ``cube.zarr``: ``{estimate}/{variable}`` on ``(time, site)`` (8760 x 5156), the
-  estimates of :data:`data.ESTIMATES`, plus ``wind/u10``, ``wind/u10dir`` (ERA5 at each site) and
-  ``wind_only/`` (SnapWave without boundary waves, storm hours only: part ``wind_only``);
+  estimates of :data:`data.ESTIMATES`, plus ``wind/u10``, ``wind/u10dir`` (ERA5 at each site),
+  ``wind_only/`` (SnapWave without boundary waves, storm hours only: part ``wind_only``),
+  ``dyn_*/dw, df, zs`` of the SnapWave runs (part ``breaking``) and ``goals_{source}/dw, qb``
+  (each goal alone through SnapWave's breaking: part ``goal_breaking``);
+- ``breaking/``: SnapWave's breaking parameters, ``dw`` and ``zs`` of the training cases;
 - ``wind_grid.zarr``: ERA5 ``u10``, ``v10`` on their grid (the shaded wind layer);
 - ``sites.parquet``, ``goals.parquet``, ``offshore.zarr`` (hindcasts and water level at the goals);
 - ``conditions.parquet`` (one row per hour and source; SWAN's final accuracy), ``storms.csv``;
@@ -38,9 +41,11 @@ HERE = Path(__file__).resolve().parent
 CASE = HERE.parent
 sys.path.insert(0, str(CASE))
 
+import breaking as brk  # noqa: E402
 import sources as src  # noqa: E402
 from utils import config as cfg  # noqa: E402
 from utils import metamodel as mm  # noqa: E402
+from utils import simulation as sim  # noqa: E402
 
 from data import COAST_REGIONS, DYNAMIC, DYNAMIC_KINDS, ESTIMATES, OFFSHORE, STORE, VARIABLES  # noqa: E402
 
@@ -139,6 +144,84 @@ def build_wind_only(sites: xr.Dataset) -> None:
     for var in VARIABLES:
         _write_array(group, var, ds[var].values)
     logger.info("cube: wind_only (%d hours)", int(ds["hs"].notnull().any("sites").sum()))
+
+
+def build_breaking(sites: xr.Dataset) -> None:
+    """
+    SnapWave's breaking: the parameters of the templates (``breaking/params.json``), ``dw``, ``df``, ``zs`` of every
+    SnapWave dynamic run in the cube (NaN at the hours the cube drops), and ``dw``, ``zs`` of the training cases
+    (``breaking/cases.zarr``, one group per goal, cases and sites as the goal's case file).
+    """
+    out = STORE / "breaking"
+    out.mkdir(exist_ok=True)
+    params = {kind: brk.read_params(Path(sim.templates_dir(kind, "snapwave")) / "snapwave.inp")
+              for kind in ("metamodel", "dynamic")}
+    if params["metamodel"] != params["dynamic"]:
+        raise ValueError(f"the SnapWave templates break differently: {params}")
+    (out / "params.json").write_text(json.dumps(params["dynamic"], indent=2))
+
+    root = zarr.open_group(STORE / "cube.zarr", mode="a")
+    time_index = pd.DatetimeIndex(root.attrs["time"])
+    n_sites = sites.sizes["sites"]
+    for key in DYNAMIC:
+        model, wind = DYNAMIC_KINDS[ESTIMATES[key]["kind"]]
+        if model != "snapwave":
+            continue
+        values = src.dynamic_dissipation(ESTIMATES[key]["offshore"], wind, time_index, n_sites)
+        valid = np.isfinite(root[f"{key}/hs"][:])
+        for var, arr in values.items():
+            _write_array(root[key], var, np.where(valid, arr, np.nan))
+        logger.info("breaking: %s", key)
+
+    cases = zarr.open_group(out / "cases.zarr", mode="w")
+    for goal in cfg.load_goals():
+        with xr.open_dataset(mm.cases_path(goal)) as ds:
+            case_num, ids = ds["case_num"].values, ds["sites"].values
+        values = src.case_dissipation(goal, case_num, len(ids))
+        group = cases.require_group(str(goal))
+        group.create_array("dw", data=values["dw"], overwrite=True)
+        group.create_array("zs", data=np.nanmean(values["zs"], 1).astype("float32"), overwrite=True)
+        group.attrs.update({"sites": [str(s) for s in ids], "case_num": [int(c) for c in case_num]})
+        logger.info("breaking: training cases of goal %s", goal)
+
+
+def build_goal_breaking(offshore: xr.Dataset) -> None:
+    """
+    Breaking of each goal alone in the 2013 reconstruction (bulk, MDA 600, CODEC): every goal's contribution
+    (``goal_contributions``, before the sum) through SnapWave's formula at the depth of that goal's water level;
+    cube ``goals_{source}/dw`` (sum over the goals, W/m²) and ``/qb`` (largest Baldock factor of a goal).
+
+    Uses the printed ``reconstruction_resources`` proposal (~5 min per source on the 48-core node).
+    """
+    params = json.loads((STORE / "breaking" / "params.json").read_text())
+    root = zarr.open_group(STORE / "cube.zarr", mode="a")
+    time_index = pd.DatetimeIndex(root.attrs["time"])
+    columns = pd.Series(np.arange(len(root.attrs["sites"])), index=root.attrs["sites"])
+    depth = pd.read_parquet(STORE / "sites.parquet").set_index("site")["depth"]
+    for off in OFFSHORE:
+        resources = mm.reconstruction_resources(src.YEAR, src.MDA_N, metamodel="isobaths", spectral=False,
+                                                offshore_name=off, wl="forcing", recompute=True)
+        dw = np.full((len(time_index), len(columns)), np.nan, dtype="float32")
+        qb = np.full_like(dw, np.nan)
+        for month in pd.period_range(f"{src.YEAR}-01", f"{src.YEAR}-12", freq="M"):
+            rows = np.flatnonzero(time_index.to_period("M") == month)
+            for metamodel_set in ("isobaths", "buoys", "deenhaag"):
+                parts = src.goal_contributions(off, metamodel_set, str(month), resources)
+                parts = parts.reindex(time=time_index[rows])
+                ids = parts["sites"].values.astype(str)
+                wl = offshore["wl"].sel(goal=parts["goal"].values, time=time_index[rows]).transpose("goal", "time")
+                h = brk.depth(depth.loc[ids].to_numpy()[None, None, :], wl.values[:, :, None], params["hmin"])
+                hs, tp = parts["hs"].transpose("goal", "time", "sites").values, parts["tp"].transpose("goal", "time", "sites").values
+                dw_goal = brk.dissipation(hs, tp, h, params["gamma"], params["alpha"])
+                qb_goal = brk.qb(hs, h, params["gamma"])
+                some = np.isfinite(hs).any(0)
+                cols = columns.loc[ids].to_numpy()
+                dw[np.ix_(rows, cols)] = np.where(some, np.nansum(dw_goal, 0), np.nan)
+                qb[np.ix_(rows, cols)] = np.where(some, np.nanmax(np.where(np.isfinite(qb_goal), qb_goal, -1), 0), np.nan)
+            logger.info("goal_breaking: %s %s", off, month)
+        group = root.require_group(f"goals_{off}")
+        _write_array(group, "dw", dw)
+        _write_array(group, "qb", qb)
 
 
 def build_wind_grid() -> None:
@@ -405,7 +488,7 @@ def build_numerical_tests() -> None:
 
 
 PARTS = {"sites": None, "offshore": None, "cube": None, "wind_only": None, "conditions": None, "maps": None,
-         "wind_grid": build_wind_grid,
+         "breaking": None, "goal_breaking": None, "wind_grid": build_wind_grid,
          "metamodel": build_metamodel, "calibration": build_calibration, "numerical_tests": build_numerical_tests}
 
 
@@ -418,7 +501,7 @@ def main() -> None:
     STORE.mkdir(exist_ok=True)
     manifest_path = STORE / "manifest.json"
     manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
-    sites = src.dynamic_sites() if {"sites", "cube", "wind_only", "maps"} & set(parts) else None
+    sites = src.dynamic_sites() if {"sites", "cube", "wind_only", "maps", "breaking"} & set(parts) else None
     offshore = None
     for part in parts:
         t0 = time.time()
@@ -428,11 +511,14 @@ def main() -> None:
             build_maps(sites)
         elif part == "wind_only":
             build_wind_only(sites)
+        elif part == "breaking":
+            build_breaking(sites)
         elif part == "offshore":
             offshore = build_offshore()
-        elif part in ("cube", "conditions"):
+        elif part in ("cube", "conditions", "goal_breaking"):
             offshore = offshore if offshore is not None else xr.open_zarr(STORE / "offshore.zarr").load()
-            (build_cube(sites, offshore) if part == "cube" else build_conditions(offshore))
+            {"cube": build_cube, "conditions": build_conditions,
+             "goal_breaking": build_goal_breaking}[part](*((sites, offshore) if part == "cube" else (offshore,)))
         else:
             PARTS[part]()
         manifest[part] = {"built": pd.Timestamp.now().isoformat(timespec="seconds"), "seconds": round(time.time() - t0)}

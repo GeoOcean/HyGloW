@@ -551,6 +551,15 @@ def _check_engine(case_dir: Path, config: dict, report: _Report) -> None:
             report.error(
                 "engine.reconstruction", "reconstruction.save_spectra must be a bool"
             )
+        if "depth_cap" not in recon:
+            report.error("engine.reconstruction", "reconstruction.depth_cap is required")
+        elif not isinstance(recon["depth_cap"], bool):
+            report.error("engine.reconstruction", "reconstruction.depth_cap must be a bool")
+        elif recon["depth_cap"] and "wl" not in (inputs if isinstance(inputs, list) else []):
+            report.error(
+                "engine.reconstruction",
+                "reconstruction.depth_cap needs 'wl' in metamodel.mda_inputs (the cases' water level)",
+            )
 
     paths = mm.get("paths", {})
     for key in ("pca_dir", "gp_dir"):

@@ -23,9 +23,9 @@ app = Dash(__name__, use_pages=True, external_stylesheets=[dbc.themes.FLATLY], s
            title="HyGloW · Netherlands")
 server = app.server
 
-NAV = [("Overview", "/"), ("Explorer", "/explorer"), ("Compare", "/compare"), ("Error budget", "/budget"),
-       ("Wind", "/wind"), ("Maps", "/maps"), ("Storms", "/storms"), ("Metamodel", "/metamodel"), ("Calibration", "/calibration"),
-       ("Numerical tests", "/numerical-tests"), ("Findings", "/findings")]
+NAV = [("Overview", "/"), ("Explorer", "/explorer"), ("Compare", "/compare"), ("Maps", "/maps"), ("Wind", "/wind"),
+       ("Storms", "/storms"), ("Breaking", "/breaking"), ("Calibration", "/calibration"), ("Metamodel", "/metamodel"),
+       ("Error budget", "/budget"), ("Numerical tests", "/numerical-tests"), ("Findings", "/findings")]
 
 app.layout = html.Div([
     dbc.Navbar(dbc.Container([

@@ -12,7 +12,7 @@ import components as ui
 import data
 import figures as fg
 
-dash.register_page(__name__, path="/budget", name="Error budget", order=3)
+dash.register_page(__name__, path="/budget", name="Error budget", order=9)
 
 PARTS = [name for name, _, _ in data.BUDGET]
 

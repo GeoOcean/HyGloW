@@ -13,10 +13,12 @@ python app.py --port 8050          # forward the port, open http://localhost:805
 ```
 
 `build_store.py --only cube conditions maps` rebuilds parts (`sites`, `offshore`, `cube`,
-`wind_only`, `conditions`, `maps`, `wind_grid`, `metamodel`, `calibration`, `numerical_tests`; `maps` reads
+`wind_only`, `conditions`, `maps`, `breaking`, `goal_breaking`, `wind_grid`, `metamodel`, `calibration`, `numerical_tests`; `maps` reads
 the cube); rebuild after re-running notebooks 06-08 or the 2013 reconstruction
 (`tmp/reconstruct_2013.py`). The wind-only part needs `python wind_only_storms.py build | slurm | postprocess`
-first (SnapWave with no boundary waves on the storm hours of `store/storms.csv`). The dynamic runs are read by model (`sources.py`), whatever
+first (SnapWave with no boundary waves on the storm hours of `store/storms.csv`). `breaking` reads `point_dw`,
+`point_df`, `point_zs` from every SnapWave dynamic and training case folder (the postprocessing drops them);
+`goal_breaking` (after it) recomputes every goal's 2013 contribution (bulk, ~5 min per source on the 48-core node). The dynamic runs are read by model (`sources.py`), whatever
 `simulations.model` the case JSON is on. The app reads only
 `store/` (and the findings text from this README and `hywaves/WIND.md`). The first
 view of each estimate loads it (~1 s); the app keeps it in memory (up to ~8 GB).
@@ -26,16 +28,18 @@ view of each estimate loads it (~1 s); the app keeps it in memory (up to ~8 GB).
 | Overview | The case on a map, headline numbers, 2013 timeline (click to open an hour) |
 | Explorer | Two estimates at any hour, their difference, wind and goal arrows, play; click a site for its series and skill. The URL keeps the view |
 | Compare | Any estimate against any reference over any hours (filters, presets, box selection): metric map, density + QQ, coast × wind direction, per group |
-| Error budget | Spectral metamodel − buoy split into partitions, method, missing wind, model + forcing, per buoy and condition |
-| Wind | What SnapWave's wind adds, by coast and direction, against the buoys; analog hours; wind only on the storm hours (is the wind additive, the damping it needs, maps, a damped wind term left one storm out); non-converged hours |
 | Maps | The dynamic runs (SnapWave, SWAN) on the whole mesh: set a situation, the most similar hour where every chosen run has a map is shown (the next ones in a list); values or run − reference |
+| Wind | What SnapWave's wind adds, by coast and direction, against the buoys; analog hours; wind only on the storm hours (is the wind additive, the damping it needs, maps, a damped wind term left one storm out); non-converged hours |
 | Storms | Peaks of every estimate at every buoy per event, series; wind-only test: the estimates without wind ⊕ (plain or damped) a SnapWave run with no boundary waves, only the ERA5 wind (`wind_only_storms.py`, storm hours), against SnapWave with wind and the buoys |
-| Metamodel | Training cases and their fields, holdout skill vs MDA size, linear-sum metrics |
+| Breaking | Four findings, each with its figure and live numbers: SnapWave caps waves at a depth ceiling (the formula, Hs/h of the training cases); the metamodel misses part of that breaking (goals alone vs all together, bias vs Hs/h); where (bias in each site's top hours); a depth cap from the training cases (a storm, the bias table). Folded details: the physics, `point_dw` vs the formula, who breaks per class and site, a storm hour by hour, every cap variant. Dw is the formula on both sides |
 | Calibration | The two steps (directional fit per goal, one tail map for all goals): passes raw / directional / mapped, sector factors, the record's quantiles, the deep-buoy check (1979-2023), the change from the goals to the coast |
+| Metamodel | Training cases and their fields, holdout skill vs MDA size, linear-sum metrics |
+| Error budget | Spectral metamodel − buoy split into partitions, method, missing wind, model + forcing, per buoy and condition |
 | Numerical tests | Decisions, buoy scores and goal-case ratios of `numerical_tests/` |
 | Findings | Conclusions so far and a guided tour into the pages |
 
-Code: `build_store.py` (store) from `sources.py` (the case results), `wind_only_storms.py` (the wind-only run), `data.py` (store access, metrics: reference first),
+Code: `build_store.py` (store) from `sources.py` (the case results), `wind_only_storms.py` (the wind-only run),
+`breaking.py` (SnapWave's breaking formulas), `data.py` (store access, metrics: reference first),
 `figures.py`, `components.py`, `pages/` (one file per page).
 
 ## What it shows (first iteration, SnapWave, 2013)

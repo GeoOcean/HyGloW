@@ -331,6 +331,51 @@ def mesh_map(values: np.ndarray, *, title: str = "", colorscale: str = "Viridis"
     return base_layout(fig, height, title)
 
 
+#: Isobaths drawn on site maps: depth (m) -> (colour, width).
+ISOBATHS = {2.0: ("#9e9ac8", 1.0), 5.0: ("#3f007d", 1.8), 10.0: ("#807dba", 1.2), 20.0: ("#bcbddc", 1.0)}
+
+
+@lru_cache(maxsize=1)
+def _depth_grid() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Mesh depth on the map raster (~400 m, north up): pixel centres ``lon``, ``lat`` and the grid (NaN outside)."""
+    r = data.raster()
+    values = (data.mesh_depth()[r["nodes"]] * r["weights"]).sum(1)
+    rows, cols = r["shape"]
+    grid = np.full(rows * cols, np.nan)
+    grid[r["pixel"]] = values
+    lon0, lon1, lat0, lat1 = r["extent"]
+    lon = lon0 + (np.arange(cols) + 0.5) * (lon1 - lon0) / cols
+    lat = lat1 - (np.arange(rows) + 0.5) * (lat1 - lat0) / rows
+    return lon, lat, grid.reshape(rows, cols)
+
+
+@lru_cache(maxsize=1)
+def isobath_traces() -> list[go.Scattermap]:
+    """The :data:`ISOBATHS` traced on the mesh depth (one line trace per depth, in the legend)."""
+    from contourpy import contour_generator
+
+    lon, lat, grid = _depth_grid()
+    gen = contour_generator(lon, lat, np.ma.masked_invalid(grid))
+    traces = []
+    for level, (color, width) in ISOBATHS.items():
+        lines = gen.lines(level)
+        if not lines:
+            continue
+        xy = np.concatenate([np.vstack([line, [np.nan, np.nan]]) for line in lines])
+        traces.append(go.Scattermap(lon=xy[:, 0], lat=xy[:, 1], mode="lines", name=f"{level:g} m (mesh)",
+                                    line=dict(color=color, width=width), hoverinfo="skip"))
+    return traces
+
+
+@lru_cache(maxsize=1)
+def depth_layer(zmax: float = 30.0) -> dict:
+    """Mesh depth as a shaded image layer (grey, darker = deeper; land clear)."""
+    depth = np.where(data.mesh_depth() > 0, data.mesh_depth(), np.nan)
+    lon0, lon1, lat0, lat1 = data.raster()["extent"]
+    return dict(sourcetype="image", source=mesh_png(depth, "Greys", 0.0, zmax, opacity=0.55),
+                coordinates=[[lon0, lat1], [lon1, lat1], [lon1, lat0], [lon0, lat0]], below="traces")
+
+
 def heatmap(table: pd.DataFrame, title: str, zmid: float | None = 0.0, colorscale: str = DIVERGING,
             fmt: str = "{:+.2f}", height: int = 260, zmax: float | None = None) -> go.Figure:
     """Annotated heatmap of a small table (rows x columns)."""

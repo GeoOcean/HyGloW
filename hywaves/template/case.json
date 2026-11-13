@@ -134,7 +134,8 @@
                 "dir": "dm",
                 "spr": "dspr"
             },
-            "save_spectra": true
+            "save_spectra": true,
+            "depth_cap": true
         },
         "paths": {
             "pca_dir": "outputs/{goal}/{metamodel}/pca_{mda_candidate}",

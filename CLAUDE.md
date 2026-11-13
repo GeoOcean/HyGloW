@@ -44,7 +44,7 @@ python -m hywaves snapshot <Case>/ <tag> --note "…"  # portal/ -> portal_<tag>
 python -m hywaves update   <Case>/ [--dry-run]     # case utils/ <- template
 python -m unittest discover -s hywaves/tests -t .  # all hywaves tests (case_utils/ run inside a started case)
 cd Netherlands && PYTHONPATH=. python -m unittest discover -s ../hywaves/tests/case_utils -t ../hywaves/tests/case_utils
-cd ~/BlueMath_tk && python -m unittest tests.waves.test_hywaves tests.waves.test_hywaves_plots tests.waves.test_hywaves_store tests.waves.test_hywaves_resources tests.waves.test_fetch tests.core.test_resources tests.core.test_core_metrics
+cd ~/BlueMath_tk && python -m unittest tests.waves.test_hywaves tests.waves.test_hywaves_plots tests.waves.test_hywaves_store tests.waves.test_hywaves_depth_cap tests.waves.test_hywaves_resources tests.waves.test_fetch tests.core.test_resources tests.core.test_core_metrics
 cd GUI && python app.py                            # http://localhost:8050
 ```
 
@@ -158,6 +158,10 @@ after publishing, commit `portal/`.
   `reconstruction_cache()` lists stores, `clear_reconstruction_cache(pattern)`
   deletes them; `reconstruction_sites(set, selector)`; `require_models(set,
   n)`; `load_reconstruction_spectra`. PCA variance only from `vars_to_predict`.
+  Depth cap (`reconstruction.depth_cap`, needs `wl` in `mda_inputs`): the store
+  keeps the plain sum, `reconstruct(depth_cap=)` / `load_reconstruction_spectra`
+  return it capped (`apply_depth_cap`: Hs <= `depth_ceiling()` x `water_depth()`,
+  spectra x the energy factor; generic part `bluemath_tk.waves.hywaves.depth_cap`).
 - **Validation** (`utils/validation.py`): `validate` / `sweep_all` /
   `plot_sweep` (holdout); `compare(reference, estimate)` / `compare_all` ->
   `Comparison` (`metrics`, `groups`, `plot`, `plot_all`, `plot_scatter`,
@@ -222,6 +226,12 @@ they are recomputed: notebooks, `numerical_tests/`, the dashboard)
   gentle seas agree with SWAN. Postprocessing drops non-converged runs (last error >
   `MAX_ERROR` 0.01 in `wrapper_out.log`): metamodel cases are left out, dynamic
   hours are NaN (wind mode: `hywaves/WIND.md`).
+- *Depth cap* (2026-11-11): hard cap Hs <= ceiling x h, ceiling = highest Hs / h of
+  any training case of any goal (h = mesh depth + case wl, h > 0.5 m), h of the hour =
+  mesh depth + the mean goal level (the dynamic runs' single level). Applied everywhere:
+  sheltered sites (ceiling < 0.1) are not hurt. Hard, not smooth: the smooth form
+  (p chosen on the scored hours) also lowered 20 m storm hours where nothing breaks.
+  The dynamic runs stay under the ceiling; dashboard Breaking page.
 - *Wind*: the reconstruction has no wind (the wind-correction code was removed
   on 2026-11-04); wind stays as dynamic-run forcing (`forcing.wind`, runs
   `_wind-on`/`_wind-off`, and `_wind-only`: no boundary waves,
@@ -248,10 +258,10 @@ they are recomputed: notebooks, `numerical_tests/`, the dashboard)
   energy, computed per case (Netherlands: sea close to Pierson-Moskowitz, swell
   above a narrow JONSWAP: broad swell partitions). One processed ERA5 zarr, with Tp.
 
-## Where we are (2026-11-06)
+## Where we are (2026-11-11)
 
-hywaves **0.16.0** (no wind in the reconstruction; store names without
-`wind-`) on `main` (HyGloW); bluemath_tk on `feature/more-hywaves` (into `develop`).
+hywaves **0.17.0** (depth cap in the reconstruction; no wind) on `main` (HyGloW);
+bluemath_tk on `feature/hywaves-depth-cap` (into `develop`).
 
 **Netherlands** (`Netherlands.json`): SnapWave, 05-12 re-run with the
 `numerical_tests/` setup (open-boundary enclosure, `upwindref`, `niter` 200,

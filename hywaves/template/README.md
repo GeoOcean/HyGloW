@@ -23,7 +23,7 @@ A HyGloW case: nearshore waves from an offshore hindcast (the method:
 | 07a | `07a_Offshore_WHACS` **or** `07a_Offshore_ERA5` | Offshore waves at the goals (ERA5: partition Tm-1,0 -> Tp) | `offshore_waves` |
 | 07b | `07b_Satellite_Calibration` | *Optional:* check and calibrate them | `satellite` |
 | 08 | `08_Dynamic_Cases_Generation` | Reference runs, every hour, all goals; one folder per forcing (`<dynamic_cases>_<offshore>_wind-<on|off>`) | `forcing` (optional) |
-| 09 | `09_Validate_Linear_Summation` | Reconstruction vs reference runs | |
+| 09 | `09_Validate_Linear_Summation` | Reconstruction vs reference runs | `metamodel.reconstruction` (`variables`, `save_spectra`, `depth_cap`: cap Hs at the training ceiling x depth) |
 | 10 | `10_Validate_Buoys` | Everything vs the buoys | |
 | 11 | `11_Validate_Spectra` | Spectra at the buoys | |
 | 12 | `12_Final_Plots` | Figures for the results portal | |

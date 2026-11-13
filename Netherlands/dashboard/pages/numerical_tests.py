@@ -16,7 +16,7 @@ import components as ui
 import data
 import figures as fg
 
-dash.register_page(__name__, path="/numerical-tests", name="Numerical tests", order=8)
+dash.register_page(__name__, path="/numerical-tests", name="Numerical tests", order=10)
 
 
 def _readme_sections() -> dict[str, str]:

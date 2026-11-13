@@ -33,7 +33,7 @@ order, `python -m hywaves validate Netherlands/` to see what is missing.
 | 07a | `07a_Offshore_WHACS` / `07a_Offshore_ERA5` | Offshore waves at the goals (ERA5: partition Tm-1,0 -> Tp) |
 | 07b | `07b_Satellite_Calibration` | WHACS / ERA5 vs IMOS altimetry, `WHACS_cal`, `ERA5_cal` |
 | 08 | `08_Dynamic_Cases_Generation` | Hourly reference runs with water level, one folder per forcing (`<dynamic_cases>_<offshore>_wind-<on|off>`) |
-| 09–12 | validation and figures | Reconstruction vs reference runs, buoys, spectra, portal figures |
+| 09–12 | validation and figures | Reconstruction vs reference runs, buoys, spectra, portal figures; `metamodel.reconstruction.depth_cap` caps Hs at the training ceiling x depth (`hywaves/README.md`) |
 
 Notebook 11 is not run yet: it compares spectra against buoy spectra, and the processed
 buoys (`utils/buoy_archive.py`) hold bulk parameters only.

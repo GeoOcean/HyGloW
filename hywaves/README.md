@@ -67,6 +67,18 @@ so the sum of single-goal runs equals a run with every goal forced.
   change swell Hs by less than 3 cm (p90). Check it again where storms can
   be swell. Deep buoys near the goals, never used in the fit, are the
   independent check.
+- *Depth-induced breaking* (`metamodel.reconstruction.depth_cap`). Each goal
+  breaks in its own training runs, so at every site Hs / h of one goal stays
+  under a ceiling. The goals added as energy do not break together: in the
+  biggest seas the sum goes above that ceiling at the shallow sites, where a
+  run with every goal breaks. The reconstruction caps it: Hs at most
+  *ceiling x h*, with the ceiling the highest Hs / h of any training case of
+  any goal at the site and h the mesh depth plus the water level of the hour
+  (the mean of the goals, the one level of a dynamic run). The summed
+  spectrum is scaled by the same energy factor, so Tp, direction and
+  spreading are kept. It needs only the training cases; it touches only the
+  hours above the ceiling, and the dynamic runs stay under it. The effect on
+  2013: the Breaking page of the Netherlands dashboard.
 - *Non-linear processes* (strong breaking, wave-current interaction, time lag
   across a large domain) are what the **dynamic runs** check: the model run
   hour by hour with every goal, wind and water level, against which the

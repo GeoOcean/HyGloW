@@ -24,6 +24,11 @@ you want and pass them to `mm.reconstruct(..., resources=res)`.
    blocks of 0.5-2 GiB each. A small sum (one site) runs in the main process.
 6. **Store.** Whole months are written per site (and the spectra, with
    `save_spectra=True`), then the request is read back.
+7. **Depth cap** (`metamodel.reconstruction.depth_cap`). The store keeps the
+   plain linear sum; what `reconstruct` and `load_reconstruction_spectra`
+   return is capped (`mm.apply_depth_cap`). The ceiling (`mm.depth_ceiling`)
+   reads every goal's case file, ~10 s once per session; the cap is then a
+   multiplication, so switching it never rebuilds a store.
 
 ## Timings: the buoys
 
