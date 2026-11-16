@@ -6,7 +6,7 @@ timestep       = 3600.0
 gridfile       = {{ gridfile }}
 sferic         = 1
 dtheta         = 10.0
-sector         = 180
+sector         = 360
 
 bndfile        = boundary.txt
 encfile        = enclosure.txt
@@ -17,11 +17,12 @@ bdsfile        = spr.txt
 bzsfile        = wl.txt
 
 gamma          = 0.7
-hmin           = 0.1
+hmin           = {{ min_depth }}
 restart        = 0
 jonswapfile    = 
 uuupwindfile   = 
-niter          = 40
+niter          = 200
+upwindref      = 1
 map_ee         = 1
 
 obsfile        = output_sites.txt

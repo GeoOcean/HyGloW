@@ -1,0 +1,144 @@
+{
+    "name": "NewSouthWales",
+    "description": "First australian use case in New South Wales",
+    "paths": {
+        "aoi_file": "inputs/AoI_Polygons/NewSouthWales_AoI.shp",
+        "topobathy_file": "inputs/GEBCO/NewSouthWales_GEBCO.tiff",
+        "mesh_file": "inputs/GRID/NewSouthWales_mesh.nc"
+    },
+    "onshore_waves": "inputs/Observations/NewSouthWales_observations.json",
+    "offshore_waves": [
+        {
+            "name": "WHACS",
+            "data_path": "inputs/WHACS/processed/NewSouthWales_WHACS_goal.zarr"
+        }
+    ],
+    "simulations": {
+        "goals_file": "inputs/Goals/NewSouthWales_Goals.json",
+        "metamodel_templates": "templates-metamodel",
+        "dynamic_templates": "templates-dynamic",
+        "metamodel_cases": "SnapWave_CASES_Metamodel",
+        "dynamic_cases": "SnapWave_CASES_Dynamic",
+        "num_samples_per_goal": 500,
+        "bounds": {
+            "tp": [
+                1,
+                20
+            ],
+            "spr": [
+                1,
+                45
+            ],
+            "wl": [
+                -2.0,
+                2.0
+            ]
+        },
+        "output_sites_config": {
+            "isobaths": [
+                {
+                    "name": "5m",
+                    "level": -5.0,
+                    "spacing": 0.05
+                },
+                {
+                    "name": "10m",
+                    "level": -10.0,
+                    "spacing": 0.05
+                },
+                {
+                    "name": "20m",
+                    "level": -20.0,
+                    "spacing": 0.05
+                },
+                {
+                    "name": "50m",
+                    "level": -50.0,
+                    "spacing": 0.05
+                }
+            ],
+            "polygons": [],
+            "include_buoys": true,
+            "clip_to_aoi": true
+        }
+    },
+    "metamodel": {
+        "mda_candidates": [
+            50,
+            100,
+            150,
+            250,
+            450
+        ],
+        "mda_inputs": [
+            "tp",
+            "dir",
+            "spr",
+            "wl"
+        ],
+        "mda_directional_variables": [
+            "dir"
+        ],
+        "vars_to_predict": {
+            "hs": {
+                "vars_to_stack": [
+                    "hs"
+                ],
+                "pca_variance": 0.99
+            },
+            "tp": "raw",
+            "dir": {
+                "vars_to_stack": [
+                    "dir_u",
+                    "dir_v"
+                ],
+                "pca_variance": 0.99
+            },
+            "spr": {
+                "vars_to_stack": [
+                    "spr"
+                ],
+                "pca_variance": 0.99
+            }
+        },
+        "site_filter": {
+            "hs_max": 10.0,
+            "tp_min": 0.5
+        },
+        "pca_preprocessing": {
+            "nan_threshold_to_drop": {
+                "hs": 0.99,
+                "dir_u": 0.99,
+                "dir_v": 0.99,
+                "spr": 0.99
+            },
+            "value_to_replace_nans": {
+                "hs": 0.0,
+                "dir_u": 0.0,
+                "dir_v": 0.0,
+                "spr": 0.0
+            }
+        },
+        "validation": {
+            "metrics_variables": [
+                "hs",
+                "tp",
+                "dir",
+                "spr"
+            ]
+        },
+        "reconstruction": {
+            "variables": {
+                "hs": "hs",
+                "tp": "tp",
+                "dir": "dm",
+                "spr": "dspr"
+            },
+            "save_spectra": true
+        },
+        "paths": {
+            "pca_dir": "outputs/{goal}/pca_{mda_candidate}",
+            "gp_dir": "outputs/{goal}/gp_{mda_candidate}"
+        }
+    }
+}
