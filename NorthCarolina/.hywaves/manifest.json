@@ -1,0 +1,40 @@
+{
+  "hywaves_version": "0.17.0",
+  "source": "hywaves-template@0.17.0",
+  "created": "2026-11-15T18:26:34+00:00",
+  "bluemath_tk": {
+    "version": "1.3.dev49",
+    "commit": "df296bf16a56658a14a87ed210080e3c6da06735",
+    "branch": "feature/hywaves-depth-cap",
+    "dirty": true
+  },
+  "notebooks": [
+    "01_Generate_tiff_from_GEBCO.ipynb",
+    "02_Create_mesh_by_bluemesh2d.ipynb",
+    "03_Generate_Observations_Configuration.ipynb",
+    "04_Select_Goals_by_Hindcasts.ipynb",
+    "05_Metamodel_Cases_Generation.ipynb",
+    "06_Validate_Metamodel.ipynb",
+    "07a_Offshore_ERA5.ipynb",
+    "07a_Offshore_WHACS.ipynb",
+    "07b_Satellite_Calibration.ipynb",
+    "07c_Water_Level_and_Wind.ipynb",
+    "08_Dynamic_Cases_Generation.ipynb",
+    "09_Validate_Linear_Summation.ipynb",
+    "10_Validate_Buoys.ipynb",
+    "11_Validate_Spectra.ipynb",
+    "12_Final_Plots.ipynb"
+  ],
+  "engine_files": {
+    "utils/__init__.py": "e67e21b00a58c9bd83407d426a468e1ff02a1f52888d47a4488e8cd97fb3361b",
+    "utils/calibration.py": "7edccab91bb10090bbad6e03df050c3199f7d964a737d08489b2983e130c7c4c",
+    "utils/config.py": "3b9ae68ca1540ecab1b3ec3535720df177d8ec09faabdb6617633e5716413dee",
+    "utils/geometry.py": "af1883c8cc8ec50621f8659b45fddb833794fb58f1a1a718b043ba690b8f11a5",
+    "utils/metamodel.py": "4ce4e66c6d4f044dd8edbf3223023ee25d4afffa55c9369874ca78467811eba4",
+    "utils/onshore_sites.py": "8d4afa06663bcbde06c85a7b68877c5ed2530232bea644565fe85152771554ca",
+    "utils/simulation.py": "3ae8094818f53a84eea0b78c56c3b6a18770e736b0f087f0c71a02b672bab24c",
+    "utils/validation.py": "4c023ce54872a99d44c89d7250c668634b9fdfd13b359ea54944fec1b3dcdc27",
+    "utils/viz.py": "52e913ea8dc077e430788302fd3793ae5f6a2434bc71ec2d1f52dd4dab510f7e"
+  },
+  "updated": "2026-11-16T09:01:56+00:00"
+}

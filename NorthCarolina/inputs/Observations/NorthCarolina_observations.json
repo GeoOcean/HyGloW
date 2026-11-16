@@ -1,0 +1,366 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "station": "41013",
+        "type": "waves",
+        "institution": "NDBC",
+        "recording": "2003-2024",
+        "measured_depth": 30.8,
+        "name": "Frying Pan Shoals",
+        "instrument_id": "NDBC_41013"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.764,
+          33.436
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "station": "41025",
+        "type": "waves",
+        "institution": "NDBC",
+        "recording": "2003-2024",
+        "measured_depth": 61.0,
+        "name": "Diamond Shoals",
+        "instrument_id": "NDBC_41025"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -75.38,
+          35.026
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "station": "41035",
+        "type": "waves",
+        "institution": "NDBC",
+        "recording": "2005-2010",
+        "measured_depth": 9.7,
+        "name": "Onslow Bay Inner",
+        "instrument_id": "NDBC_41035"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.28,
+          34.476
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "station": "41036",
+        "type": "waves",
+        "institution": "NDBC",
+        "recording": "2006-2015",
+        "measured_depth": null,
+        "name": "Onslow Bay Outer",
+        "instrument_id": "NDBC_41036"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -76.949,
+          34.207
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "station": "41108",
+        "type": "waves",
+        "institution": "CDIP / NDBC",
+        "recording": "2013-2024",
+        "measured_depth": 12.8,
+        "name": "Wilmington Harbor (CDIP 200)",
+        "instrument_id": "NDBC_41108"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -78.016,
+          33.719
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "station": "41109",
+        "type": "waves",
+        "institution": "CDIP / NDBC",
+        "recording": "2012-2013",
+        "measured_depth": 13.2,
+        "name": "New River Inlet (CDIP 190)",
+        "instrument_id": "NDBC_41109"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.3,
+          34.484
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "station": "41110",
+        "type": "waves",
+        "institution": "CDIP / NDBC",
+        "recording": "2008-2024",
+        "measured_depth": 17.0,
+        "name": "Masonboro Inlet (CDIP 150)",
+        "instrument_id": "NDBC_41110"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.715,
+          34.144
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "station": "41119",
+        "type": "waves",
+        "institution": "CDIP / NDBC",
+        "recording": "2019",
+        "measured_depth": 13.0,
+        "name": "Sunset Beach (CDIP 245)",
+        "instrument_id": "NDBC_41119"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -78.483,
+          33.842
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "station": "41120",
+        "type": "waves",
+        "institution": "CDIP / NDBC",
+        "recording": "2021-2024",
+        "measured_depth": 29.0,
+        "name": "Cape Hatteras East (CDIP 250)",
+        "instrument_id": "NDBC_41120"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -75.285,
+          35.258
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "station": "41159",
+        "type": "waves",
+        "institution": "CDIP / NDBC",
+        "recording": "2015-2024",
+        "measured_depth": 30.5,
+        "name": "Onslow Bay Outer (CDIP 217)",
+        "instrument_id": "NDBC_41159"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -76.944,
+          34.211
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "station": "44014",
+        "type": "waves",
+        "institution": "NDBC",
+        "recording": "1990-2024",
+        "measured_depth": 49.1,
+        "name": "Virginia Beach, 64 NM east",
+        "instrument_id": "NDBC_44014"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -74.837,
+          36.603
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "station": "44056",
+        "type": "waves",
+        "institution": "USACE / NDBC",
+        "recording": "2012-2024",
+        "measured_depth": 17.8,
+        "name": "Duck FRF 17 m",
+        "instrument_id": "NDBC_44056"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -75.714,
+          36.2
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "station": "44086",
+        "type": "waves",
+        "institution": "CDIP / NDBC",
+        "recording": "2018-2024",
+        "measured_depth": 21.0,
+        "name": "Nags Head (CDIP 243)",
+        "instrument_id": "NDBC_44086"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -75.421,
+          36.001
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "station": "44088",
+        "type": "waves",
+        "institution": "CDIP / NDBC",
+        "recording": "2017-2024",
+        "measured_depth": 45.7,
+        "name": "Virginia Beach Offshore (CDIP 171)",
+        "instrument_id": "NDBC_44088"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -74.839,
+          36.612
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "station": "44095",
+        "type": "waves",
+        "institution": "CDIP / NDBC",
+        "recording": "2013-2024",
+        "measured_depth": 18.3,
+        "name": "Oregon Inlet (CDIP 192)",
+        "instrument_id": "NDBC_44095"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -75.33,
+          35.75
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "station": "44100",
+        "type": "waves",
+        "institution": "CDIP / NDBC",
+        "recording": "2008-2024",
+        "measured_depth": 25.0,
+        "name": "Duck FRF 26 m (CDIP 430)",
+        "instrument_id": "NDBC_44100"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -75.593,
+          36.257
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "station": "dsln7",
+        "type": "waves",
+        "institution": "NDBC",
+        "recording": "1988-2002",
+        "measured_depth": null,
+        "name": "Diamond Shoals Light",
+        "instrument_id": "NDBC_dsln7"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -75.297,
+          35.153
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "station": "jprn7",
+        "type": "waves",
+        "institution": "NDBC",
+        "recording": "2013-2014",
+        "measured_depth": 11.3,
+        "name": "Jennette's Pier, Nags Head",
+        "instrument_id": "NDBC_jprn7"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -75.587,
+          35.912
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "station": "ssbn7",
+        "type": "waves",
+        "institution": "NDBC",
+        "recording": "2021-2024",
+        "measured_depth": 9.75,
+        "name": "Sunset Beach Nearshore",
+        "instrument_id": "NDBC_ssbn7"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -78.484,
+          33.838
+        ]
+      }
+    }
+  ]
+}

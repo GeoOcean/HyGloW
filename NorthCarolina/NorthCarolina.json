@@ -1,0 +1,245 @@
+{
+    "name": "NorthCarolina",
+    "description": "North Carolina coast (Cape Fear to Virginia Beach): WHACS and ERA5 to the nearshore with SnapWave on the delivered ShoreShop mesh",
+    "paths": {
+        "aoi_file": "inputs/AoI_Polygons/NorthCarolina_AoI.shp",
+        "topobathy_file": "inputs/Bathymetry/NorthCarolina_topobathy_3s.tiff",
+        "mesh_file": "inputs/GRID/NorthCarolina_mesh.nc"
+    },
+    "onshore_waves": "inputs/Observations/NorthCarolina_observations.json",
+    "offshore_waves": [
+        {
+            "name": "WHACS",
+            "data_path": "inputs/WHACS/processed/NorthCarolina_WHACS_goal.zarr"
+        },
+        {
+            "name": "WHACS_cal",
+            "data_path": "inputs/WHACS/processed/NorthCarolina_WHACS_goal_cal.zarr",
+            "hindcast": "WHACS"
+        },
+        {
+            "name": "ERA5",
+            "data_path": "inputs/ERA5/processed/NorthCarolina_ERA5_goal.zarr"
+        }
+    ],
+    "satellite": {
+        "name": "IMOS altimeter",
+        "data_path": "https://geoocean.unican.es/zarr/IMOS/imos_altimeter_dm00.zarr",
+        "radius_km": 25,
+        "min_depth": 15,
+        "flags": [
+            1,
+            2
+        ],
+        "max_time_diff": "30min",
+        "min_points": 3,
+        "train_fraction": 0.75
+    },
+    "forcing": {
+        "wind": {
+            "name": "ERA5",
+            "data_path": "inputs/ERA5/NorthCarolina_wind.zarr"
+        },
+        "water_level": {
+            "name": "CODEC",
+            "data_path": "inputs/CODEC/processed/NorthCarolina_CODEC_goal.zarr",
+            "variable": "waterlevel"
+        }
+    },
+    "simulations": {
+        "goals_file": "inputs/Goals/NorthCarolina_Goals.json",
+        "model": "snapwave",
+        "snapwave": {
+            "grid_file": "inputs/GRID/NorthCarolina_mesh.nc",
+            "coast_depth": 1.0,
+            "metamodel_templates": "templates-snapwave-metamodel",
+            "dynamic_templates": "templates-snapwave-dynamic",
+            "metamodel_cases": "SnapWave_CASES_Metamodel",
+            "dynamic_cases": "SnapWave_CASES_Dynamic",
+            "slurm": {
+                "cpus_per_task": 2,
+                "mem": "4gb",
+                "setup": "module use /nfs/software/geocean/modulefiles\nmodule load snapwave/b663c81-wind2"
+            }
+        },
+        "swan": {
+            "grid_file": "inputs/GRID/NorthCarolina_mesh.grd",
+            "metamodel_templates": "templates-swan-metamodel",
+            "dynamic_templates": "templates-swan-dynamic",
+            "metamodel_cases": "SWAN_CASES_Metamodel",
+            "dynamic_cases": "SWAN_CASES_Dynamic",
+            "slurm": {
+                "mem": "4gb",
+                "extra_sbatch": [
+                    "--time=02:00:00"
+                ]
+            }
+        },
+        "num_samples_per_goal": 1500,
+        "max_steepness": 0.07,
+        "min_depth": 0.1,
+        "bounds": {
+            "hs": [
+                0.05,
+                17.0
+            ],
+            "tp": [
+                2.5,
+                22.0
+            ],
+            "spr": [
+                1,
+                55
+            ],
+            "wl": [
+                -1.25,
+                2.25
+            ]
+        },
+        "output_sites_config": {
+            "isobaths": [
+                {
+                    "name": "5m",
+                    "level": -5.0,
+                    "smooth_m": 300.0,
+                    "min_length_m": 5000.0,
+                    "spacing_m": 2000.0
+                },
+                {
+                    "name": "8m",
+                    "level": -8.0,
+                    "smooth_m": 300.0,
+                    "min_length_m": 5000.0,
+                    "spacing_m": 250.0
+                },
+                {
+                    "name": "10m",
+                    "level": -10.0,
+                    "smooth_m": 300.0,
+                    "min_length_m": 5000.0,
+                    "spacing_m": 2000.0
+                },
+                {
+                    "name": "20m",
+                    "level": -20.0,
+                    "smooth_m": 300.0,
+                    "min_length_m": 5000.0,
+                    "spacing_m": 2000.0
+                },
+                {
+                    "name": "50m",
+                    "level": -50.0,
+                    "smooth_m": 300.0,
+                    "min_length_m": 5000.0,
+                    "spacing_m": 5000.0
+                }
+            ],
+            "polygons": [],
+            "include_buoys": true,
+            "clip_to_aoi": true
+        }
+    },
+    "metamodel": {
+        "sets": {
+            "buoys": {
+                "sites": "buoy"
+            },
+            "transects": {
+                "sites": "8m"
+            },
+            "isobaths": {
+                "sites": [
+                    "5m",
+                    "10m",
+                    "20m",
+                    "50m"
+                ]
+            }
+        },
+        "mda_candidates": [
+            50,
+            100,
+            150,
+            200,
+            300,
+            400,
+            600,
+            800
+        ],
+        "mda_inputs": [
+            "hs",
+            "tp",
+            "dir",
+            "spr",
+            "wl"
+        ],
+        "mda_directional_variables": [
+            "dir"
+        ],
+        "vars_to_predict": {
+            "hs": {
+                "vars_to_stack": [
+                    "hs"
+                ],
+                "pca_variance": 0.99
+            },
+            "tp": "raw",
+            "dir": {
+                "vars_to_stack": [
+                    "dir_u",
+                    "dir_v"
+                ],
+                "pca_variance": 0.99
+            },
+            "spr": {
+                "vars_to_stack": [
+                    "spr"
+                ],
+                "pca_variance": 0.99
+            }
+        },
+        "site_filter": {
+            "hs_ratio_max": 3.0,
+            "tp_min": 0.5,
+            "hs_nan_max": 0.01
+        },
+        "pca_preprocessing": {
+            "nan_threshold_to_drop": {
+                "hs": 0.99,
+                "dir_u": 0.99,
+                "dir_v": 0.99,
+                "spr": 0.99
+            },
+            "value_to_replace_nans": {
+                "hs": 0.0,
+                "dir_u": 0.0,
+                "dir_v": 0.0,
+                "spr": 0.0
+            }
+        },
+        "validation": {
+            "metrics_variables": [
+                "hs",
+                "tp",
+                "tm01",
+                "dir",
+                "spr"
+            ]
+        },
+        "reconstruction": {
+            "variables": {
+                "hs": "hs",
+                "tp": "tp",
+                "tm01": "tm01",
+                "dir": "dm",
+                "spr": "dspr"
+            },
+            "save_spectra": true,
+            "depth_cap": true
+        },
+        "paths": {
+            "pca_dir": "outputs/{goal}/{metamodel}/pca_{mda_candidate}",
+            "gp_dir": "outputs/{goal}/{metamodel}/gp_{mda_candidate}"
+        }
+    }
+}
