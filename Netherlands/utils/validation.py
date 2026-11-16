@@ -490,6 +490,11 @@ def buoy_summary_figure_path(site: str) -> Path:
     return resolve("outputs/buoy_validation/figures") / f"{site}.png"
 
 
+def buoy_spectra_path(site: str) -> Path:
+    """``inputs/Observations/processed/spectra/<instrument_id>.nc``: 2D buoy spectra ``efth`` (03, read by 11)."""
+    return resolve("inputs/Observations/processed/spectra") / f"{obs.instrument_id(site)}.nc"
+
+
 def closest_goals_table(
     sites: Iterable[str], offshore_names: Iterable[str] | None = None
 ) -> pd.DataFrame:
