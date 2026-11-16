@@ -129,6 +129,7 @@ class TestStartCaseFromExistingCase(unittest.TestCase):
             "nbformat_minor": 5,
         }
         (self.source / "00_Source_Notebook.ipynb").write_text(json.dumps(notebook))
+        (self.source / "07a_Lettered_Notebook.ipynb").write_text(json.dumps(notebook))
 
     def test_clones_engine_and_strips_notebook_outputs(self) -> None:
         target = start_case("Clone", self.root / "out", from_case="SourceCase")
@@ -143,6 +144,7 @@ class TestStartCaseFromExistingCase(unittest.TestCase):
         self.assertEqual(cell["outputs"], [])
         self.assertIsNone(cell["execution_count"])
         self.assertNotIn("widgets", nb.get("metadata", {}))
+        self.assertTrue((target / "07a_Lettered_Notebook.ipynb").is_file())
 
         manifest = json.loads((target / ".hywaves" / "manifest.json").read_text())
         self.assertEqual(manifest["source"], "SourceCase")

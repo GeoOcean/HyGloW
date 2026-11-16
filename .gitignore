@@ -202,7 +202,6 @@ Netherlands/outputs_OLDESITO/
 
 # Testing/OLD Arquetypes
 Cantabria/
-NorthCarolina/
 
 # QGIS
 QGIS/
@@ -230,3 +229,11 @@ Netherlands/inputs/Observations/raw/
 
 # Deck build output (`python deck/build.py`)
 deck/_site/
+# Delivered model setups kept beside the case (large text files)
+*/inputs/delivery_*/
+
+# Archives (deliveries, transfers)
+*.tar
+*.tar.gz
+*.tgz
+*.zip

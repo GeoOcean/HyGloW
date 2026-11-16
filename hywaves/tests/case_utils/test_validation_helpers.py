@@ -110,10 +110,19 @@ class TestValidationHelpers(unittest.TestCase):
                     mock.patch.object(val.obs, "instrument_id", lambda s: s.removeprefix("buoy_")), \
                     mock.patch.object(val, "attach_site_meta", lambda ds: ds):
                 buoy = val.load_buoy_observations(slice("2013-12-01", "2013-12-01 23:00"), ["buoy_A", "buoy_B"])
+                year = val.load_buoy_observations("2013", ["buoy_A"])
+                with self.assertRaises(ValueError):  # a year outside every record: no buoy left
+                    val.load_buoy_observations("2018", ["buoy_A"])
+        self.assertEqual(year.sizes["time"], 48)
         self.assertEqual(list(buoy.sites.values), ["buoy_A"])
         self.assertEqual(set(buoy.data_vars), {"hs", "spr"})
         self.assertEqual(buoy.sizes["time"], 24)
         self.assertEqual(buoy["hs"].attrs["units"], "m")
+
+    def test_buoy_spectra_path(self) -> None:
+        with mock.patch.object(val, "resolve", lambda p: Path("/case") / p):
+            path = val.buoy_spectra_path("buoy_Aunuu_1")
+        self.assertEqual(path, Path("/case/inputs/Observations/processed/spectra/Aunuu_1.nc"))
 
     def test_event_peaks(self) -> None:
         time = pd.date_range("2013-12-05", periods=10, freq="h")
@@ -122,9 +131,55 @@ class TestValidationHelpers(unittest.TestCase):
         est = xr.Dataset({"hs": (("time", "sites"), np.r_[np.zeros(6), 4.0, np.zeros(3)][:, None])},
                          coords={"time": time, "sites": ["a"]})
         peaks = val.event_peaks(ref, {"model": est})
-        self.assertEqual(peaks.loc["a", "Buoy"], 5.0)
-        self.assertEqual(peaks.loc["a", "model - Buoy"], -1.0)
-        self.assertEqual(peaks.loc["a", "model lag (h)"], 2.0)
+        self.assertEqual(list(peaks.index), [("a", "Buoy"), ("a", "model")])
+        self.assertEqual(peaks.loc[("a", "Buoy"), "peak"], 5.0)
+        self.assertEqual(peaks.loc[("a", "model"), "minus Buoy"], -1.0)
+        self.assertEqual(peaks.loc[("a", "model"), "lag (h)"], 2.0)
+
+    def test_on_sites_of_and_storm_peaks(self) -> None:
+        like = _sites_ds({"hs": np.ones((3, 2))}, ["a", "b"], ["isobath", "buoy"], ["10m", "waves"])
+        like = like.assign_coords(site_longitude=("sites", [1.0, 2.0]))
+        run = _sites_ds({"hs": np.ones((3, 2))}, ["b", "c"], ["buoy", "isobath"], ["waves", "10m"])
+        run = run.assign_coords(site_longitude=("sites", [2.00001, 9.0]))
+        out = val.on_sites_of(run, like)
+        self.assertEqual(list(out.sites.values), ["b"])
+        self.assertEqual(float(out.site_longitude[0]), 2.0)
+
+        time = pd.date_range("2018-01-01", periods=240, freq="h")
+        hs = np.ones(240)
+        hs[[20, 22, 100, 200]] = [5.0, 6.0, 4.0, 3.0]  # 20 and 22: one storm, peak at 22
+        offshore = xr.Dataset({"hs": (("time", "goal"), np.column_stack([hs, hs]))}, coords={"time": time})
+        storms = val.storm_peaks(offshore, 3, min_gap="2D")
+        self.assertEqual(list(storms["peak"]), [time[22], time[100], time[200]])
+        maps = pd.DatetimeIndex([time[23], time[103]])  # 100: map 3 h away
+        storms = val.storm_peaks(offshore, 3, min_gap="2D", map_hours=maps, max_lag="2h")
+        self.assertEqual(list(storms["map_hour"])[:1], [time[23]])
+        self.assertNotIn(time[103], list(storms["map_hour"]))
+
+    def test_common_hours_metrics(self) -> None:
+        ref = _sites_ds({"hs": np.ones((4, 1))}, ["buoy_A"], ["buoy"], ["waves"])
+        full = ref.copy(data={"hs": np.full((4, 1), 1.5)})
+        part = ref.isel(time=[1, 2]).copy(data={"hs": np.full((2, 1), 2.0)})
+        m = val.common_hours_metrics(ref, {"full": full, "part": part}, ["hs", "tp"]).set_index("estimate")
+        self.assertEqual(list(m["n"]), [2, 2])  # the hours both have
+        self.assertAlmostEqual(m.loc["full", "bias"], 0.5)
+        self.assertEqual(set(m["variable"]), {"hs"})
+
+    def test_buoy_timeseries_variable_in_one_estimate(self) -> None:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        rng = np.random.default_rng(0)
+        cols = {"hs": rng.random((6, 1)), "tp": 8 + rng.random((6, 1)), "tm01": 6 + rng.random((6, 1))}
+        buoy = _sites_ds(cols, ["buoy_A"], ["buoy"], ["waves"])
+        hindcast = buoy[["hs", "tp"]]
+        fig = val.plot_buoy_timeseries(buoy, {"hindcast": hindcast, "metamodel": buoy}, "buoy_A",
+                                       variables=["hs", "tp", "tm01"])
+        self.assertEqual(len(fig.axes), 3)
+        self.assertEqual(fig.axes[2].get_ylabel(), "Tm01 [s]")
+        plt.close(fig)
 
 
 if __name__ == "__main__":

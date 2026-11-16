@@ -50,7 +50,7 @@
             "slurm": {
                 "cpus_per_task": 2,
                 "mem": "4gb",
-                "setup": "module use /nfs/software/geocean/modulefiles\nmodule load snapwave"
+                "setup": "module use /nfs/software/geocean/modulefiles\nmodule load snapwave/b663c81-wind2"
             }
         },
         "swan": {
@@ -67,7 +67,7 @@
         "bounds": {
             "hs": [0.05, 8.0],
             "tp": [1, 15],
-            "spr": [1, 45],
+            "spr": [1, 55],
             "wl": [-3.5, 3.5]
         },
         "output_sites_config": {
@@ -125,12 +125,13 @@
             }
         },
         "validation": {
-            "metrics_variables": ["hs", "tp", "dir", "spr"]
+            "metrics_variables": ["hs", "tp", "tm01", "dir", "spr"]
         },
         "reconstruction": {
             "variables": {
                 "hs": "hs",
                 "tp": "tp",
+                "tm01": "tm01",
                 "dir": "dm",
                 "spr": "dspr"
             },

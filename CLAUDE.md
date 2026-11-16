@@ -19,7 +19,7 @@ yet (`hywaves/WIND.md`).
 | Repo / path | Role |
 | --- | --- |
 | `hywaves/` | One module per command (`start`, `validate` = the case rules, `publish`, `snapshot`, `update`), `common.py` (shared helpers, case manifest), `cli.py`, the case `template/` |
-| `Netherlands/` | Reference case, latest code. `Samoa/`, `NewSouthWales/`: older code (0.9.0), migrate when next touched |
+| `Netherlands/` | Reference case, latest code. `Samoa/`: migrated to 0.17 (2026-11-13), re-run in progress. `NorthCarolina/`: started 2026-11-15 on a delivered mesh, run stopped at 08 by a full disk (2026-11-16). `NewSouthWales/`: migrated to 0.17 (2026-11-16), run not started |
 | `GUI/` | Dash results explorer, reads only `{Case}/portal/` |
 | `deck/` | Slide deck on GitHub Pages: `python deck/build.py` -> `deck/_site/` from the `portal/` bundles (`.github/workflows/deck.yml`) |
 | `~/BlueMath_tk` | **bluemath_tk**: all generic code (HyWaves in `waves/hywaves/`, wrappers in `wrappers/{snapwave,swan}/` holding only `_wrapper/_utils/_plots.py`) |
@@ -32,8 +32,12 @@ yet (`hywaves/WIND.md`).
 - SnapWave / SWAN are external binaries; on the GeoOcean cluster cases run as
   SLURM arrays (`wrapper.run_cases_slurm(**sim.slurm_kwargs())`). SWAN: one
   serial `swan.exe` per task (module `swan/4151`; MPI misplaces
-  `BOUNDSPEC ... VARIABLE PAR` on unstructured grids). SnapWave with wind
-  needs `snapwave/b663c81-wind1`, the module default (cases load plain `snapwave`).
+  `BOUNDSPEC ... VARIABLE PAR` on unstructured grids). SnapWave: `snapwave/b663c81-wind2`
+  (wind1 + boundary spectra centred on each boundary point's direction; installed
+  2026-11-15 in `/nfs/software/geocean/models/snapwave`, owned by `tausiaj`; the module
+  default since 2026-11-16, wind1 kept for old runs). Case JSONs load it by name. Draft
+  issue for upstream (github.com/danoroelvink/SnapWave):
+  `/lustre/geocean/WORK/users/javiert/software/snapwave/upstream_issue.md`.
 - Heavy data (`*.nc`, `*.zarr`, `*.tiff`, `*_CASES_*`, `outputs/`, `logs/`,
   `tmp/`) is git-ignored and huge: don't scan it recklessly.
 
@@ -98,12 +102,19 @@ after publishing, commit `portal/`.
   on import (`PATHS`, `SIMULATIONS`, `METAMODEL`, `FORCING`, `SATELLITE`,
   `resolve()`, `load_goals()`, `open_offshore_waves()`); restart the kernel
   after editing the JSON. No hard-coded paths in notebooks.
-- Pipeline: 01 GEBCO -> 02 mesh -> 03 observations + output sites -> 04 goals
+- Pipeline: 01 GEBCO (optionally merged with local sources,
+  `bluemath_tk.topo_bathy.merge`) -> 02 mesh -> 03 observations + output sites -> 04 goals
   -> 05 training cases -> 06 fit + holdout -> 07a
-  offshore (`07a_Offshore_WHACS` or `_ERA5`; 07b satellite calibration) ->
-  08 dynamic runs -> 09 linear sum vs dynamic -> 10 buoys
+  offshore (`07a_Offshore_WHACS` or `_ERA5`; 07b satellite calibration; 07c
+  CODEC water level + ERA5 wind, `offshore.codec_at_goals` / `era5_wind`) ->
+  08 dynamic runs (08b storms: metamodel and dynamic runs against the buoys, maps, runs
+  against a `reference_run` such as SWAN) -> 09 linear sum vs dynamic -> 10 buoys
   (`10_Validate_Buoys`) -> 11 spectra -> 12 GUI figures. Save cells of
   06/09/10/12 write the `outputs/` that `publish` bundles.
+- `Samoa/numerical_tests/`: why the linear sum is high against the dynamic run
+  in Samoa (exact sums of goal runs, SnapWave variants, a per-point-direction
+  test build, SWAN and wind1 runs of Cyclone Gita checking wind2); README +
+  `scripts/` + frozen `results/`.
 - `Netherlands/numerical_tests/` is the reference for the models: how the SWAN
   and SnapWave templates were chosen (01-02, from `results/*.csv`) and SnapWave
   vs SWAN on the same cases (03-04, `model_comparison.py`; not a clean
@@ -158,6 +169,11 @@ after publishing, commit `portal/`.
   `reconstruction_cache()` lists stores, `clear_reconstruction_cache(pattern)`
   deletes them; `reconstruction_sites(set, selector)`; `require_models(set,
   n)`; `load_reconstruction_spectra`. PCA variance only from `vars_to_predict`.
+  `reconstruction.variables` = wavespectra stats of the summed spectrum (both modes
+  build it: bulk = one partition per goal), so `tm01` is a stat, never predicted;
+  `validation.metrics_variables` may name predicted variables or these stats
+  (`validate.py`), and every comparison keeps what both sides have (`tm01`: buoys
+  only; the cases, the SnapWave dynamic runs and the hindcasts have none).
   Depth cap (`reconstruction.depth_cap`, needs `wl` in `mda_inputs`): the store
   keeps the plain sum, `reconstruct(depth_cap=)` / `load_reconstruction_spectra`
   return it capped (`apply_depth_cap`: Hs <= `depth_ceiling()` x `water_depth()`,
@@ -204,8 +220,14 @@ no `tests/`.
 they are recomputed: notebooks, `numerical_tests/`, the dashboard)
 - *Boundary forcing*: the sum equals an all-goals run only if each case puts
   a fraction w of its goal's energy along the boundary and the fractions add
-  to 1. SnapWave: two nearest goals, inverse distance (bimodal between
-  different directions; ends decay). SWAN: spectra interpolated linearly
+  to 1. SnapWave: two nearest goals, inverse distance in energy (ends decay);
+  but **every boundary spectrum is centred on one direction**, the Hs-weighted
+  mean of all boundary points (`build_boundary_support_points_spectra`), with
+  one domain Tp (the boundary mean) and the solver sector on that mean: right
+  for a goal case (one direction everywhere), wrong for dynamic runs whose goals
+  look different ways (Samoa's closed ring: the exact sum of goal runs is well above
+  it even at 50 m, and equal to it with per-point directions; `Samoa/numerical_tests/`). Its
+  spreading `cos^ms`, `ms = 1/σ² − 1`, inverts above σ = 57.3°. SWAN: spectra interpolated linearly
   along the boundary (Hs ~ √w; one peak at the mean direction; ends take the
   nearest goal in full via `boundary_par_table`). Checked on Netherlands case
   01/0000: the boundary follows the energy-linear profile.
@@ -223,7 +245,21 @@ they are recomputed: notebooks, `numerical_tests/`, the dashboard)
   where the laterals meet the coast; 767 nodes = SWAN's `.grd`); the old AoI
   rectangle forced all 6,329 outline nodes, coast included, and was too high
   nearshore. `upwindref = 1`, `niter = 200` (sweeps): every goal case converges and
-  gentle seas agree with SWAN. Postprocessing drops non-converged runs (last error >
+  gentle seas agree with SWAN. `sector = 360` in both templates (2026-11-15): a 180°
+  sector centred on the boundary direction drops the energy refraction turns past 90°
+  around islands (Samoa goal cases, `Samoa/numerical_tests/`). Boundary `spr` at most
+  `MAX_SPREAD` 55° (`bluemath_tk.wrappers.snapwave`; `boundary_time_series` clips it,
+  `generate_cases` refuses wider `bounds.spr`): SnapWave's spreading inverts above 57.3°.
+  Only the SnapWave boundary is clipped: the dynamic run is forced narrower than the
+  hindcast where the bulk spread is broad (a mix of seas), while the reconstruction keeps
+  the real values (bulk mode extrapolates above the bounds, the partitions sit inside
+  them); there the buoys are the referee, not the dynamic run (notebooks 08-09 say so).
+  Open boundary on a mesh built elsewhere or with goals on the lateral sides: `simulations.snapwave.coast_depth`
+  (m; `open_boundary_nodes(coast_depth=)` follows the outline from the goals to the coast instead of
+  stopping at corners; NorthCarolina). The corner rule stays the default: in the Netherlands it stops
+  the laterals before shallow sea that must not be forced.
+  Partitions are scaled to the bulk energy in 07a (`offshore.scale_partitions_to_bulk`),
+  before the calibration. Postprocessing drops non-converged runs (last error >
   `MAX_ERROR` 0.01 in `wrapper_out.log`): metamodel cases are left out, dynamic
   hours are NaN (wind mode: `hywaves/WIND.md`).
 - *Depth cap* (2026-11-11): hard cap Hs <= ceiling x h, ceiling = highest Hs / h of
@@ -258,7 +294,7 @@ they are recomputed: notebooks, `numerical_tests/`, the dashboard)
   energy, computed per case (Netherlands: sea close to Pierson-Moskowitz, swell
   above a narrow JONSWAP: broad swell partitions). One processed ERA5 zarr, with Tp.
 
-## Where we are (2026-11-11)
+## Where we are (2026-11-16)
 
 hywaves **0.17.0** (depth cap in the reconstruction; no wind) on `main` (HyGloW);
 bluemath_tk on `feature/hywaves-depth-cap` (into `develop`).
@@ -286,9 +322,86 @@ month under a file lock; the setup `key` + input `fingerprint` in the attrs
 rebuild the store on any change; hours with no energy are NaN. Rates are
 measured on the 48-core node: re-measure there if the sum changes.
 
-**Next (user)**: decide from the dashboard what to fix or move into 09-12
+**Samoa** (`Samoa.json`, migrated 2026-11-13): SnapWave, 16 goals on a closed
+ring, WHACS + WHACS_cal, CODEC + ERA5 wind, dynamic year 2018 (CODEC ends 2018;
+Aunu'u at both sites; Cyclone Gita). Bathymetry `inputs/Bathymetry/Samoa_topobathy_1s.tiff`:
+GEBCO 2026 + Samoa project bathymetry (Upolu/Savai'i, UTM 326 m) + NOAA Pago Pago 3"
+and Tutuila 1/3" (MHW + 0.394 m -> MSL); mesh geometry of 2026-07 kept, node
+depths re-interpolated. Buoys: CDIP 189 Aunu'u split by GPS into `Aunuu_1`
+(to 2018-04, ~79 m) / `Aunuu_2` (2018-05 on, ~55 m), CDIP 273 `King_Poloa`
+(2024-06 on, after WHACS), `bluemath_tk.waves.cdip`. The July goal zarr had
+`hs` = partition sum, not WHACS bulk (fixed from the global archive
+`/lustre/geocean/DATA/CSIRO/WHACS/global-smc`); WHACS partitions hold only ~91 %
+of the bulk energy in Samoa (99.9 % in the Netherlands), so the spectral sum
+starts ~4-5 % low in Hs. 0.9.0 runs kept as `*_v0.9.0`. 2026-11-14: 05-12 run
+(mda 1500 LHS -> 1108 cases/goal, fits to mda800, dynamic WHACS_cal wind-off 2018,
+reconstruction cache 2018 every set bulk + spectral, `wl="forcing"`). The linear sum
+is high against the dynamic run everywhere, growing with the offshore spread: mostly
+the dynamic run (one boundary direction, see *Boundary forcing*; it is also the low
+one against the Aunu'u buoys), then breaking at 5-10 m, then the GP extrapolating in
+bulk mode (WHACS bulk `spr` median 53°, above `bounds.spr` [1, 45]; 38 % above
+57.3°, where SnapWave inverts the spreading; the partitions sit inside the bounds).
+Tests and conclusions: `Samoa/numerical_tests/README.md` (scripts, frozen CSVs, the
+per-point SnapWave patch; runs in `tmp/linearity_test/`). 2026-11-15: re-run with the
+fixes (wind2, sector 360, `bounds.spr` [1, 55], partitions scaled, 07a/07b re-run) by
+`Samoa/tmp/run_samoa_chain.sh` (05 -> 06 || 08 -> reconstruction -> 09-12; finished
+2026-11-16, every case and dynamic hour converged); the previous results are kept in
+`*_sector180` / `outputs_sector180/` and the `*_unscaled.zarr` offshore files. With the
+fixes the linear sum matches the dynamic run from 10 to 50 m and both sit close to the
+Aunu'u buoys (the old dynamic run was the low one); left: breaking at 5 m (and some at
+10 m), spectral Tp/Dir/Spr. A SWAN dynamic run of Cyclone Gita
+(`numerical_tests/scripts/06_swan_storm.py`, 08b section 5) sides with wind2 over wind1 in
+every site group. Numbers: notebook 09/10 and `numerical_tests/README.md`.
+2026-11-16: `tm01` added (config, buoy files with `tm01`); cache refilled and 09-12, 08b
+re-run (`tmp/run_tm01.sh`). Buoy files from CDIP
+(`bluemath_tk.waves.cdip`): bulk `processed/<id>.nc`, MEM spectra
+`processed/spectra/<id>.nc` (`val.buoy_spectra_path`). In this env,
+`gpd.read_file` after importing bluemath_tk needs `GDAL_DATA` set to the env's
+`share/gdal`.
+
+**NorthCarolina** (`NorthCarolina.json`, started 2026-11-15): SnapWave on the mesh delivered with the
+ShoreShop work (`inputs/delivery_2026-11-15/`, git-ignored: mesh scripts, enclosure, 8 m output points,
+a daily ERA5-forced SnapWave run 1985-2023 at those points = a reference to compare against; the DEM was
+not delivered, vertical datum unknown). 01-04 done: AoI = mesh open boundary closed over land, raster =
+GEBCO 2026 + mesh depths (3"), 19 NDBC buoys (hourly tables of
+`/lustre/geocean/WORK/users/montanoj/projects/shoreshop3_2026_pipeline/01_BinWaves/inputs/buoy_data`,
+`utils/shoreshop_buoys.py`; no spreading; ten are CDIP stations, spectra not downloaded), 14 goals along
+the three open sides (coast-end goals dropped by mesh depth, goal 14 sector set by hand), sets `buoys`,
+`transects` (8 m isobath every 250 m, the delivered output line) and `isobaths`. 07a, 07b and the CODEC part of 07c done;
+bounds from them (Hs 17 m, steepness 0.07, wl -1.25 to 2.25 m); on the deep buoys `WHACS_cal` does
+not clearly beat WHACS in the storm tail. `tmp/whacs_seapoints.py` builds the
+`_WHACS_seapoint.zarr` 07a reads from the global archive (no notebook does it); `tmp/run_inputs.sh`
+(07a, 07b, CODEC part of 07c) then `tmp/run_chain.sh` (05 -> 06 || 08 -> reconstruction 2018 -> 09, 10,
+12). The chains wait on the whole SLURM queue of the user: one at a time. ERA5 waves and wind need
+`EDH_API_KEY` (not in the non-interactive shell). Template notebook 04 now renumbers the goals after
+dropping any. 2026-11-16: synced to the template (`utils/`, `tm01` config keys, notebooks 09, 10, 08b)
+and `tmp/run_chain.sh` launched (`WHACS_cal`): 05 done (14,769 of 14,770 cases), 06 fit left running, 08 failed
+(our folders write to the SATA pool of `/lustre/geocean/WORK`, full; the free space is in the SAS-HA pool:
+`lfs df`, `lfs getstripe -d`, case README); resume with `tmp/run_chain_from08.sh` (case README). Checked against Dano's run
+(`tmp/dano_check/`, conclusion in the case README): his input with the wind1 build reproduces his output
+exactly; our setup is lower in Hs because of wind2 and full convergence, not the enclosure or the goals.
+`Netherlands/utils` is behind the template (`coast_depth`, `tm01`): `update` + the `tm01` config keys
+when next touched.
+The template 08b was rewritten on 2026-11-16 (`viz.plot_storm_fields` replaced `plot_storm_hour`,
+`event_peaks` returns one row per site and source): NorthCarolina and NewSouthWales keep their old 08b and
+`utils/` until `update`; copy the template 08b with it.
+
+**NewSouthWales** (`NewSouthWales.json`, migrated 2026-11-16): 0.9.0 results kept (`portal_v0-9-0/`,
+`*_v0.9.0`). Template `utils/` and notebooks 03, 05-12; 00/01/02/04 kept as records of the inputs.
+`paths.topobathy_file` is the NSW 50 m raster (`NewSouthWales_MAO.tiff`: the mesh depths come from it,
+not from the GEBCO tiff the 0.9.0 config named); isobaths every 1 km, smoothed 200 m at 5-10 m (1 km
+smoothing erased them on this steep coast). 26 goals kept (default corner rule); 950 samples -> 701
+cases per goal, 18,226 in all (two arrays under the 20,000-record limit), MDA up to 600. WHACS extract
+of 0.9.0 checked against the global archive (bulk, not the July partition-sum bug). Dynamic year 2016
+(June East Coast Low). Nothing submitted (the waiter was stopped when the disk filled): `tmp/run_chain.sh`
+after North Carolina (case README).
+
+**Next (user)**, also listed in `TODO.md` (keep both in step): decide from the dashboard what to fix or move into 09-12
 (spectral Tp/Dir/Spr, the 5 m storm overshoot; wind tests closed, the damped
 wind-only term in `hywaves/WIND.md` if it is built); buoy spectra for notebook 11; SWAN pass (05-12 with `model: swan`,
-`tp` as PCA target, then snapshot `swan`); migrate Samoa and NewSouthWales
-(`update` + config + re-run). Cluster: arrays <= 9999 tasks and 20000 job
+`tp` as PCA target, then snapshot `swan`); Samoa: check 08b-12, then
+breaking near the coast (the depth cap barely acts); send the upstream issue (wind2 is
+the default since 2026-11-16); then the Netherlands with the same setup (05-06 again:
+sector 360 and the spread bounds, 08 with wind2; `tm01` needs a mean period in
+`utils/buoy_archive.py`: check which one Waterinfo/CMEMS give); NewSouthWales: check its first 0.17 run, publish. Cluster: arrays <= 9999 tasks and 20000 job
 records (bigger runs in `OFFSET` blocks).

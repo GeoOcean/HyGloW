@@ -46,7 +46,7 @@ WGS84_PRJ = (
     'PRIMEM["Greenwich",0],UNIT["Degree",0.017453292519943295]]'
 )
 
-VARIABLE_ORDER = ["Hs", "Tp", "Dir", "Spr"]
+VARIABLE_ORDER = ["Hs", "Tp", "Tm01", "Dir", "Spr"]
 MODEL_ORDER = ["Bulk metamodel", "Spectral metamodel", "WHACS (closest goal)"]
 
 

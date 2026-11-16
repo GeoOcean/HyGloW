@@ -121,6 +121,15 @@ on one 48-core node (36 cores used, shared), nothing cached, October 2026:
 | One buoy, 1980-2023, bulk | 14 min | 11 GiB |
 | One buoy and year read back from the cache | 1 s | 1 GiB |
 
+Samoa (16 goals), WHACS_cal, MDA 800, with water level, same node, nothing
+cached, November 2026 (peak memory not measured):
+
+| Task | Time |
+| --- | --- |
+| 1,434 isobath sites, one year, bulk / spectral | 11 min / 44 min |
+| 512 polygon sites, one year, bulk / spectral | 3.5 min / 12 min |
+| 384 fits (16 goals x 3 sets x 8 MDA sizes, 1000 epochs), 36 processes | 3 h |
+
 Fits: 30 fits (MDA 50, 30 epochs) and their MDA take 16 s in 30 processes.
 The proposal prints its own time estimate for each request (an order of
 magnitude on other machines).

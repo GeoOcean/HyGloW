@@ -14,7 +14,7 @@ A HyGloW case: nearshore waves from an offshore hindcast (the method:
 
 | | Notebook | Does | Needs in the JSON |
 | --- | --- | --- | --- |
-| 01 | `01_Generate_tiff_from_GEBCO` | Bathymetry of the area | `paths` |
+| 01 | `01_Generate_tiff_from_GEBCO` | Bathymetry of the area (GEBCO, optionally merged with better local sources) | `paths` |
 | 02 | `02_Create_mesh_by_bluemesh2d` | Model mesh | `paths.mesh_file` (= `simulations.<model>.grid_file`) |
 | 03 | `03_Generate_Observations_Configuration` | Buoys, and the output sites on the mesh | `onshore_waves`, `simulations.output_sites_config` |
 | 04 | `04_Select_Goals_by_Hindcasts` | Goals (offshore points) and their sectors | `simulations.goals_file` |
@@ -22,14 +22,22 @@ A HyGloW case: nearshore waves from an offshore hindcast (the method:
 | 06 | `06_Validate_Metamodel` | Fit the metamodel, holdout check | `metamodel` |
 | 07a | `07a_Offshore_WHACS` **or** `07a_Offshore_ERA5` | Offshore waves at the goals (ERA5: partition Tm-1,0 -> Tp) | `offshore_waves` |
 | 07b | `07b_Satellite_Calibration` | *Optional:* check and calibrate them | `satellite` |
+| 07c | `07c_Water_Level_and_Wind` | *Optional:* CODEC water level at the goals and ERA5 wind for the dynamic runs | `forcing` |
 | 08 | `08_Dynamic_Cases_Generation` | Reference runs, every hour, all goals; one folder per forcing (`<dynamic_cases>_<offshore>_wind-<on|off>`) | `forcing` (optional) |
-| 09 | `09_Validate_Linear_Summation` | Reconstruction vs reference runs | `metamodel.reconstruction` (`variables`, `save_spectra`, `depth_cap`: cap Hs at the training ceiling x depth) |
-| 10 | `10_Validate_Buoys` | Everything vs the buoys | |
+| 08b | `08b_Storm_Maps` | Largest storms: metamodel (bulk, spectral) and dynamic runs (`dynamic_runs`: the 08 run, optionally other builds or SWAN) against the buoys, maps of the storm hour (Hs, direction), and the dynamic runs against `reference_run` | |
+| 09 | `09_Validate_Linear_Summation` | Reconstruction vs reference runs | `metamodel.reconstruction` (`variables`: wavespectra stats of the summed spectrum, e.g. `tm01`; `save_spectra`, `depth_cap`: cap Hs at the training ceiling x depth) |
+| 10 | `10_Validate_Buoys` | Everything vs the buoys | `metamodel.validation.metrics_variables` (predicted variables or reconstruction stats) |
 | 11 | `11_Validate_Spectra` | Spectra at the buoys | |
 | 12 | `12_Final_Plots` | Figures for the results portal | |
 
 The wave model (`simulations.model`: `"snapwave"` or `"swan"`) is needed from
 05 on, on your PATH or through SLURM (`simulations.<model>.slurm`).
+
+SnapWave is forced along the mesh outline through the goals. By default that
+boundary ends at the corners where the lateral sides meet the coast (goals on the
+offshore side only); with `simulations.snapwave.coast_depth` (m) it follows the
+outline from the goals until that depth, for goals that also sit on the lateral
+sides or a mesh built elsewhere.
 
 ## Share it
 

@@ -6,7 +6,7 @@ timestep       = 3600.0
 gridfile       = {{ gridfile }}
 sferic         = 1
 dtheta         = 10.0
-{% set wind = u10 is defined and u10 %}sector         = {{ 360 if wind else 180 }}
+{% set wind = u10 is defined and u10 %}sector         = 360
 
 bndfile        = boundary.txt
 encfile        = enclosure.txt
@@ -30,7 +30,7 @@ his_file       = output_sites.nc
 map_file       = {{ map_file }}
 map_dirspr     = {{ map_dirspr }}
 {% if wind %}
-# wind: needs a SnapWave build with the wind fixes (snapwave/b663c81-wind1)
+# wind: needs a SnapWave build with the wind fixes (snapwave/b663c81-wind1 or later)
 u10            = {{ u10 }}
 u10dir         = {{ u10dir }}
 {% endif %}

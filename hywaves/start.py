@@ -147,7 +147,7 @@ def start_case(
     if notebooks:
         if from_case:
             # Clone mode: strip outputs from the source case's notebooks.
-            for nb_path in sorted(source.glob("[0-9][0-9]_*.ipynb")):
+            for nb_path in sorted(source.glob("[0-9][0-9]*_*.ipynb")):
                 _strip_notebook(nb_path, target / nb_path.name)
                 copied_notebooks.append(nb_path.name)
         else:

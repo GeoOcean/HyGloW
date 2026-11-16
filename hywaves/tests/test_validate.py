@@ -277,6 +277,22 @@ class TestValidateCase(unittest.TestCase):
         self.assertEqual(messages({"depth_cap": True}, ["hs", "wl"]), [])
         self.assertEqual(messages({"depth_cap": False}, ["hs", "tp"]), [])
 
+    def test_engine_checks_reconstruction_stats_as_metrics(self) -> None:
+        def messages(metrics: list[str], recon_vars: dict) -> list[str]:
+            metamodel = {
+                "vars_to_predict": {"hs": "raw", "tp": "raw"},
+                "validation": {"metrics_variables": metrics},
+                "reconstruction": {"variables": recon_vars, "save_spectra": False, "depth_cap": False},
+            }
+            self._write_config(_minimal_config(metamodel=metamodel))
+            return [f.message for f in _errors(validate_case(self.case_dir))
+                    if f.code in ("engine.metrics_variables", "engine.reconstruction")]
+
+        recon = {"hs": "hs", "tp": "tp", "tm01": "tm01"}
+        self.assertEqual(messages(["hs", "tp", "tm01"], recon), [])
+        self.assertTrue(any("'tm02'" in m for m in messages(["hs", "tm02"], recon)))
+        self.assertTrue(any("must include hs" in m for m in messages(["tp"], {"tp": "tp"})))
+
     def test_engine_checks_model_block(self) -> None:
         metamodel = {
             "mda_candidates": [50],

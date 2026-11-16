@@ -143,6 +143,7 @@ class TestGenerateCases(unittest.TestCase):
     def test_lhs_keeps_plausible_sea_states(self) -> None:
         """LHS per goal within its sector; steep samples are dropped."""
         sim = {
+            "model": "snapwave",
             "num_samples_per_goal": 200,
             "max_steepness": 0.05,
             "bounds": {"hs": [0.05, 8.0], "tp": [2, 15], "spr": [5, 40], "wl": [-1, 1]},
@@ -160,6 +161,18 @@ class TestGenerateCases(unittest.TestCase):
         self.assertTrue(((per_goal > 50) & (per_goal < 200)).all())
         g2 = cases[cases["goal"] == "2"]
         self.assertTrue(g2["dir"].between(180, 270).all())
+
+    def test_snapwave_spread_limit(self) -> None:
+        """SnapWave cannot take spreads above MAX_SPREAD (its spreading inverts)."""
+        sim = {
+            "model": "snapwave",
+            "num_samples_per_goal": 10,
+            "max_steepness": 0.05,
+            "bounds": {"hs": [0.05, 8.0], "tp": [2, 15], "spr": [5, 70], "wl": [-1, 1]},
+        }
+        with mock.patch.dict(sws.SIMULATIONS, sim):
+            with self.assertRaises(ValueError):
+                sws.generate_cases({"1": {"angles": [-30, 30]}})
 
 
 class TestMetamodelCases(unittest.TestCase):
@@ -260,6 +273,29 @@ class TestMetamodelCases(unittest.TestCase):
         self.assertEqual(boundary.geom_type, "LineString")
         self.assertIn("SWAN", label)
         np.testing.assert_allclose(np.asarray(boundary.coords)[:, 1], 1.0)
+
+class TestStormMaps(unittest.TestCase):
+    def test_load_storm_map_both_models(self) -> None:
+        from scipy.io import savemat
+
+        with tempfile.TemporaryDirectory() as tmp:
+            sw, sn = Path(tmp) / "20180209 210000", Path(tmp) / "20180209 220000"
+            sw.mkdir()
+            sn.mkdir()
+            savemat(sw / "output_map.mat", {"Hsig": [[1.0, 2.0, 0.0]], "TPsmoo": [[8.0, 9.0, -9.0]],
+                                            "Dir": [[300.0, 310.0, -999.0]], "Dspr": [[30.0, 31.0, -9.0]],
+                                            "Depth": [[50.0, 20.0, -9.0]]})
+            xr.Dataset({"hm0": (("time", "mesh2d_nNodes"), [[1.5, 2.5, 0.0]]),
+                        "tp": (("time", "mesh2d_nNodes"), [[8.0, 9.0, 9.0]])},
+                       coords={"time": [0]}).to_netcdf(sn / "output_map.nc")
+            swan, snap = sws.load_storm_map(sw), sws.load_storm_map(sn)
+            hours = sws.saved_map_hours(tmp)
+        self.assertEqual(list(swan.data_vars), ["hs", "tp", "dir", "spr"])
+        self.assertTrue(np.isnan(swan["hs"].values[2]))  # dry node
+        self.assertEqual(snap["hs"].dims, ("node",))
+        np.testing.assert_allclose(snap["hs"].values, [1.5, 2.5, 0.0])
+        self.assertEqual(len(hours), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

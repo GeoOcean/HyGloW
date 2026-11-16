@@ -504,11 +504,14 @@ def _check_engine(case_dir: Path, config: dict, report: _Report) -> None:
             "metamodel.validation.metrics_variables must be a non-empty list",
         )
     elif predict_names:
-        missing = [v for v in metrics if v not in predict_names]
+        # a metric is either predicted or a stat of the reconstructed spectrum
+        recon_vars = (mm.get("reconstruction") or {}).get("variables")
+        known = set(predict_names) | set(recon_vars if isinstance(recon_vars, dict) else {})
+        missing = [v for v in metrics if v not in known]
         if missing:
             report.error(
                 "engine.metrics_variables",
-                f"metrics_variables not in vars_to_predict: {missing}",
+                f"metrics_variables neither in vars_to_predict nor reconstruction.variables: {missing}",
             )
 
     recon = mm.get("reconstruction")
@@ -522,13 +525,8 @@ def _check_engine(case_dir: Path, config: dict, report: _Report) -> None:
                 "reconstruction.variables must be a non-empty dict (name → wavespectra stat)",
             )
         else:
-            if predict_names:
-                missing = [v for v in var_map if v not in predict_names]
-                if missing:
-                    report.error(
-                        "engine.reconstruction",
-                        f"reconstruction.variables keys not in vars_to_predict: {missing}",
-                    )
+            if "hs" not in var_map:
+                report.error("engine.reconstruction", "reconstruction.variables must include hs")
             try:
                 from wavespectra.construct import STATS  # type: ignore
             except ImportError:
@@ -661,6 +659,11 @@ def _check_engine(case_dir: Path, config: dict, report: _Report) -> None:
         report.warn("engine.grid", f"simulations.{model}.grid_file missing: {grid}")
     if not isinstance(block.get("slurm", {}), dict):
         report.error("engine.model", f"simulations.{model}.slurm must be a dict")
+    coast_depth = block.get("coast_depth")
+    if coast_depth is not None and (
+        isinstance(coast_depth, bool) or not isinstance(coast_depth, (int, float)) or coast_depth < 0
+    ):
+        report.error("engine.model", f"simulations.{model}.coast_depth must be a depth in metres (>= 0)")
     if model == "swan" and isinstance(vars_, dict) and vars_.get("tp") == "raw":
         report.warn(
             "engine.tp_raw",
