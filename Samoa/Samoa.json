@@ -1,10 +1,9 @@
 {
     "name": "Samoa",
-    "description": "Samoa hybrid wave-downscaling case (SnapWave + GPR metamodel)",
-    "schema_version": 1,
+    "description": "Samoan islands (Savai'i, Upolu, Tutuila): satellite-calibrated WHACS to the nearshore with SnapWave",
     "paths": {
         "aoi_file": "inputs/AoI_Polygons/Samoa_AoI.shp",
-        "topobathy_file": "inputs/GEBCO/Samoa_GEBCO_SMOOTH_NOAA_3s.tiff",
+        "topobathy_file": "inputs/Bathymetry/Samoa_topobathy_1s.tiff",
         "mesh_file": "inputs/GRID/Samoa_mesh.nc"
     },
     "onshore_waves": "inputs/Observations/Samoa_observations.json",
@@ -12,27 +11,84 @@
         {
             "name": "WHACS",
             "data_path": "inputs/WHACS/processed/Samoa_WHACS_goal.zarr"
+        },
+        {
+            "name": "WHACS_cal",
+            "data_path": "inputs/WHACS/processed/Samoa_WHACS_goal_cal.zarr",
+            "hindcast": "WHACS"
         }
     ],
+    "satellite": {
+        "name": "IMOS altimeter",
+        "data_path": "https://geoocean.unican.es/zarr/IMOS/imos_altimeter_dm00.zarr",
+        "radius_km": 25,
+        "min_depth": 15,
+        "flags": [
+            1,
+            2
+        ],
+        "max_time_diff": "30min",
+        "min_points": 3,
+        "train_fraction": 0.75
+    },
+    "forcing": {
+        "wind": {
+            "name": "ERA5",
+            "data_path": "inputs/ERA5/Samoa_wind.zarr"
+        },
+        "water_level": {
+            "name": "CODEC",
+            "data_path": "inputs/CODEC/processed/Samoa_CODEC_goal.zarr",
+            "variable": "waterlevel"
+        }
+    },
     "simulations": {
         "goals_file": "inputs/Goals/Samoa_Goals.json",
-        "metamodel_templates": "templates-metamodel",
-        "dynamic_templates": "templates-dynamic",
-        "metamodel_cases": "SnapWave_CASES_Metamodel",
-        "dynamic_cases": "SnapWave_CASES_Dynamic",
-        "num_samples_per_goal": 500,
+        "model": "snapwave",
+        "snapwave": {
+            "grid_file": "inputs/GRID/Samoa_mesh.nc",
+            "metamodel_templates": "templates-snapwave-metamodel",
+            "dynamic_templates": "templates-snapwave-dynamic",
+            "metamodel_cases": "SnapWave_CASES_Metamodel",
+            "dynamic_cases": "SnapWave_CASES_Dynamic",
+            "slurm": {
+                "cpus_per_task": 2,
+                "mem": "4gb",
+                "setup": "module use /nfs/software/geocean/modulefiles\nmodule load snapwave/b663c81-wind2"
+            }
+        },
+        "swan": {
+            "grid_file": "inputs/GRID/Samoa_mesh.grd",
+            "metamodel_templates": "templates-swan-metamodel",
+            "dynamic_templates": "templates-swan-dynamic",
+            "metamodel_cases": "SWAN_CASES_Metamodel",
+            "dynamic_cases": "SWAN_CASES_Dynamic",
+            "slurm": {
+                "mem": "4gb",
+                "extra_sbatch": [
+                    "--time=02:00:00"
+                ]
+            }
+        },
+        "num_samples_per_goal": 1500,
+        "max_steepness": 0.06,
+        "min_depth": 0.1,
         "bounds": {
+            "hs": [
+                0.05,
+                12.0
+            ],
             "tp": [
-                1,
-                15
+                2.5,
+                22.0
             ],
             "spr": [
                 1,
-                45
+                55
             ],
             "wl": [
-                -3.5,
-                3.5
+                -1.0,
+                1.25
             ]
         },
         "output_sites_config": {
@@ -40,37 +96,37 @@
                 {
                     "name": "5m",
                     "level": -5.0,
-                    "smooth_m": 1000.0,
+                    "smooth_m": 200.0,
                     "min_length_m": 5000.0,
-                    "spacing_m": 5000.0
+                    "spacing_m": 1000.0
                 },
                 {
                     "name": "10m",
                     "level": -10.0,
-                    "smooth_m": 1000.0,
+                    "smooth_m": 200.0,
                     "min_length_m": 5000.0,
-                    "spacing_m": 5000.0
+                    "spacing_m": 1000.0
                 },
                 {
                     "name": "20m",
                     "level": -20.0,
-                    "smooth_m": 1000.0,
+                    "smooth_m": 200.0,
                     "min_length_m": 5000.0,
-                    "spacing_m": 5000.0
+                    "spacing_m": 1000.0
                 },
                 {
                     "name": "50m",
                     "level": -50.0,
-                    "smooth_m": 1000.0,
+                    "smooth_m": 200.0,
                     "min_length_m": 5000.0,
-                    "spacing_m": 5000.0
+                    "spacing_m": 1000.0
                 }
             ],
             "polygons": [
                 {
                     "name": "Apia",
                     "file": "inputs/AoI_Polygons/Apia_AoI.shp",
-                    "wet_only": true
+                    "fraction": 0.25
                 }
             ],
             "include_buoys": true,
@@ -78,14 +134,29 @@
         }
     },
     "metamodel": {
+        "sets": {
+            "buoys": {
+                "sites": "buoy"
+            },
+            "isobaths": {
+                "sites": "isobath"
+            },
+            "apia": {
+                "sites": "Apia"
+            }
+        },
         "mda_candidates": [
             50,
             100,
             150,
-            250,
-            450
+            200,
+            300,
+            400,
+            600,
+            800
         ],
         "mda_inputs": [
+            "hs",
             "tp",
             "dir",
             "spr",
@@ -117,18 +188,21 @@
             }
         },
         "site_filter": {
-            "hs_max": 10.0,
-            "tp_min": 0.5
+            "hs_ratio_max": 3.0,
+            "tp_min": 0.5,
+            "hs_nan_max": 0.01
         },
         "pca_preprocessing": {
             "nan_threshold_to_drop": {
                 "hs": 0.99,
+                "tp": 0.99,
                 "dir_u": 0.99,
                 "dir_v": 0.99,
                 "spr": 0.99
             },
             "value_to_replace_nans": {
                 "hs": 0.0,
+                "tp": 0.0,
                 "dir_u": 0.0,
                 "dir_v": 0.0,
                 "spr": 0.0
@@ -138,6 +212,7 @@
             "metrics_variables": [
                 "hs",
                 "tp",
+                "tm01",
                 "dir",
                 "spr"
             ]
@@ -146,14 +221,16 @@
             "variables": {
                 "hs": "hs",
                 "tp": "tp",
+                "tm01": "tm01",
                 "dir": "dm",
                 "spr": "dspr"
             },
-            "save_spectra": true
+            "save_spectra": true,
+            "depth_cap": true
         },
         "paths": {
-            "pca_dir": "outputs/{goal}/pca_{mda_candidate}",
-            "gp_dir": "outputs/{goal}/gp_{mda_candidate}"
+            "pca_dir": "outputs/{goal}/{metamodel}/pca_{mda_candidate}",
+            "gp_dir": "outputs/{goal}/{metamodel}/gp_{mda_candidate}"
         }
     }
 }

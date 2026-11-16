@@ -1,0 +1,13 @@
+--- a/src/snapwave_boundaries.f90	2026-10-13 14:07:30.632697908 +0200
++++ b/src/snapwave_boundaries.f90	2026-11-14 23:15:53.000000000 +0100
+@@ -622,8 +622,8 @@
+       do ib = 1, nwbnd ! Loop along boundary points
+          E0 = 0.0625 * rho * g * hst_bwv(ib)**2
+          ms = 1.0 / dst_bwv(ib)**2 - 1.0
+-         dist = sign(1.0, cos(theta - wdmean_bwv)) * abs(cos(theta - wdmean_bwv))**ms
+-         where (abs(mod(pi + theta - wdmean_bwv, 2.0 * pi) - pi) > 0.999 * pi / 2.0) dist = 0.0
++         dist = sign(1.0, cos(theta - wdt_bwv(ib))) * abs(cos(theta - wdt_bwv(ib)))**ms
++         where (abs(mod(pi + theta - wdt_bwv(ib), 2.0 * pi) - pi) > 0.999 * pi / 2.0) dist = 0.0
+          eet_bwv(:, ib) = dist / sum(dist) * E0 / dtheta
+       end do
+       !

@@ -1,0 +1,43 @@
+physics,group,ratio_median,spr_lt45,spr_gt60
+baseline,10m,1.3249676,1.19044,1.4976536
+baseline,20m,1.3200673,1.0984256,1.4721355
+baseline,50m,1.2569474,1.0970265,1.3784788
+baseline,5m,1.9520717,1.9088157,2.000349
+baseline,Apia,1.3520651,1.3134599,1.2979789
+baseline,waves,1.0724875,1.0567371,1.1267755
+A: no friction,10m,1.319511,1.189494,1.4920759
+A: no friction,20m,1.3170602,1.0960569,1.4695051
+A: no friction,50m,1.2558116,1.0962509,1.3776253
+A: no friction,5m,1.9553792,1.9138412,2.0037284
+A: no friction,Apia,1.3581609,1.3143889,1.3049195
+A: no friction,waves,1.0723609,1.0563282,1.12649
+"B: no friction, no breaking",10m,1.2702998,1.0439531,1.4458103
+"B: no friction, no breaking",20m,1.3099078,1.0557243,1.4430287
+"B: no friction, no breaking",50m,1.2544115,1.0894737,1.3745036
+"B: no friction, no breaking",5m,1.30718,1.0802367,1.5031457
+"B: no friction, no breaking",Apia,1.2752763,1.199139,1.2234776
+"B: no friction, no breaking",waves,1.0716512,1.0562761,1.1262381
+C: sector 360,10m,1.3232385,1.1977106,1.3978202
+C: sector 360,20m,1.2758554,1.1038668,1.355595
+C: sector 360,50m,1.2321975,1.0994802,1.3038058
+C: sector 360,5m,2.0236847,1.8958175,2.0857368
+C: sector 360,Apia,1.3447288,1.3324766,1.2687569
+C: sector 360,waves,1.0880021,1.035248,1.1262113
+"D: sector 360, no dissipation, mean Tp/wl",10m,1.2706183,1.0368569,1.3072004
+"D: sector 360, no dissipation, mean Tp/wl",20m,1.2555019,1.0461823,1.3205445
+"D: sector 360, no dissipation, mean Tp/wl",50m,1.2224725,1.0574296,1.3060962
+"D: sector 360, no dissipation, mean Tp/wl",5m,1.3040819,1.100966,1.3666086
+"D: sector 360, no dissipation, mean Tp/wl",Apia,1.2146394,1.0761149,1.1936493
+"D: sector 360, no dissipation, mean Tp/wl",waves,1.0630772,0.9952315,1.126459
+E: D + per-point directions,10m,1.0178596,1.0025778,1.1002331
+E: D + per-point directions,20m,0.99899924,0.9938851,1.0655593
+E: D + per-point directions,50m,1.0015199,0.99885714,1.037957
+E: D + per-point directions,5m,1.0743947,1.0402364,1.1602168
+E: D + per-point directions,Apia,1.0694222,1.0368817,1.0722938
+E: D + per-point directions,waves,1.0000426,0.9999972,1.0005562
+F: C + per-point directions,10m,1.1111505,1.1052456,1.1426811
+F: C + per-point directions,20m,1.0417725,1.0268925,1.0852046
+F: C + per-point directions,50m,1.0260133,1.0145608,1.0414453
+F: C + per-point directions,5m,1.7106712,1.7844284,1.6913311
+F: C + per-point directions,Apia,1.1327027,1.0928191,1.128851
+F: C + per-point directions,waves,1.00005,1.0027666,0.99871415

@@ -1,0 +1,33 @@
+$ HyWaves metamodel case (stationary): Hs at one goal, 0 at the others,
+$ SWAN interpolates the spectra (energy) linearly along the open boundary
+$ between the BOUNDSPEC VARIABLE PAR rows.
+$ Physics kept close to SnapWave (no wind, depth-induced breaking, bottom
+$ friction); SWAN also resolves frequency (Tp changes) and triads. Whitecapping
+$ is off: with no wind it removes the energy of steep seas (Hs ratio to SnapWave
+$ 0.75 -> 0.95). Friction 0.019, tested against buoys (Netherlands, 2013).
+PROJECT 'HyWaves' '{{ "%04d" % case_num }}'
+MODE STATIONARY TWODIMENSIONAL
+COORDINATES SPHERICAL CCM
+SET LEVEL={{ wl }} DEPMIN={{ min_depth }} NAUTICAL
+$
+CGRID UNSTRUCTURED CIRCLE 36 0.03 1.0 36
+READGRID UNSTRUCTURED ADCIRC
+$
+BOUND SHAPE JONSWAP 3.3 PEAK DSPR DEGREES
+BOUNDSPEC SIDE {{ boundary_side }} VARIABLE PAR &
+{% for row in boundary_par %}    {{ row }}{% if not loop.last %} &{% endif %}
+{% endfor %}$
+OFF QUAD
+OFF WCAP
+BREAKING CONSTANT 1.0 0.73
+FRICTION JONSWAP CONSTANT 0.019
+TRIAD
+NUMERIC STOPC 0.005 0.01 0.005 99.5 STATIONARY 50
+$
+POINTS 'sites' FILE '{{ points_file }}'
+TABLE 'sites' NOHEAD '{{ table_file }}' {{ table_quantities }}
+$ Grid map (save_map cases only):
+{% if map_file %}BLOCK 'COMPGRID' NOHEAD '{{ map_file }}' LAY 3 {{ map_quantities }}
+{% endif %}$
+COMPUTE
+STOP
