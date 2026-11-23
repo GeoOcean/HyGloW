@@ -34,8 +34,10 @@ KaRIn is rightly lower than the nadir offshore. At that node it drops 11 of 155 
 vs KaRIn goes to RMSE 0.41 m, r 0.971 (altimeters: 0.36 m, 0.975). A two-sided variant on the
 30 km KaRIn median plus a 5 km / 30 km spike ratio <= 1.5 gave a similar result.
 
-To do: move `screen_with_nadir` to `bluemath_tk.waves.altimetry` with tests (the notebooks then
-import it), and check the tolerance on nodes of Samoa, NSW and the Netherlands.
+To do: move `screen_with_nadir` to `bluemath_tk.waves.altimetry` with tests, plus a helper for
+the SWOT nadir passes near a point (the IMOS read + `satellite == SWOT` lines the notebooks
+repeat); the notebooks then import both. Check the tolerance on nodes of Samoa, NSW and the
+Netherlands.
 
 ## Step A: SWOT at the goal nodes (07b section 6)
 

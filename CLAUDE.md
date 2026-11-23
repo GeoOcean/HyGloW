@@ -199,7 +199,6 @@ carry no `tests/`.
 ## Where we are (2026-11-23)
 
 hywaves **0.17.0** on `main`; bluemath_tk on `feature/hywaves-depth-cap` (into `develop`).
-Nothing of 2026-11-23 is committed yet (HyGloW, bluemath_tk, BlueMath).
 
 - All three paper cases have WHACS 1979 to 2026-01 from the archive and the per-goal
   `WHACS_cal` (07a/07b re-run 2026-11-23).
