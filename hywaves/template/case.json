@@ -10,7 +10,8 @@
     "offshore_waves": [
         {
             "name": "WHACS",
-            "data_path": "inputs/WHACS/processed/__CASE_NAME___WHACS_goal.zarr"
+            "data_path": "inputs/WHACS/processed/__CASE_NAME___WHACS_goal.zarr",
+            "archive": "/lustre/geocean/DATA/CSIRO/WHACS/global-smc"
         },
         {
             "name": "ERA5",

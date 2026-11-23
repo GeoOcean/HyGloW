@@ -20,7 +20,7 @@ A HyGloW case: nearshore waves from an offshore hindcast (the method:
 | 04 | `04_Select_Goals_by_Hindcasts` | Goals (offshore points) and their sectors | `simulations.goals_file` |
 | 05 | `05_Metamodel_Cases_Generation` | Training cases per goal (model runs) | `simulations` (`model`, `bounds`, `num_samples_per_goal`) |
 | 06 | `06_Validate_Metamodel` | Fit the metamodel, holdout check | `metamodel` |
-| 07a | `07a_Offshore_WHACS` **or** `07a_Offshore_ERA5` | Offshore waves at the goals (ERA5: partition Tm-1,0 -> Tp) | `offshore_waves` |
+| 07a | `07a_Offshore_WHACS` **or** `07a_Offshore_ERA5` | Offshore waves at the goals (WHACS: read from a local copy of the global archive, `offshore_waves[].archive`: download it or ask GeoOcean, root README; ERA5: partition Tm-1,0 -> Tp) | `offshore_waves` |
 | 07b | `07b_Satellite_Calibration` | *Optional:* check and calibrate them | `satellite` |
 | 07c | `07c_Water_Level_and_Wind` | *Optional:* CODEC water level at the goals and ERA5 wind for the dynamic runs | `forcing` |
 | 08 | `08_Dynamic_Cases_Generation` | Reference runs, every hour, all goals; one folder per forcing (`<dynamic_cases>_<offshore>_wind-<on|off>`) | `forcing` (optional) |

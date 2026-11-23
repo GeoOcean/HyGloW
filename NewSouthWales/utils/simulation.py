@@ -247,9 +247,28 @@ def cases_dir(
 
 
 def saved_map_hours(cases: str | Path) -> pd.DatetimeIndex:
-    """Hours of a dynamic run whose case kept its map (``save_map``: ``output_map.nc``), sorted."""
-    hours = [pd.Timestamp(p.parent.name.replace(" ", "T")) for p in Path(cases).glob("*/output_map.nc")]
+    """Hours of a dynamic run whose case kept its map (``save_map``: ``output_map.nc`` or ``.mat``), sorted."""
+    hours = {pd.Timestamp(p.parent.name.replace(" ", "T")) for p in Path(cases).glob("*/output_map.*")}
     return pd.DatetimeIndex(sorted(hours))
+
+
+def load_storm_map(case_dir: str | Path) -> xr.Dataset:
+    """
+    Map of one dynamic case on ``node``: SnapWave ``output_map.nc`` (``hs``, ``tp``) or SWAN
+    ``output_map.mat`` (``hs``, ``tp``, ``dir``, ``spr``; dry nodes NaN).
+
+    Both models run on the same mesh, so the nodes match.
+    """
+    case_dir = Path(case_dir)
+    if (case_dir / "output_map.mat").is_file():
+        from bluemath_tk.wrappers.swan.swan_utils import read_swan_map
+
+        ds = read_swan_map(str(case_dir / "output_map.mat"))
+        return ds[["hs", "tp", "dir", "spr"]].where(ds["depth"].notnull())
+    with xr.open_dataset(case_dir / "output_map.nc") as ds:
+        mapped = ds[["hm0", "tp"]].isel(time=0).load()
+    node = mapped["hm0"].dims[-1]
+    return mapped.rename({"hm0": "hs", node: "node"}).reset_coords(drop=True)
 
 
 def wind_only_cases_dir(model: str | None = None) -> Path:

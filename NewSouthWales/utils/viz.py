@@ -651,89 +651,113 @@ def plot_dynamic_case(case_dir: str | Path, **kwargs: Any) -> Figure:
     return _plot_case(case_dir, "dynamic", **kwargs)
 
 
-def plot_storm_hour(
-    case_dir: str | Path,
-    dynamic: xr.Dataset,
-    estimate: xr.Dataset,
-    observed: xr.Dataset | None = None,
-    *,
-    estimate_label: str = "Linear sum",
-    extent: tuple[float, float, float, float] | None = None,
-    title: str | None = None,
-) -> Figure:
-    """
-    One hour of a dynamic SnapWave run with its saved map, against the reconstruction.
-
-    Panels: the dynamic Hs map (buoys coloured by the observed Hs on the same scale),
-    the reconstruction at its sites, and reconstruction minus dynamic at those sites.
-
-    Parameters
-    ----------
-    case_dir
-        Dynamic case folder with ``output_map.nc`` (``save_map``).
-    dynamic
-        Postprocessed dynamic run on ``(time, sites)``, with ``site_longitude`` /
-        ``site_latitude``.
-    estimate
-        Reconstruction on ``(time, sites)`` (sites of *dynamic*).
-    observed
-        Buoy records on ``(time, sites)``; buoys without a value that hour are left out.
-    estimate_label
-        Name of *estimate* in the titles.
-    extent
-        ``lon_min, lon_max, lat_min, lat_max``; default the mesh.
-    title
-        Figure title; default the hour.
-    """
+def storm_triangulation(case_dir: str | Path) -> Any:
+    """Triangulation of the mesh from a SnapWave map (``output_map.nc``) of *case_dir*."""
     from bluemath_tk.wrappers.snapwave.snapwave_plots import map_triangulation
 
     with xr.open_dataset(Path(case_dir) / "output_map.nc") as ds:
-        mapped = ds[["hm0", "mesh2d_node_x", "mesh2d_node_y", "mesh2d_face_nodes"]].load()
-    time = pd.Timestamp(mapped["time"].values[0])
-    tri = map_triangulation(mapped)
-    hs_map = mapped["hm0"].isel(time=0).values
-    vmax = float(np.nanpercentile(hs_map, 99.5))
-    est = estimate["hs"].sel(time=time)
-    dyn = dynamic["hs"].sel(time=time, sites=est["sites"].values)
-    lon = dynamic["site_longitude"].sel(sites=est["sites"].values).values
-    lat = dynamic["site_latitude"].sel(sites=est["sites"].values).values
-    diff = (est - dyn).values
-    dlim = max(0.25, float(np.nanpercentile(np.abs(diff), 98)))
+        return map_triangulation(ds[["mesh2d_node_x", "mesh2d_node_y", "mesh2d_face_nodes"]].load())
+
+
+def _storm_panel(ax: Axes, tri: Any, field: xr.DataArray, **style: Any) -> Any:
+    """Draw *field* on the mesh (dimension ``node``) or at its sites (``site_longitude`` / ``site_latitude``)."""
+    if "node" in field.dims:
+        return ax.tripcolor(tri, field.values, shading="gouraud", rasterized=True, **style)
+    return ax.scatter(field["site_longitude"], field["site_latitude"], c=field.values, s=6, zorder=3, **style)
+
+
+def plot_storm_fields(
+    fields: dict[str, xr.DataArray],
+    tri: Any,
+    variable: str,
+    *,
+    reference: xr.DataArray | None = None,
+    reference_label: str = "reference",
+    observed: xr.DataArray | None = None,
+    extent: tuple[float, float, float, float] | None = None,
+    title: str | None = None,
+    ncols: int = 3,
+) -> Figure:
+    """
+    One storm hour of several estimates, one panel each, on the same colour scale.
+
+    A field on ``node`` is drawn on the mesh, a field on ``sites`` at its sites. With
+    *reference*, each panel is the field minus the reference (on the nodes or sites both
+    have; ``dir`` as a circular difference, -180 to 180°).
+
+    Parameters
+    ----------
+    fields
+        Label -> one hour of *variable*, on ``node`` (the nodes of *tri*) or on ``sites``
+        with ``site_longitude`` / ``site_latitude``.
+    tri
+        Mesh triangulation (:func:`storm_triangulation`), also the grey water background.
+    variable
+        ``hs``, ``tp`` or ``dir`` (cyclic colours).
+    reference
+        Field subtracted from every panel (same dimension as each field).
+    reference_label
+        Name of *reference* in the titles.
+    observed
+        Buoy values of the hour on ``sites`` with coordinates, drawn on every panel
+        (absolute mode only).
+    extent
+        ``lon_min, lon_max, lat_min, lat_max``; default the mesh.
+    title
+        Figure title.
+    ncols
+        Panels per row.
+    """
+    circular = variable == "dir"
+    units = {"hs": "m", "tp": "s", "dir": "deg"}.get(variable, "")
+    if reference is not None:
+        fields = {label: _difference(field, reference, circular) for label, field in fields.items()}
+        lim = max(0.25 if not circular else 10.0,
+                  float(np.nanpercentile(np.abs(np.concatenate([f.values.ravel() for f in fields.values()])), 98)))
+        style = dict(cmap="RdBu_r", vmin=-lim, vmax=lim)
+        label = f"- {reference_label} {variable} [{units}]"
+    elif circular:
+        style = dict(cmap="twilight", vmin=0.0, vmax=360.0)
+        label = f"{variable} [{units}, from]"
+    else:
+        vmax = float(np.nanpercentile(np.concatenate([f.values.ravel() for f in fields.values()]), 99.5))
+        style = dict(cmap="viridis", vmin=0.0, vmax=vmax)
+        label = f"{variable} [{units}]"
     if extent is None:
         extent = (tri.x.min(), tri.x.max(), tri.y.min(), tri.y.max())
 
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5.8), constrained_layout=True)
-    water = np.zeros(len(tri.x))
-    for ax in axes[1:]:
-        ax.tripcolor(tri, water, cmap=mcolors.ListedColormap(["#e5e7eb"]), rasterized=True)
-    mesh = axes[0].tripcolor(tri, hs_map, cmap="viridis", vmin=0.0, vmax=vmax, shading="gouraud", rasterized=True)
-    fig.colorbar(mesh, ax=axes[0], label="Hs [m]", shrink=0.85)
-    if observed is not None and time in observed.get_index("time"):
-        obs = observed["hs"].sel(time=time).dropna("sites")
-        sites = obs["sites"].values
-        axes[0].scatter(dynamic["site_longitude"].sel(sites=sites), dynamic["site_latitude"].sel(sites=sites),
-                        c=obs.values, cmap="viridis", vmin=0.0, vmax=vmax, s=140, marker="o",
-                        edgecolors="white", linewidths=1.5, zorder=5, label="buoy (observed)")
-        for site, value in zip(sites, obs.values):
-            axes[0].annotate(f"{value:.1f} m", (float(dynamic["site_longitude"].sel(sites=site)),
-                                                float(dynamic["site_latitude"].sel(sites=site))),
-                             xytext=(8, 8), textcoords="offset points", color="white", fontsize=9,
-                             fontweight="bold")
-        if len(sites):
-            axes[0].legend(loc="lower left", fontsize=8)
-    points = axes[1].scatter(lon, lat, c=est.values, cmap="viridis", vmin=0.0, vmax=vmax, s=6, zorder=3)
-    fig.colorbar(points, ax=axes[1], label="Hs [m]", shrink=0.85)
-    delta = axes[2].scatter(lon, lat, c=diff, cmap="RdBu_r", vmin=-dlim, vmax=dlim, s=6, zorder=3)
-    fig.colorbar(delta, ax=axes[2], label=f"{estimate_label} - dynamic Hs [m]", shrink=0.85)
-    for ax, name in zip(axes, ("Dynamic SnapWave", estimate_label, f"{estimate_label} - dynamic")):
+    nrows = -(-len(fields) // ncols)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(6 * ncols, 4.6 * nrows), constrained_layout=True, squeeze=False)
+    water = mcolors.ListedColormap(["#e5e7eb"])
+    for ax, (name, field) in zip(axes.flat, fields.items()):
+        ax.tripcolor(tri, np.zeros(len(tri.x)), cmap=water, rasterized=True)
+        mappable = _storm_panel(ax, tri, field, **style)
+        if observed is not None and reference is None:
+            ax.scatter(observed["site_longitude"], observed["site_latitude"], c=observed.values, s=140,
+                       edgecolors="white", linewidths=1.5, zorder=5, **style)
+            for lon, lat, value in zip(observed["site_longitude"].values, observed["site_latitude"].values,
+                                       observed.values):
+                ax.annotate(f"{value:.1f}" if not circular else f"{value:.0f}°", (lon, lat), xytext=(8, 8),
+                            textcoords="offset points", fontsize=9, fontweight="bold")
+        ax.set_title(name if reference is None else f"{name} - {reference_label}")
         ax.set_xlim(extent[:2])
         ax.set_ylim(extent[2:])
         ax.set_aspect(1.0 / np.cos(np.radians(np.mean(extent[2:]))))
-        ax.set_title(name)
-        ax.set_xlabel("longitude")
-    axes[0].set_ylabel("latitude")
-    fig.suptitle(display_title(title or f"{time:%Y-%m-%d %H:%M}"))
+    for ax in list(axes.flat)[len(fields):]:
+        ax.set_visible(False)
+    fig.colorbar(mappable, ax=axes, label=label if reference is None else f"estimate {label}", shrink=0.8)
+    if title:
+        fig.suptitle(display_title(title))
     return fig
+
+
+def _difference(field: xr.DataArray, reference: xr.DataArray, circular: bool) -> xr.DataArray:
+    """*field* minus *reference* on what both have (circular: wrapped to -180..180)."""
+    if "sites" in field.dims:
+        shared = [s for s in field.sites.values if s in set(reference.sites.values)]
+        field, reference = field.sel(sites=shared), reference.sel(sites=shared)
+    diff = field - reference.values
+    return (diff + 180.0) % 360.0 - 180.0 if circular else diff
 
 
 # ---------------------------------------------------------------------------
@@ -832,26 +856,22 @@ CALIBRATION_STAGES = {"hs_raw": ("raw", "0.6"), "hs": ("directional", "tab:blue"
 
 def plot_quantile_mapping_goals(
     pairs: pd.DataFrame,
-    mapping: Any,
     *,
     probabilities: tuple[float, ...] = (0.5, 0.9, 0.99),
     title: str | None = None,
 ) -> Figure:
     """
-    Does the one pooled map fit each goal? Quantile error per goal and stage.
+    Hs quantile error per goal and stage, each goal through its own map.
 
     Parameters
     ----------
     pairs
-        :func:`utils.calibration.quantile_mapping_pairs`.
-    mapping
-        The fitted :class:`bluemath_tk.waves.calibration.QuantileMapping`.
+        :func:`utils.calibration.mapped_pairs`.
     probabilities
         One panel each: hindcast − satellite Hs at that quantile.
     title
         Figure title.
     """
-    pairs = pairs.assign(hs_mapped=mapping.map(pairs["hs"].to_numpy()))
     goals = sorted(pairs["goal"].astype(str).unique(), key=int)
     grouped = pairs.groupby("goal")
     x = np.arange(len(goals))
@@ -869,7 +889,7 @@ def plot_quantile_mapping_goals(
         ax.grid(axis="y", alpha=0.3)
     np.atleast_1d(axes)[0].set_ylabel("hindcast − satellite quantile (m)")
     np.atleast_1d(axes)[0].legend()
-    fig.suptitle(title or "One map for all goals: Hs quantile error per goal (all passes)")
+    fig.suptitle(title or "Per-goal maps: Hs quantile error per goal (all passes)")
     fig.tight_layout()
     return fig
 
@@ -886,7 +906,7 @@ def plot_calibrated_record(
     The whole record before and after the calibration, against the passes, per goal.
 
     Below one over the number of passes (grey) no pass checks the record: there
-    the calibrated tail is the constant offset of the quantile map.
+    the calibrated tail is the constant offset of the goal's quantile map.
 
     Parameters
     ----------

@@ -42,6 +42,7 @@ from bluemath_tk.topo_bathy.mesh import open_boundary_nodes
 from bluemath_tk.waves.steepness import filter_by_steepness
 from bluemath_tk.wrappers.snapwave import (
     BOUNDARY_VARS,
+    MAX_SPREAD,
     SnapWaveDynamicModelWrapper,
     SnapWaveMetaModelWrapper,
     boundary_time_series,
@@ -93,6 +94,8 @@ def generate_cases(goals: Mapping[str, Mapping]) -> pd.DataFrame:
     goal; samples steeper than ``simulations.max_steepness`` (``hs / L0``, see
     :func:`bluemath_tk.waves.steepness.filter_by_steepness`) are dropped, so
     each goal keeps fewer cases than requested.
+    SnapWave cases need ``bounds.spr`` up to
+    :data:`bluemath_tk.wrappers.snapwave.MAX_SPREAD` at most.
 
     Offshore wave direction ``dir`` is sampled in nautical degrees (wave-from,
     clockwise from North) within each goal's ``angles`` sector. Bounds are
@@ -104,6 +107,11 @@ def generate_cases(goals: Mapping[str, Mapping]) -> pd.DataFrame:
     goals
         Goals mapping from :func:`utils.config.load_goals`.
 
+    Raises
+    ------
+    ValueError
+        If ``bounds.spr`` goes beyond what SnapWave can take.
+
     Returns
     -------
     pandas.DataFrame
@@ -113,6 +121,11 @@ def generate_cases(goals: Mapping[str, Mapping]) -> pd.DataFrame:
         ``[0, 360)`` after normalization.
     """
     bounds = SIMULATIONS["bounds"]
+    if SIMULATIONS["model"] == "snapwave" and bounds["spr"][1] > MAX_SPREAD:
+        raise ValueError(
+            f"simulations.bounds.spr reaches {bounds['spr'][1]} deg: SnapWave takes at most "
+            f"{MAX_SPREAD} (bluemath_tk.wrappers.snapwave.MAX_SPREAD)"
+        )
     n = SIMULATIONS["num_samples_per_goal"]
     names = list(FORCING_VARS)
 
@@ -231,6 +244,31 @@ def cases_dir(
     if offshore is None or wind is None:
         raise ValueError("dynamic cases need offshore and wind")
     return folder.with_name(f"{folder.name}_{dynamic_run(offshore, wind)}")
+
+
+def saved_map_hours(cases: str | Path) -> pd.DatetimeIndex:
+    """Hours of a dynamic run whose case kept its map (``save_map``: ``output_map.nc`` or ``.mat``), sorted."""
+    hours = {pd.Timestamp(p.parent.name.replace(" ", "T")) for p in Path(cases).glob("*/output_map.*")}
+    return pd.DatetimeIndex(sorted(hours))
+
+
+def load_storm_map(case_dir: str | Path) -> xr.Dataset:
+    """
+    Map of one dynamic case on ``node``: SnapWave ``output_map.nc`` (``hs``, ``tp``) or SWAN
+    ``output_map.mat`` (``hs``, ``tp``, ``dir``, ``spr``; dry nodes NaN).
+
+    Both models run on the same mesh, so the nodes match.
+    """
+    case_dir = Path(case_dir)
+    if (case_dir / "output_map.mat").is_file():
+        from bluemath_tk.wrappers.swan.swan_utils import read_swan_map
+
+        ds = read_swan_map(str(case_dir / "output_map.mat"))
+        return ds[["hs", "tp", "dir", "spr"]].where(ds["depth"].notnull())
+    with xr.open_dataset(case_dir / "output_map.nc") as ds:
+        mapped = ds[["hm0", "tp"]].isel(time=0).load()
+    node = mapped["hm0"].dims[-1]
+    return mapped.rename({"hm0": "hs", node: "node"}).reset_coords(drop=True)
 
 
 def wind_only_cases_dir(model: str | None = None) -> Path:
@@ -379,7 +417,10 @@ class HyWavesWrapperSetup:
     thin polygon around the mesh outline through the goals, out to where the
     lateral boundaries meet the coast
     (:func:`bluemath_tk.topo_bathy.mesh.open_boundary_nodes`), so the coast
-    is never forced. SWAN finds its open boundary in the grid file.
+    is never forced. With ``simulations.snapwave.coast_depth`` (m) the outline
+    is followed from the goals to the coast instead (goals on the lateral
+    boundaries, meshes built elsewhere). SWAN finds its open boundary in the
+    grid file.
     """
 
     aoi_gdf: gpd.GeoDataFrame
@@ -427,7 +468,9 @@ class HyWavesWrapperSetup:
         if model == "snapwave":
             mesh = model_grid(model)
             goal_xy = np.array([[g["lon"], g["lat"]] for g in goals_config.values()])
-            nodes = open_boundary_nodes(mesh, goal_xy)
+            nodes = open_boundary_nodes(
+                mesh, goal_xy, coast_depth=model_config(model).get("coast_depth")
+            )
             enclosure = open_boundary_enclosure(np.column_stack([mesh.x[nodes], mesh.y[nodes]]))
         mesh_file = PATHS.get("mesh_file")
         return cls(

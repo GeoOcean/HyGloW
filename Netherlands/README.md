@@ -18,11 +18,18 @@ up as well (`simulations.swan`).
 - Forcing of the reference runs: ERA5 wind and CODEC water level (CODEC ends
   in 2018). Optional: satellite-calibrated WHACS (`WHACS_cal`).
 - Results: the HyGloW results portal (`portal/`).
+- `TODO.md`: the open method work settled on this case (breaking near the coast).
 
 ## How to run it
 
 As any case: fill in `Netherlands.json`, run the notebooks from this folder in
 order, `python -m hywaves validate Netherlands/` to see what is missing.
+
+Re-run with the current setup (07a/07b done 2026-11-23): `tmp/run_chain.sh`, launched with an
+empty SLURM queue (`setsid nohup bash tmp/run_chain.sh > logs/chain.log 2>&1 < /dev/null &`);
+it keeps the first iteration as `*_sector180` / `outputs_sector180/`, then runs 05 -> 06 || 08
+(2013, `WHACS_cal`, wind off and on) -> the 2013 reconstruction -> 08b, 09, 10, 12. Afterwards
+rebuild the dashboard store (`dashboard/build_store.py`).
 
 | | Notebook | Does |
 | --- | --- | --- |

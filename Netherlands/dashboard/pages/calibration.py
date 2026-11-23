@@ -1,4 +1,4 @@
-"""Calibration: the satellite fit per goal, the tail map of all goals, the deep-buoy check, and the change nearshore."""
+"""Calibration: the satellite fit and the tail map per goal, the deep-buoy check, and the change nearshore."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def layout(**_):
     goals = sorted(data.goals()["goal"].astype(int))
     controls = dbc.Row([
         dbc.Col(ui.dropdown("cb-hindcast", ["WHACS", "ERA5"], "WHACS", "Hindcast"), md=2),
-        dbc.Col(ui.dropdown("cb-goal", goals, goals[0], "Goal (top row)"), md=2),
+        dbc.Col(ui.dropdown("cb-goal", goals, goals[0], "Goal"), md=2),
         dbc.Col(ui.labelled("Stage of the passes", dbc.RadioItems(
             id="cb-stage", options=[{"label": v[0], "value": k} for k, v in STAGES.items()], value="hs_raw",
             inline=True)), md=8),
@@ -36,8 +36,8 @@ def layout(**_):
         ui.header("Calibration", "The offshore hindcast is calibrated against satellite altimetry (IMOS) in two steps. "
                   "1 · Directional fit, per goal: an Hs factor for each 22.5° sector, wind sea and swell apart "
                   "(Mínguez et al. 2011, energy fit, no intercept), on 75 % of the goal's passes; sectors with too "
-                  "few passes stay at 1. 2 · Tail map, one for all goals: a quantile mapping fitted on the passes of "
-                  "every goal pooled (one goal has too few storm passes), with a constant offset beyond p99.9. The "
+                  "few passes stay at 1. 2 · Tail map, per goal: a quantile mapping fitted on the goal's passes, with a "
+                  "constant offset beyond the highest quantile that keeps 5 passes above it (at most p99.9). The "
                   "_cal hindcast is both steps. The map is fitted on every pass, so the passes cannot judge it: the deep "
                   "buoys can."),
         ui.card(None, controls),
@@ -47,7 +47,7 @@ def layout(**_):
             dbc.Col(ui.card("The whole record at this goal, 1979-2023", ui.graph(id="cb-record")), lg=4),
         ], className="g-2"),
         dbc.Row([
-            dbc.Col(ui.card("Step 2 · the tail map: passes of all goals, Q-Q against the satellite",
+            dbc.Col(ui.card("Step 2 · the tail map at this goal: Q-Q against the satellite",
                             ui.graph(id="cb-map")), lg=5),
             dbc.Col(ui.card("Step 1 metrics at this goal (train passes fit it; test passes never seen)",
                             ui.loading(html.Div(id="cb-metrics"))), lg=7),
@@ -133,13 +133,17 @@ def per_goal(hindcast, goal, stage):
             [table, note])
 
 
-@callback(Output("cb-map", "figure"), Input("cb-hindcast", "value"))
-def tail_map(hindcast):
+@callback(Output("cb-map", "figure"), Input("cb-hindcast", "value"), Input("cb-goal", "value"))
+def tail_map(hindcast, goal):
     passes = data.calibration_table(hindcast, "passes")
     if passes.empty:
         return fg.empty("no passes")
+    passes = passes[passes["goal"].astype(str) == str(goal)]
     passes = passes.dropna(subset=["sat_hs", *STAGES])  # the same passes for every stage
-    probs = np.r_[np.linspace(0.01, 0.99, 99), 0.995, 0.998, TAIL_P]
+    if passes.empty:
+        return fg.empty("no passes at this goal")
+    tail_p = min(TAIL_P, 1.0 - 5.0 / len(passes))
+    probs = np.r_[np.linspace(0.01, 0.99, 99), np.linspace(0.99, tail_p, 4)[1:]]
     sat = np.quantile(passes["sat_hs"], probs)
     fig = go.Figure()
     for k, (lab, color) in STAGES.items():
@@ -147,14 +151,14 @@ def tail_map(hindcast):
         fig.add_trace(go.Scatter(x=sat, y=est, mode="lines+markers", name=lab, marker=dict(size=4, color=color),
                                  line=dict(color=color), text=[f"p{100 * x:g}" for x in probs],
                                  hovertemplate="%{text}: satellite %{x:.2f}, hindcast %{y:.2f} m<extra></extra>"))
-    hi = float(max(sat.max(), np.quantile(passes["hs_mapped"], TAIL_P)))
+    hi = float(max(sat.max(), np.quantile(passes["hs_mapped"], tail_p)))
     fig.add_trace(go.Scatter(x=[0, hi], y=[0, hi], mode="lines", line=dict(color="black", dash="dash"),
                              showlegend=False))
-    fig.add_vline(x=sat[-1], line=dict(color="#999", dash="dot"), annotation_text="p99.9: beyond, a constant offset",
+    fig.add_vline(x=sat[-1], line=dict(color="#999", dash="dot"), annotation_text=f"p{100 * tail_p:.2f}: beyond, a constant offset",
                   annotation_position="top left")
     fig.update_layout(xaxis_title="satellite Hs quantile (m)", yaxis_title="hindcast Hs quantile (m)",
                       legend=dict(orientation="h", y=-0.2, font=dict(size=10)))
-    return fg.base_layout(fig, 430, f"{len(passes):,} passes, {passes['goal'].nunique()} goals")
+    return fg.base_layout(fig, 430, f"goal {goal}: {len(passes):,} passes")
 
 
 @callback(Output("cb-buoy-summary", "children"), Output("cb-buoy-table", "children"), Output("cb-buoy", "options"),

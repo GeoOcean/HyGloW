@@ -53,12 +53,16 @@ so the sum of single-goal runs equals a run with every goal forced.
 - *Water level.* A metamodel input: constant, or a tide and surge series per
   goal.
 - *Offshore bias.* The hindcast can be calibrated against satellite
-  altimetry before reconstructing (notebook 07b), in two steps. First, per
-  goal, the level: each partition Hs is multiplied by a factor for its family
+  altimetry before reconstructing (notebook 07b). The partitions are first
+  closed on the bulk: a hindcast can write fewer systems than its spectrum has
+  (WHACS: the wind sea and the three largest swells), so each hour's partition
+  Hs are scaled by sqrt(Hs² / Σ phs²), periods and directions kept. Then two
+  steps. First, per goal, the level: each partition Hs is multiplied by a factor for its family
   (wind sea or swell) and the 22.5° sector of its own direction, and the bulk
-  Hs follows the change in partition energy. Then, over the passes of all
-  goals, the storm tail: one quantile map of the bulk Hs (a constant offset
-  beyond p99.9), whose ratio map(Hs)/Hs multiplies the bulk and every
+  Hs follows the change in partition energy. Then, per goal on its own
+  passes, the storm tail: one quantile map of the bulk Hs (a constant offset
+  beyond the highest quantile that keeps 5 passes above it, at most p99.9),
+  whose ratio map(Hs)/Hs multiplies the bulk and every
   partition, so the sea/swell shares of the first step are kept. The
   altimeter only sees bulk Hs: how the tail correction is shared among the
   partitions is a choice, not data. In the Netherlands WHACS record

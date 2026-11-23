@@ -11,7 +11,7 @@ Run with SnapWave; dynamic runs forced with CODEC water level and ERA5 wind.
   (notebook 01). The mesh (2026-07) keeps its geometry; its node depths come
   from that raster (notebook 02).
 - Buoys with data: CDIP 189 Aunu'u (two mooring sites, 2014 onwards) and
-  CDIP 273 King Poloa (2024 onwards, after WHACS ends).
+  CDIP 273 King Poloa (2024 onwards).
 - Output sites on the 5, 10, 20 and 50 m isobaths, the Apia area, and the buoys.
 - `numerical_tests/`: why the linear sum is high against the dynamic run here
   (SnapWave forces the boundary with one direction; broad bulk spreads; breaking).

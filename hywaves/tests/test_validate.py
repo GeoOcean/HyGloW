@@ -226,6 +226,8 @@ class TestValidateCase(unittest.TestCase):
             "radius_km": -5,
             "train_fraction": 1.5,
             "flags": [1, "2"],
+            "close_partitions": "yes",
+            "tail_quantile": 0.9,
         }
         self._write_config(config)
         messages = [
@@ -235,6 +237,8 @@ class TestValidateCase(unittest.TestCase):
         self.assertTrue(any("radius_km" in m for m in messages))
         self.assertTrue(any("train_fraction" in m for m in messages))
         self.assertTrue(any("flags" in m for m in messages))
+        self.assertTrue(any("close_partitions" in m for m in messages))
+        self.assertTrue(any("tail_quantile" in m for m in messages))
         self.assertFalse(any("data_path" in m for m in messages))  # URLs are not checked
 
     def test_offshore_hindcast_key(self) -> None:
@@ -249,6 +253,17 @@ class TestValidateCase(unittest.TestCase):
         warnings = [f.message for f in _warnings(findings) if f.code == "offshore.hindcast"]
         self.assertEqual(len(warnings), 1)
         self.assertIn("'ERA5'", warnings[0])
+
+    def test_offshore_archive_key(self) -> None:
+        config = _minimal_config()
+        config["offshore_waves"] = [
+            {"name": "WHACS", "data_path": "w.zarr", "archive": "/data/whacs"},
+            {"name": "ERA5", "data_path": "e.zarr", "archive": 3},
+        ]
+        self._write_config(config)
+        errors = [f.message for f in _errors(validate_case(self.case_dir)) if f.code == "offshore.archive"]
+        self.assertEqual(len(errors), 1)
+        self.assertIn("offshore_waves[1]", errors[0])
 
     def test_engine_checks_site_filter(self) -> None:
         metamodel = {

@@ -3,13 +3,15 @@
     "description": "Base case where everything started with Johan and Dano",
     "paths": {
         "aoi_file": "inputs/AoI_Polygons/Netherlands_AoI.shp",
-        "topobathy_file": "inputs/GRID/UGdcsm-fm_100m2coast3d_v3_era5bnd_net.tiff"
+        "topobathy_file": "inputs/GRID/UGdcsm-fm_100m2coast3d_v3_era5bnd_net.tiff",
+        "mesh_file": "inputs/GRID/Netherlands_mesh.nc"
     },
     "onshore_waves": "inputs/Observations/Netherlands_observations.json",
     "offshore_waves": [
         {
             "name": "WHACS",
-            "data_path": "inputs/WHACS/processed/Netherlands_WHACS_goal.zarr"
+            "data_path": "inputs/WHACS/processed/Netherlands_WHACS_goal.zarr",
+            "archive": "/lustre/geocean/DATA/CSIRO/WHACS/global-smc"
         },
         {
             "name": "WHACS_cal",
@@ -62,7 +64,7 @@
             "slurm": {
                 "cpus_per_task": 2,
                 "mem": "4gb",
-                "setup": "module use /nfs/software/geocean/modulefiles\nmodule load snapwave"
+                "setup": "module use /nfs/software/geocean/modulefiles\nmodule load snapwave/b663c81-wind2"
             }
         },
         "swan": {
@@ -92,7 +94,7 @@
             ],
             "spr": [
                 1,
-                45
+                55
             ],
             "wl": [
                 -3.25,
@@ -212,6 +214,7 @@
             "metrics_variables": [
                 "hs",
                 "tp",
+                "tm01",
                 "dir",
                 "spr"
             ]
@@ -220,6 +223,7 @@
             "variables": {
                 "hs": "hs",
                 "tp": "tp",
+                "tm01": "tm01",
                 "dir": "dm",
                 "spr": "dspr"
             },

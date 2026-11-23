@@ -856,26 +856,22 @@ CALIBRATION_STAGES = {"hs_raw": ("raw", "0.6"), "hs": ("directional", "tab:blue"
 
 def plot_quantile_mapping_goals(
     pairs: pd.DataFrame,
-    mapping: Any,
     *,
     probabilities: tuple[float, ...] = (0.5, 0.9, 0.99),
     title: str | None = None,
 ) -> Figure:
     """
-    Does the one pooled map fit each goal? Quantile error per goal and stage.
+    Hs quantile error per goal and stage, each goal through its own map.
 
     Parameters
     ----------
     pairs
-        :func:`utils.calibration.quantile_mapping_pairs`.
-    mapping
-        The fitted :class:`bluemath_tk.waves.calibration.QuantileMapping`.
+        :func:`utils.calibration.mapped_pairs`.
     probabilities
         One panel each: hindcast − satellite Hs at that quantile.
     title
         Figure title.
     """
-    pairs = pairs.assign(hs_mapped=mapping.map(pairs["hs"].to_numpy()))
     goals = sorted(pairs["goal"].astype(str).unique(), key=int)
     grouped = pairs.groupby("goal")
     x = np.arange(len(goals))
@@ -893,7 +889,7 @@ def plot_quantile_mapping_goals(
         ax.grid(axis="y", alpha=0.3)
     np.atleast_1d(axes)[0].set_ylabel("hindcast − satellite quantile (m)")
     np.atleast_1d(axes)[0].legend()
-    fig.suptitle(title or "One map for all goals: Hs quantile error per goal (all passes)")
+    fig.suptitle(title or "Per-goal maps: Hs quantile error per goal (all passes)")
     fig.tight_layout()
     return fig
 
@@ -910,7 +906,7 @@ def plot_calibrated_record(
     The whole record before and after the calibration, against the passes, per goal.
 
     Below one over the number of passes (grey) no pass checks the record: there
-    the calibrated tail is the constant offset of the quantile map.
+    the calibrated tail is the constant offset of the goal's quantile map.
 
     Parameters
     ----------

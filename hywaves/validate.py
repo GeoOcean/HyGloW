@@ -258,6 +258,12 @@ def _check_offshore(config: dict, report: _Report) -> None:
         if not isinstance(entry, dict) or not entry.get("name"):
             report.error("offshore.name", f"offshore_waves[{i}] must have a 'name'")
             continue
+        archive = entry.get("archive")
+        if archive is not None and not (isinstance(archive, str) and archive):
+            report.error(
+                "offshore.archive",
+                f"offshore_waves[{i}].archive must be the path of the local hindcast archive",
+            )
         hindcast = entry.get("hindcast")
         if hindcast is not None and not (isinstance(hindcast, str) and hindcast):
             report.error(
@@ -603,6 +609,9 @@ def _check_engine(case_dir: Path, config: dict, report: _Report) -> None:
                 "flags": lambda v: isinstance(v, list)
                 and all(isinstance(f, int) and not isinstance(f, bool) for f in v),
                 "split": lambda v: v in ("random", "time"),
+                "tail_quantile": lambda v: _is_number(v) and 0.99 <= v < 1,
+                "min_tail_samples": lambda v: isinstance(v, int) and not isinstance(v, bool) and v >= 1,
+                "close_partitions": lambda v: isinstance(v, bool),
             }
             expected = {
                 "radius_km": "a positive number (km)",
@@ -611,6 +620,9 @@ def _check_engine(case_dir: Path, config: dict, report: _Report) -> None:
                 "min_points": "an integer >= 1",
                 "flags": "a list of integers",
                 "split": "'random' or 'time'",
+                "tail_quantile": "in [0.99, 1)",
+                "min_tail_samples": "an integer >= 1",
+                "close_partitions": "true or false",
             }
             for key, ok in checks.items():
                 if key in satellite and not ok(satellite[key]):

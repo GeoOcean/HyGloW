@@ -447,13 +447,10 @@ def build_calibration() -> None:
 
 
 def _calibration_passes(raw: str) -> pd.DataFrame:
-    """Every satellite pass with the hindcast Hs raw, after the directional step and after the tail map."""
-    from bluemath_tk.core.io import load_model
+    """Every satellite pass with the hindcast Hs raw, after the directional step and after its goal's tail map."""
     from utils import calibration as cal
 
-    passes = cal.quantile_mapping_pairs(raw).rename(columns={"hs": "hs_directional"})
-    mapping = load_model(str(cal.quantile_mapping_path(raw)))
-    return passes.assign(hs_mapped=mapping.map(passes["hs_directional"].to_numpy()))
+    return cal.mapped_pairs(raw).rename(columns={"hs": "hs_directional"})
 
 
 def _buoy_check(raw: str, cal_name: str) -> dict[str, pd.DataFrame]:

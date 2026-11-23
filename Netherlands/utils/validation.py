@@ -61,6 +61,7 @@ METRICS_VARIABLES = METAMODEL["validation"]["metrics_variables"]
 PARAMETERS: dict[str, dict[str, Any]] = {
     "hs": {"label": "Hs", "units": "m", "circular": False},
     "tp": {"label": "Tp", "units": "s", "circular": False},
+    "tm01": {"label": "Tm01", "units": "s", "circular": False},
     "dir": {"label": "Dir", "units": "deg", "circular": True},
     "spr": {"label": "Spr", "units": "deg", "circular": False},
 }
@@ -560,7 +561,8 @@ def load_offshore_hindcast_at_buoys(
 #: CF-style attributes of the buoy variables (validation plots).
 BUOY_VAR_ATTRS = {
     "hs": {"standard_name": "sea_surface_wave_significant_height", "units": "m"},
-    "tp": {"standard_name": "sea_surface_wave_period", "units": "s"},
+    "tp": {"standard_name": "sea_surface_wave_period_at_variance_spectral_density_maximum", "units": "s"},
+    "tm01": {"standard_name": "sea_surface_wave_mean_period_from_variance_spectral_density_first_frequency_moment", "units": "s"},
     "dir": {"standard_name": "sea_surface_wave_from_direction", "units": "degree"},
     "spr": {"standard_name": "sea_surface_wave_directional_spread", "units": "degree"},
 }
@@ -568,10 +570,11 @@ BUOY_VAR_ATTRS = {
 
 def _buoy_record(path: Path, period: str | slice, variables: list[str]) -> xr.Dataset:
     """One processed buoy file in HyWaves names (bulk, or stats of its spectra)."""
-    raw = xr.open_dataset(path).sel(time=period)
+    # a string period as a slice: a record outside it comes back empty instead of raising
+    raw = xr.open_dataset(path).sel(time=slice(period, period) if isinstance(period, str) else period)
     if "Efth" in raw or "efth" in raw:
         spec = raw["Efth" if "Efth" in raw else "efth"]
-        return spec.spec.stats(["hs", "tp", "dm", "dspr"]).load().rename({"dm": "dir", "dspr": "spr"})
+        return spec.spec.stats(["hs", "tp", "tm01", "dm", "dspr"]).load().rename({"dm": "dir", "dspr": "spr"})
     if "dspr" in raw.data_vars and "spr" not in raw.data_vars:
         raw = raw.rename({"dspr": "spr"})
     out = {name: raw[name] for name in variables if name in raw.data_vars}
@@ -598,7 +601,7 @@ def load_buoy_observations(
         Buoy sites; default every ``ok`` buoy
         (:func:`utils.onshore_sites.list_snapwave_buoy_sites`).
     variables
-        Default ``hs``, ``tp``, ``dir``, ``spr``; missing ones are skipped.
+        Default ``metamodel.validation.metrics_variables``; missing ones are skipped.
 
     Returns
     -------
@@ -619,6 +622,107 @@ def load_buoy_observations(
                 ds[name].attrs.update(attrs)
         chunks.append(ds)
     return attach_site_meta(xr.concat(chunks, dim="sites"))
+
+
+def on_sites_of(run: xr.Dataset, like: xr.Dataset) -> xr.Dataset:
+    """
+    *run* on the sites it shares with *like*, carrying *like*'s site metadata.
+
+    For another run of the same sites (e.g. SWAN against the SnapWave dynamic run: its
+    table is traced on its own grid file, so positions can differ at float precision).
+    """
+    in_like = set(like["sites"].values)
+    shared = [s for s in run["sites"].values if s in in_like]
+    coords = {c: like[c].sel(sites=shared) for c in like.coords if c.startswith("site_")}
+    return run.sel(sites=shared).assign_coords(coords)
+
+
+def storm_peaks(
+    offshore: xr.Dataset, n: int = 4, *, min_gap: str = "4D",
+    map_hours: pd.DatetimeIndex | None = None, max_lag: str = "6h",
+) -> pd.DataFrame:
+    """
+    The *n* largest storms: peaks of the goal-mean offshore Hs at least *min_gap* apart.
+
+    Parameters
+    ----------
+    offshore
+        Offshore waves on ``(time, goal)``.
+    n
+        Storms returned.
+    min_gap
+        Least time between two peaks.
+    map_hours, max_lag
+        Hours with a saved dynamic map (:func:`utils.simulation.saved_map_hours`):
+        only storms with one within *max_lag* of the peak are kept, and the
+        nearest is ``map_hour``.
+
+    Returns
+    -------
+    pandas.DataFrame
+        ``peak``, ``goal_mean_hs``, ``goal_max_hs`` (and ``map_hour``), largest first.
+    """
+    hs = offshore["hs"].mean("goal").to_series().dropna().sort_values(ascending=False)
+    gap, lag = pd.Timedelta(min_gap), pd.Timedelta(max_lag)
+    rows: list[dict[str, Any]] = []
+    storms: list[pd.Timestamp] = []  # every peak, kept or not (no map): its shoulders are not new storms
+    for time, value in hs.items():
+        if any(abs(time - peak) < gap for peak in storms):
+            continue
+        storms.append(time)
+        row = {"peak": time, "goal_mean_hs": float(value),
+               "goal_max_hs": float(offshore["hs"].sel(time=time).max())}
+        if map_hours is not None:
+            if len(map_hours) == 0:
+                break
+            nearest = map_hours[np.abs(map_hours - time).argmin()]
+            if abs(nearest - time) > lag:
+                continue
+            row["map_hour"] = nearest
+        rows.append(row)
+        if len(rows) == n:
+            break
+    return pd.DataFrame(rows)
+
+
+def common_hours_metrics(
+    reference: xr.Dataset, estimates: Mapping[str, xr.Dataset], variables: Iterable[str],
+) -> pd.DataFrame:
+    """
+    Metrics of each estimate against *reference* per site, on the hours they all have.
+
+    The hours of a site are those where the reference and every estimate have ``hs``, so
+    runs covering different hours are scored on the same ones (``n``).
+
+    Parameters
+    ----------
+    reference
+        On ``(time, sites)`` (e.g. the buoys).
+    estimates
+        Label -> dataset on ``(time, sites)`` with the sites of *reference*.
+    variables
+        Variables scored where both sides have them.
+
+    Returns
+    -------
+    pandas.DataFrame
+        ``site, estimate, variable, n`` and :data:`METRICS`.
+    """
+    rows = []
+    for site in reference["sites"].values:
+        ref = reference.sel(sites=site)
+        ests = {label: est.sel(sites=site).reindex(time=ref.time) for label, est in estimates.items()}
+        ok = ref["hs"].notnull().values
+        for est in ests.values():
+            ok &= est["hs"].notnull().values
+        if not ok.any():
+            continue
+        for label, est in ests.items():
+            for variable in variables:
+                if variable in ref and variable in est:
+                    metrics = compute_metrics(ref[variable].values[ok], est[variable].values[ok], variable)
+                    rows.append({"site": site, "estimate": label, "variable": variable, **metrics})
+    return pd.DataFrame(rows)
 
 
 def event_peaks(
@@ -642,17 +746,17 @@ def event_peaks(
     Returns
     -------
     pandas.DataFrame
-        One row per site with a reference peak: ``{label}`` (peak value) and
-        ``{label} time``, and for each estimate also ``{label} - {reference_label}``
-        (peak difference) and ``{label} lag (h)`` (positive: estimate later).
+        Indexed by ``(site, source)`` (the reference first, then the estimates), for the
+        sites with a reference peak: ``peak``, ``time``, ``minus {reference_label}`` and
+        ``lag (h)`` (positive: the estimate peaks later).
     """
     sources = {reference_label: reference, **estimates}
-    rows = {}
+    rows = []
     for site in reference["sites"].values:
         ref = reference[variable].sel(sites=site).dropna("time")
         if ref.size == 0:
             continue
-        row = {}
+        ref_peak, ref_time = float(ref.max()), pd.Timestamp(ref["time"].values[int(ref.argmax())])
         for label, ds in sources.items():
             if site not in ds["sites"].values:
                 continue
@@ -660,13 +764,11 @@ def event_peaks(
             if series.size == 0:
                 continue
             i = int(series.argmax())
-            row[label] = float(series[i])
-            row[f"{label} time"] = pd.Timestamp(series["time"].values[i])
-            if label != reference_label:
-                row[f"{label} - {reference_label}"] = row[label] - float(ref.max())
-                row[f"{label} lag (h)"] = (row[f"{label} time"] - pd.Timestamp(ref["time"].values[int(ref.argmax())])) / pd.Timedelta("1h")
-        rows[site] = row
-    return pd.DataFrame.from_dict(rows, orient="index")
+            time = pd.Timestamp(series["time"].values[i])
+            rows.append({"site": site, "source": label, "peak": float(series[i]), "time": time,
+                         f"minus {reference_label}": float(series[i]) - ref_peak,
+                         "lag (h)": (time - ref_time) / pd.Timedelta("1h")})
+    return pd.DataFrame(rows).set_index(["site", "source"])
 
 
 # ---------------------------------------------------------------------------
@@ -778,8 +880,14 @@ def plot_buoy_timeseries(
     variables: Iterable[str] | None = None,
     reference_label: str = "Buoy",
 ) -> Figure:
-    """Time series at one site: the reference and every named estimate, one row per variable."""
-    keys = resolve_comparison_variables(reference, *estimates.values(), variables=variables)
+    """Time series at one site: the reference and every named estimate, one row per variable.
+
+    A variable is drawn when the reference and at least one estimate have it (``tm01`` exists
+    only in the reconstructions, not in the offshore hindcasts).
+    """
+    keys = [v for v in _variables(variables) if v in reference and any(v in e for e in estimates.values())]
+    if not keys:
+        raise ValueError(f"No variable of {_variables(variables)} is in the reference and an estimate")
     fig, axes = plt.subplots(len(keys), 1, figsize=(12, 2 + 2 * len(keys)), sharex=True, squeeze=False)
     colors = _model_colors(estimates)
     for ax, key in zip(axes[:, 0], keys):
@@ -787,7 +895,7 @@ def plot_buoy_timeseries(
         plot_timeseries_comparison(
             ax,
             reference[key].sel(sites=site),
-            {name: est[key].sel(sites=site) for name, est in estimates.items()},
+            {name: est[key].sel(sites=site) for name, est in estimates.items() if key in est},
             reference_label,
             colors=colors,
             reference_color=MODEL_COLORS.get(reference_label, "black"),
@@ -809,7 +917,7 @@ def plot_buoy_summary(
     reference_label: str = "Buoy",
     estimate_label: str = "Spectral metamodel",
     period_label: str | None = None,
-    cmap: str = "viridis",
+    cmap: str = "Reds",
 ) -> Figure:
     """
     One figure per buoy for the GUI: density scatters, then Hs (and Tp) over time.
@@ -819,8 +927,8 @@ def plot_buoy_summary(
     """
     ref, est = xr.align(reference.sel(sites=site), estimate.sel(sites=site), join="inner")
     keys = resolve_comparison_variables(ref, est, variables=variables)
-    fig = plt.figure(figsize=(4.2 * len(keys), 7.4))
-    gs = fig.add_gridspec(2, len(keys), height_ratios=[1.15, 0.85], hspace=0.35)
+    fig = plt.figure(figsize=(5.2 * len(keys), 7.4))
+    gs = fig.add_gridspec(2, len(keys), height_ratios=[1.15, 0.85], hspace=0.35, wspace=0.35)
     for col, key in enumerate(keys):
         _scatter_panel(fig.add_subplot(gs[0, col]), ref[key].values, est[key].values, key,
                        reference_label, estimate_label, cmap)

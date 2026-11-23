@@ -29,6 +29,15 @@ pip install "git+https://github.com/GeoOcean/BlueMath_tk.git@develop"
 and the wave model, [SnapWave](https://github.com/danoroelvink/snapwave/) or
 SWAN, on your PATH (or on a SLURM cluster), from notebook 05 on.
 
+**Offshore data.** WHACS is read from a local copy of its global archive
+(`archive` in the WHACS `offshore_waves` entry; one folder per variable with
+the monthly netCDF files of the SMC grid, as CSIRO publishes them,
+[doi:10.25919/shdk-7p29](https://doi.org/10.25919/shdk-7p29)). On the GeoOcean
+cluster it is `/lustre/geocean/DATA/CSIRO/WHACS/global-smc`; elsewhere,
+download the 20 variables 07a reads (`hs fp dir spr` and `phs ptp pdir pspr`
+0-3, about 14 TB for 1979-2026) or ask GeoOcean for the goal series of your
+case. ERA5 needs an Earth Data Hub key (`EDH_API_KEY`).
+
 ## Make your case
 
 ```bash

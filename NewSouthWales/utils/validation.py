@@ -685,6 +685,46 @@ def storm_peaks(
     return pd.DataFrame(rows)
 
 
+def common_hours_metrics(
+    reference: xr.Dataset, estimates: Mapping[str, xr.Dataset], variables: Iterable[str],
+) -> pd.DataFrame:
+    """
+    Metrics of each estimate against *reference* per site, on the hours they all have.
+
+    The hours of a site are those where the reference and every estimate have ``hs``, so
+    runs covering different hours are scored on the same ones (``n``).
+
+    Parameters
+    ----------
+    reference
+        On ``(time, sites)`` (e.g. the buoys).
+    estimates
+        Label -> dataset on ``(time, sites)`` with the sites of *reference*.
+    variables
+        Variables scored where both sides have them.
+
+    Returns
+    -------
+    pandas.DataFrame
+        ``site, estimate, variable, n`` and :data:`METRICS`.
+    """
+    rows = []
+    for site in reference["sites"].values:
+        ref = reference.sel(sites=site)
+        ests = {label: est.sel(sites=site).reindex(time=ref.time) for label, est in estimates.items()}
+        ok = ref["hs"].notnull().values
+        for est in ests.values():
+            ok &= est["hs"].notnull().values
+        if not ok.any():
+            continue
+        for label, est in ests.items():
+            for variable in variables:
+                if variable in ref and variable in est:
+                    metrics = compute_metrics(ref[variable].values[ok], est[variable].values[ok], variable)
+                    rows.append({"site": site, "estimate": label, "variable": variable, **metrics})
+    return pd.DataFrame(rows)
+
+
 def event_peaks(
     reference: xr.Dataset, estimates: Mapping[str, xr.Dataset], variable: str = "hs",
     reference_label: str = "Buoy",
@@ -706,17 +746,17 @@ def event_peaks(
     Returns
     -------
     pandas.DataFrame
-        One row per site with a reference peak: ``{label}`` (peak value) and
-        ``{label} time``, and for each estimate also ``{label} - {reference_label}``
-        (peak difference) and ``{label} lag (h)`` (positive: estimate later).
+        Indexed by ``(site, source)`` (the reference first, then the estimates), for the
+        sites with a reference peak: ``peak``, ``time``, ``minus {reference_label}`` and
+        ``lag (h)`` (positive: the estimate peaks later).
     """
     sources = {reference_label: reference, **estimates}
-    rows = {}
+    rows = []
     for site in reference["sites"].values:
         ref = reference[variable].sel(sites=site).dropna("time")
         if ref.size == 0:
             continue
-        row = {}
+        ref_peak, ref_time = float(ref.max()), pd.Timestamp(ref["time"].values[int(ref.argmax())])
         for label, ds in sources.items():
             if site not in ds["sites"].values:
                 continue
@@ -724,13 +764,11 @@ def event_peaks(
             if series.size == 0:
                 continue
             i = int(series.argmax())
-            row[label] = float(series[i])
-            row[f"{label} time"] = pd.Timestamp(series["time"].values[i])
-            if label != reference_label:
-                row[f"{label} - {reference_label}"] = row[label] - float(ref.max())
-                row[f"{label} lag (h)"] = (row[f"{label} time"] - pd.Timestamp(ref["time"].values[int(ref.argmax())])) / pd.Timedelta("1h")
-        rows[site] = row
-    return pd.DataFrame.from_dict(rows, orient="index")
+            time = pd.Timestamp(series["time"].values[i])
+            rows.append({"site": site, "source": label, "peak": float(series[i]), "time": time,
+                         f"minus {reference_label}": float(series[i]) - ref_peak,
+                         "lag (h)": (time - ref_time) / pd.Timedelta("1h")})
+    return pd.DataFrame(rows).set_index(["site", "source"])
 
 
 # ---------------------------------------------------------------------------

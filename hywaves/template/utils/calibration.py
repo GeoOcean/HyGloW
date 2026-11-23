@@ -7,16 +7,22 @@ calibrated per goal with the directional method of
 direction sector). This module is the case layer, driven by the
 ``satellite`` block of the case JSON:
 
+- :func:`partition_energy_share` — how much of the bulk energy the hindcast
+  partitions hold; :func:`closed_hindcast` scales them to the bulk
+  (:func:`bluemath_tk.waves.hywaves.offshore.scale_partitions_to_bulk`) unless
+  ``close_partitions`` is false; every step below reads it, so the calibrated
+  hindcast is closed (or not) accordingly;
 - :func:`satellite_pairs` — altimeter passes within ``radius_km`` of each
   goal node (deeper than ``min_depth``), one median Hs per pass, with the
   hindcast at the pass time (``outputs/calibration/{offshore}/pairs.csv``);
 - :func:`fit_calibration` — one :class:`CalVal` per goal, fitted on
   ``train_fraction`` of the passes and validated on the rest
   (``calval_goal_XX.pkl``, ``coefficients.csv``, ``metrics.csv``);
-- :func:`fit_quantile_mapping` — one tail map over the passes of every goal
-  (:func:`quantile_mapping_pairs`; ``quantile_mapping.pkl``,
+- :func:`fit_quantile_mapping` — one tail map per goal on its own passes
+  (:func:`quantile_mapping_pairs`; ``quantile_mapping_goal_XX.pkl``,
   ``quantile_mapping.csv``), on the directionally calibrated hindcast: the
-  sectors fix the level, this the storm tail;
+  sectors fix the level, this the storm tail; the tail quantile of each goal
+  keeps ``min_tail_samples`` passes above it (at most ``tail_quantile``);
 - :func:`write_calibrated_hindcast` — the calibrated hindcast as a new zarr,
   to be added to ``offshore_waves`` (e.g. ``WHACS_cal``) and used by the
   dynamic runs and the reconstruction like any other offshore source;
@@ -42,6 +48,7 @@ from bluemath_tk.core.io import load_model
 from bluemath_tk.core.metrics import compute_metrics
 from bluemath_tk.waves.altimetry import altimeter_near, altimeter_passes, collocate
 from bluemath_tk.waves.calibration import CalVal, QuantileMapping
+from bluemath_tk.waves.hywaves.offshore import scale_partitions_to_bulk
 
 from utils.config import (
     SATELLITE,
@@ -73,6 +80,8 @@ DEFAULTS: dict[str, Any] = {
     "sector_size": 22.5,
     "min_samples": 20,
     "tail_quantile": 0.999,
+    "min_tail_samples": 5,
+    "close_partitions": True,
 }
 
 
@@ -106,6 +115,66 @@ def goal_nodes(offshore_name: str) -> pd.DataFrame:
     return pd.DataFrame.from_dict(rows, orient="index")
 
 
+def partition_indices(ds: xr.Dataset) -> list[int]:
+    """Partition numbers ``i`` of the ``phs{i}`` in *ds* (empty for a bulk-only hindcast)."""
+    return sorted(int(n[3:]) for n in ds.data_vars if n.startswith("phs") and n[3:].isdigit())
+
+
+def partition_energy_share(offshore_name: str) -> pd.DataFrame:
+    """Share of the bulk energy (Hs²) the hindcast partitions hold, per goal.
+
+    Parameters
+    ----------
+    offshore_name
+        ``offshore_waves`` entry (as written by 07a, before any closure).
+
+    Returns
+    -------
+    pd.DataFrame
+        Indexed by goal: ``partitions`` (how many the hindcast has),
+        ``energy_share`` (Σ phs² / Σ hs² over every hour), ``hours_last_full``
+        (share of hours whose last partition holds energy) and
+        ``energy_share_last_full`` / ``energy_share_others`` (the share in
+        those hours and in the rest). A hindcast that writes a fixed number of
+        partitions, in order, loses energy only when its last slot is used and
+        more systems exist. Empty for a bulk-only hindcast.
+    """
+    ds = open_offshore_waves(offshore_name)
+    parts = partition_indices(ds)
+    if not parts:
+        logger.info("%s has no partitions: nothing to close", offshore_name)
+        return pd.DataFrame()
+    rows = {}
+    for gid in ds["goal"].values:
+        node = ds.sel(goal=gid)[["hs", *(f"phs{i}" for i in parts)]].load()
+        bulk = node["hs"].values ** 2
+        phs = np.stack([np.nan_to_num(node[f"phs{i}"].values) for i in parts])
+        energy = (phs**2).sum(axis=0)
+        ok = np.isfinite(bulk) & (bulk > 0)
+        full = ok & (phs[-1] > 0)
+        share = lambda m: energy[m].sum() / bulk[m].sum() if m.any() else np.nan  # noqa: E731
+        rows[str(int(gid))] = {
+            "partitions": len(parts),
+            "energy_share": share(ok),
+            "hours_last_full": full.sum() / max(ok.sum(), 1),
+            "energy_share_last_full": share(full),
+            "energy_share_others": share(ok & ~full),
+        }
+    return pd.DataFrame.from_dict(rows, orient="index").rename_axis("goal")
+
+
+def closed_hindcast(offshore_name: str) -> xr.Dataset:
+    """The offshore hindcast with its partitions scaled to the bulk energy.
+
+    Every step of the calibration reads it, so the calibrated hindcast is closed
+    (a spectral sum of its partitions starts at the bulk energy). Unchanged when
+    ``close_partitions`` is false, for a hindcast without partitions or whose
+    partitions already add up.
+    """
+    hindcast = open_offshore_waves(offshore_name)
+    return scale_partitions_to_bulk(hindcast) if config()["close_partitions"] else hindcast
+
+
 def satellite_pairs(
     offshore_name: str,
     *,
@@ -121,19 +190,22 @@ def satellite_pairs(
     goals
         Goal ids (default all).
     refresh
-        Recompute instead of reading ``pairs.csv``.
+        Recompute instead of reading ``pairs.csv`` (also recomputed when the
+        offshore zarr is newer than it).
 
     Returns
     -------
     pandas.DataFrame
         One row per pass and goal: ``goal``, ``time``, the pass (``sat_hs``,
         ``sat_n``, ``sat_lon``, ``sat_lat``, ``sat_distance_km``,
-        ``sat_depth``, ``sat_satellite``) and the hindcast variables.
+        ``sat_depth``, ``sat_satellite``) and the hindcast variables
+        (partitions closed, :func:`closed_hindcast`).
     """
     cfg = config()
     path = calibration_dir(offshore_name) / "pairs.csv"
     wanted = [str(g) for g in goals] if goals is not None else None
-    if path.exists() and not refresh:
+    source = resolve(get_offshore_wave(offshore_name)["data_path"])
+    if path.exists() and not refresh and path.stat().st_mtime > source.stat().st_mtime:
         pairs = pd.read_csv(path, parse_dates=["time"], dtype={"goal": str})
         return pairs if wanted is None else pairs[pairs["goal"].isin(wanted)]
 
@@ -141,7 +213,7 @@ def satellite_pairs(
     if wanted is not None:
         nodes = nodes.loc[wanted]
     altimeter = open_satellite()
-    hindcast = open_offshore_waves(offshore_name)
+    hindcast = closed_hindcast(offshore_name)
     chunks = []
     for gid, node in nodes.iterrows():
         obs = altimeter_near(
@@ -235,9 +307,9 @@ def fit_calibration(
     return out
 
 
-def quantile_mapping_path(offshore_name: str) -> Path:
-    """``outputs/calibration/{offshore_name}/quantile_mapping.pkl``."""
-    return calibration_dir(offshore_name) / "quantile_mapping.pkl"
+def quantile_mapping_path(offshore_name: str, goal: str | int) -> Path:
+    """``outputs/calibration/{offshore_name}/quantile_mapping_goal_XX.pkl``."""
+    return calibration_dir(offshore_name) / f"quantile_mapping_goal_{int(goal):02d}.pkl"
 
 
 def quantile_mapping_pairs(offshore_name: str) -> pd.DataFrame:
@@ -271,11 +343,13 @@ def quantile_mapping_pairs(offshore_name: str) -> pd.DataFrame:
     return pd.concat(corrected).reset_index()
 
 
-def fit_quantile_mapping(offshore_name: str) -> QuantileMapping:
-    """Fit the tail map on every pass of every goal, after the directional step.
+def fit_quantile_mapping(offshore_name: str) -> dict[str, QuantileMapping]:
+    """Fit one tail map per goal on its own passes, after the directional step.
 
-    Pooled because one goal has too few storm passes; on all the passes, so the
-    test passes of :func:`fit_calibration` are not independent of this step.
+    Each goal's tail quantile is the highest that keeps ``min_tail_samples``
+    passes above it, at most ``tail_quantile``
+    (:meth:`QuantileMapping.tail_quantile_for`). Fitted on all the passes, so
+    the test passes of :func:`fit_calibration` are not independent of this step.
 
     Parameters
     ----------
@@ -284,18 +358,51 @@ def fit_quantile_mapping(offshore_name: str) -> QuantileMapping:
 
     Returns
     -------
-    QuantileMapping
-        Fitted on :func:`quantile_mapping_pairs`. Also writes
-        ``quantile_mapping.pkl`` and ``quantile_mapping.csv`` in
-        ``outputs/calibration/{offshore_name}/``.
+    dict[str, QuantileMapping]
+        Fitted map per goal id. Also writes ``quantile_mapping_goal_XX.pkl``
+        and ``quantile_mapping.csv`` (``goal``, ``n``, ``tail_quantile`` and
+        the quantile table) in ``outputs/calibration/{offshore_name}/``.
     """
-    pairs = quantile_mapping_pairs(offshore_name)
-    mapping = QuantileMapping(tail_quantile=float(config()["tail_quantile"])).fit(
-        pairs["hs"].to_numpy(), pairs["sat_hs"].to_numpy()
+    cfg = config()
+    out: dict[str, QuantileMapping] = {}
+    tables = []
+    for gid, group in quantile_mapping_pairs(offshore_name).groupby("goal", sort=False):
+        n = int(group[["hs", "sat_hs"]].notna().all(axis=1).sum())
+        tail = QuantileMapping.tail_quantile_for(
+            n, float(cfg["tail_quantile"]), int(cfg["min_tail_samples"])
+        )
+        mapping = QuantileMapping(
+            tail_quantile=tail, min_tail_samples=int(cfg["min_tail_samples"])
+        ).fit(group["hs"].to_numpy(), group["sat_hs"].to_numpy())
+        mapping.save_model(str(quantile_mapping_path(offshore_name, gid)))
+        out[str(gid)] = mapping
+        tables.append(mapping.table.assign(goal=str(gid), n=n, tail_quantile=tail))
+    table = pd.concat(tables, ignore_index=True)
+    first = ["goal", "n", "tail_quantile"]
+    table[first + [c for c in table if c not in first]].to_csv(
+        calibration_dir(offshore_name) / "quantile_mapping.csv", index=False
     )
-    mapping.save_model(str(quantile_mapping_path(offshore_name)))
-    mapping.table.to_csv(calibration_dir(offshore_name) / "quantile_mapping.csv", index=False)
-    return mapping
+    return out
+
+
+def load_quantile_mapping(offshore_name: str) -> dict[str, QuantileMapping]:
+    """Fitted tail maps of *offshore_name* by goal id (from :func:`fit_quantile_mapping`)."""
+    found = {}
+    for path in sorted(calibration_dir(offshore_name).glob("quantile_mapping_goal_*.pkl")):
+        found[str(int(path.stem.rsplit("_", 1)[-1]))] = load_model(str(path))
+    if not found:
+        raise FileNotFoundError(f"No quantile mapping fitted for {offshore_name!r}; run fit_quantile_mapping")
+    return found
+
+
+def mapped_pairs(offshore_name: str) -> pd.DataFrame:
+    """:func:`quantile_mapping_pairs` plus ``hs_mapped``, each goal through its own map."""
+    mappings = load_quantile_mapping(offshore_name)
+    pairs = quantile_mapping_pairs(offshore_name)
+    mapped = pd.Series(np.nan, index=pairs.index)
+    for gid, group in pairs.groupby("goal"):
+        mapped[group.index] = mappings[str(gid)].map(group["hs"].to_numpy())
+    return pairs.assign(hs_mapped=mapped)
 
 
 def load_calibration(offshore_name: str) -> dict[str, CalVal]:
@@ -321,11 +428,12 @@ def write_calibrated_hindcast(
 ) -> dict[str, str]:
     """Apply the per-goal calibration to the whole hindcast and write a zarr.
 
-    Partition Hs are multiplied by their sector factor and the bulk Hs scaled
-    by the change in partition energy; then the tail map of
+    Reads :func:`closed_hindcast`. Per goal, partition Hs are multiplied by
+    their sector factor and the bulk Hs scaled by the change in partition
+    energy; then the goal's tail map of
     :func:`fit_quantile_mapping` corrects the bulk Hs and the partitions by
-    the same ratio. Periods, directions and spreads are unchanged. Goals
-    without a fitted calibration only get the tail map.
+    the same ratio. Periods, directions and spreads are unchanged. Every goal
+    needs both fits.
 
     Parameters
     ----------
@@ -350,14 +458,16 @@ def write_calibrated_hindcast(
         source.name.replace(".zarr", "") + "_cal.zarr"
     )
     calibrations = load_calibration(offshore_name)
-    ds = open_offshore_waves(offshore_name).load()
-    parts = []
-    for gid in ds["goal"].values:
-        node = ds.sel(goal=gid)
-        cv = calibrations.get(str(int(gid)))
-        parts.append(cv.correct(node) if cv is not None else node)
-    mapping = load_model(str(quantile_mapping_path(offshore_name)))
-    out = mapping.correct(xr.concat(parts, dim="goal"))
+    mappings = load_quantile_mapping(offshore_name)
+    ds = closed_hindcast(offshore_name).load()
+    goals = [str(int(g)) for g in ds["goal"].values]
+    missing = sorted(set(goals) - (set(calibrations) & set(mappings)), key=int)
+    if missing:
+        raise ValueError(f"Goals {missing} of {offshore_name!r} have no calibration or tail map")
+    out = xr.concat(
+        [mappings[g].correct(calibrations[g].correct(ds.sel(goal=int(g)))) for g in goals],
+        dim="goal",
+    )
     cfg = config()
     out.attrs = {
         **ds.attrs,
@@ -365,8 +475,11 @@ def write_calibrated_hindcast(
             {
                 "source": offshore_name,
                 "reference": cfg["name"],
-                "method": "directional CalVal (wind sea / swell per sector), QuantileMapping",
-                "tail_quantile": cfg["tail_quantile"],
+                "method": ("partitions scaled to the bulk energy, then " if cfg["close_partitions"] else "")
+                + "per goal: directional CalVal (wind sea / swell per sector), QuantileMapping",
+                "close_partitions": cfg["close_partitions"],
+                "partition_energy_share": ds.attrs.get("partition_energy_share"),
+                "tail_quantile": {g: m.tail_quantile for g, m in mappings.items()},
                 "radius_km": cfg["radius_km"],
                 "min_depth": cfg["min_depth"],
                 "train_fraction": cfg["train_fraction"],

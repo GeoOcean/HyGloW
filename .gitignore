@@ -200,9 +200,6 @@ Netherlands/outputs_OLDESITO/
 # Repo tmp files
 */tmp/
 
-# Testing/OLD Arquetypes
-Cantabria/
-
 # QGIS
 QGIS/
 
@@ -237,3 +234,4 @@ deck/_site/
 *.tar.gz
 *.tgz
 *.zip
+*.pdf
