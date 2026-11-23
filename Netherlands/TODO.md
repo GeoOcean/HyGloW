@@ -5,3 +5,5 @@
       stays high at 5 m (some 10 m) in the biggest seas. Settle it here, the main case (dashboard
       Breaking page; notebooks 08b-10 after the re-run), e.g. ceilings per depth band or per goal,
       or taken from the dynamic runs; then apply the same rule to Samoa and New South Wales.
+
+- [ ] **Re-build dashboard data.** Ensure the data  is properly re-built after all the changes, starting from the new WHACS .zarr stores.
